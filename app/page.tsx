@@ -1,5 +1,5 @@
 "use client";
-
+import Link from "next/link";
 import { useState } from "react";
 import {
   Trophy,
@@ -9,6 +9,20 @@ import {
   Lightbulb,
   ChevronDown,
 } from "lucide-react";
+import { motion, type Variants } from "framer-motion";
+
+const fadeUp: Variants = {
+  hidden: { opacity: 0, y: 35, filter: "blur(6px)" },
+  visible: {
+    opacity: 1,
+    y: 0,
+    filter: "blur(0px)",
+    transition: {
+      duration: 0.7,
+      ease: "easeOut",
+    },
+  },
+};
 
 export default function Home() {
   const [turnedOn, setTurnedOn] = useState(false);
@@ -45,31 +59,43 @@ export default function Home() {
         </div>
 
         <header className="sticky top-0 z-40 border-b border-white/5 bg-black/40 backdrop-blur-md">
-          <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
-            <div className="text-lg font-semibold tracking-[0.25em] text-zinc-100">
-              SPELEUM
-            </div>
+  <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
+    <div className="text-lg font-semibold tracking-[0.25em] text-zinc-100">
+      SPELEUM
+    </div>
 
-            <button className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 py-2 text-sm font-medium tracking-wide text-white transition hover:bg-white/10">
-              <Play className="h-4 w-4 fill-white" />
-              Play
-            </button>
+    <Link
+      href="/play"
+      className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 py-2 text-sm font-medium tracking-wide text-white transition hover:bg-white/10"
+    >
+      <Play className="h-4 w-4 fill-white" />
+      Play
+    </Link>
 
-            <div className="flex items-center gap-3">
-              <button className="rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10">
-                <Trophy className="h-5 w-5 text-zinc-200" />
-              </button>
+    <div className="flex items-center gap-3">
+      <Link
+        href="/ranking"
+        className="rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10"
+      >
+        <Trophy className="h-5 w-5 text-zinc-200" />
+      </Link>
 
-              <button className="rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10">
-                <CircleHelp className="h-5 w-5 text-zinc-200" />
-              </button>
+      <Link
+        href="/How-to-play"
+        className="rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10"
+      >
+        <CircleHelp className="h-5 w-5 text-zinc-200" />
+      </Link>
 
-              <button className="rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10">
-                <User className="h-5 w-5 text-zinc-200" />
-              </button>
-            </div>
-          </nav>
-        </header>
+      <Link
+        href="/profile"
+        className="rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10"
+      >
+        <User className="h-5 w-5 text-zinc-200" />
+      </Link>
+    </div>
+  </nav>
+</header> 
 
         <section className="relative mx-auto flex min-h-[88vh] max-w-7xl flex-col items-center justify-center px-6 pt-10 text-center">
           <div className="absolute inset-x-0 top-16 -z-10 h-80 bg-[radial-gradient(circle,rgba(255,255,255,0.06),transparent_60%)] blur-3xl" />
@@ -158,9 +184,12 @@ export default function Home() {
           </div>
 
           <div className="mt-10 flex flex-col items-center gap-4">
-            <button className="rounded-full border border-white/10 bg-white px-7 py-3 text-sm font-semibold text-black transition hover:scale-[1.02] hover:bg-zinc-200">
+            <Link
+              href="/play"
+              className="rounded-full border border-white/10 bg-white px-7 py-3 text-sm font-semibold text-black transition hover:scale-[1.02] hover:bg-zinc-200"
+            >
               Entrar a jugar
-            </button>
+            </Link>
 
             <div className="flex items-center gap-2 text-sm text-zinc-500">
               <ChevronDown className="h-4 w-4" />
@@ -171,7 +200,13 @@ export default function Home() {
 
         <section className="mx-auto max-w-6xl px-6 py-24">
           <div className="grid gap-8 md:grid-cols-2">
-            <div className="rounded-4xl border border-white/10 bg-white/3 p-8">
+            <motion.div
+              variants={fadeUp}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, amount: 0.25 }}
+              className="rounded-4xl border border-white/10 bg-white/3 p-8"
+            >
               <p className="mb-3 text-xs tracking-[0.25em] text-zinc-500">
                 ¿QUÉ ES SPELEUM?
               </p>
@@ -184,9 +219,17 @@ export default function Home() {
                 entorno oscuro donde la información es limitada y el peligro
                 puede aparecer en cualquier momento.
               </p>
-            </div>
+              </motion.div>
 
-            <div className="rounded-4xl border border-white/10 bg-white/3 p-8">
+
+            <motion.div
+              variants={fadeUp}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, amount: 0.25 }}
+              transition={{ delay: 0.12 }}
+              className="rounded-4xl border border-white/10 bg-white/3 p-8"
+            >
               <p className="mb-3 text-xs tracking-[0.25em] text-zinc-500">
                 IDEA PRINCIPAL
               </p>
@@ -199,16 +242,187 @@ export default function Home() {
                 un ajolote de cueva, acompañado después por otras especies
                 subterráneas como cangrejos, peces ciegos, camarones y arañas.
               </p>
-            </div>
+            </motion.div>
           </div>
         </section>
 
-        <footer className="border-t border-white/5 px-6 py-8">
-          <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 text-sm text-zinc-500 sm:flex-row">
-            <p>Speleum · proyecto académico</p>
-            <p>Diseño inspirado en la oscuridad de las cuevas y la exploración</p>
+        <section className="mx-auto max-w-6xl px-6 pb-24">
+          <div className="mb-10 max-w-2xl">
+            <p className="text-xs tracking-[0.25em] text-zinc-500">
+              CRIATURAS
+            </p>
+            <h2 className="mt-3 text-3xl font-semibold text-white">
+              Dos formas de leer la oscuridad
+            </h2>
+            <p className="mt-4 leading-7 text-zinc-400">
+              El ajolote de cueva explora con estabilidad y sensibilidad. El
+              camaron de cueva entra con impulsos evasivos, menos senal al
+              moverse y recuperacion mas rapida.
+            </p>
           </div>
-        </footer>
+
+          <div className="grid gap-6 md:grid-cols-2">
+            {[
+              {
+                name: "Ajolote de cueva",
+                text: "Equilibrado, constante y facil de leer. Ideal para aprender la tension de los turnos.",
+              },
+              {
+                name: "Camaron de cueva",
+                text: "Agil y evasivo. Sus movimientos dejan rastros mas tenues en el radar.",
+              },
+            ].map((creature) => (
+              <motion.div
+                key={creature.name}
+                variants={fadeUp}
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true, amount: 0.2 }}
+                className="rounded-4xl border border-white/10 bg-white/3 p-7"
+              >
+                <div className="mb-5 h-14 w-14 rounded-full border border-white/20 bg-zinc-100/80 shadow-[0_0_28px_rgba(255,255,255,0.12)]" />
+                <h3 className="text-xl font-semibold text-white">
+                  {creature.name}
+                </h3>
+                <p className="mt-3 leading-7 text-zinc-400">{creature.text}</p>
+              </motion.div>
+            ))}
+          </div>
+        </section>
+
+        <section className="mx-auto max-w-6xl px-6 pb-24">
+          <motion.div
+            variants={fadeUp}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, amount: 0.2 }}
+            className="relative overflow-hidden rounded-4xl border border-white/10 bg-white/3 p-8"
+          >
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_right,rgba(255,255,255,0.08),transparent_55%)]" />
+            <div className="relative grid gap-8 md:grid-cols-[1.2fr_0.8fr]">
+              <div>
+                <p className="text-xs tracking-[0.25em] text-zinc-500">
+                  MUNDO SUBTERRANEO
+                </p>
+                <h2 className="mt-3 text-3xl font-semibold text-white">
+                  Un ecosistema hecho de senales
+                </h2>
+                <p className="mt-4 leading-7 text-zinc-400">
+                  Speleum toma inspiracion de animales adaptados a cuevas: baja
+                  vision, cuerpos palidos, sensibilidad al movimiento y
+                  orientacion por vibraciones. El mapa convierte esas ideas en
+                  radar, vision limitada y decisiones por turnos.
+                </p>
+              </div>
+              <div className="flex items-end md:justify-end">
+                <Link
+                  href="/world"
+                  className="rounded-full border border-white/10 bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200"
+                >
+                  Explorar mundo
+                </Link>
+              </div>
+            </div>
+          </motion.div>
+        </section>
+
+        <motion.footer
+          initial={{ opacity: 0, y: 25 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.15 }}
+          transition={{ duration: 0.7, ease: "easeOut" }}
+          className="relative border-t border-white/5 px-6 py-16"
+        >
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.06),transparent_55%)]" />
+
+          <div className="relative mx-auto grid max-w-7xl gap-10 md:grid-cols-[1.2fr_1fr_1fr]">
+            <div>
+              <p className="text-xs tracking-[0.25em] text-zinc-500">
+                FINAL DE LA LANDING
+              </p>
+              <h3 className="mt-3 text-3xl font-semibold text-white">
+                Entra a Speleum
+              </h3>
+              <p className="mt-4 max-w-md leading-7 text-zinc-400">
+                Explora la oscuridad, descubre criaturas subterráneas y prepárate
+                para sobrevivir con visión limitada dentro de la cueva.
+              </p>
+
+              <div className="mt-6 flex gap-3">
+                <Link
+                  href="/play"
+                  className="rounded-full bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200"
+                >
+                  Play
+                </Link>
+                <Link
+                  href="/How-to-play"
+                  className="rounded-full border border-white/10 bg-white/5 px-6 py-3 text-sm text-white transition hover:bg-white/10"
+                >
+                  Cómo jugar
+                </Link>
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-4 text-xs tracking-[0.25em] text-zinc-500">
+                SECCIONES
+              </p>
+              <div className="flex flex-col gap-3 text-sm text-zinc-400">
+                <Link href="/" className="transition hover:text-white">
+                  Inicio
+                </Link>
+                <Link href="/play" className="transition hover:text-white">
+                  Play
+                </Link>
+                <Link href="/ranking" className="transition hover:text-white">
+                  Ranking
+                </Link>
+                <Link
+                  href="/How-to-play"
+                  className="transition hover:text-white"
+                >
+                  Cómo jugar
+                </Link>
+                <Link href="/world" className="transition hover:text-white">
+                  Mundo
+                </Link>
+                <Link href="/profile" className="transition hover:text-white">
+                  Usuario
+                </Link>
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-4 text-xs tracking-[0.25em] text-zinc-500">
+                MASCOTA / LOGO
+              </p>
+
+              <motion.div
+                animate={{ y: [0, -6, 0] }}
+                transition={{
+                  duration: 4.5,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                }}
+                className="relative flex h-44 items-center justify-center overflow-hidden rounded-4xl border border-white/10 bg-white/3"
+              >
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.08),transparent_70%)]" />
+                <div className="relative text-center">
+                  <div className="mx-auto h-16 w-16 rounded-full border border-white/15 bg-white/5" />
+                  <p className="mt-4 text-xs tracking-[0.25em] text-zinc-500">
+                    espacio para ajolote / logo
+                  </p>
+                </div>
+              </motion.div>
+            </div>
+          </div>
+
+          <div className="relative mx-auto mt-12 flex max-w-7xl flex-col items-center justify-between gap-3 border-t border-white/5 pt-6 text-sm text-zinc-500 sm:flex-row">
+            <p>Speleum · proyecto académico</p>
+            <p>Oscuridad, exploración y supervivencia subterránea</p>
+          </div>
+        </motion.footer>
       </div>
     </main>
   );
