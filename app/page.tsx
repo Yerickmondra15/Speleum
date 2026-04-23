@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import Image from "next/image";
 import { useState } from "react";
 import {
   Trophy,
@@ -60,10 +61,22 @@ export default function Home() {
 
         <header className="sticky top-0 z-40 border-b border-white/5 bg-black/40 backdrop-blur-md">
   <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
-    <div className="text-lg font-semibold tracking-[0.25em] text-zinc-100">
-      SPELEUM
-    </div>
-
+    <div className="flex items-center gap-3">
+      <Image
+        src="/Grafico/Logo blanco.svg"
+        alt="Speleum logo"
+        width={36}
+        height={36}
+        className="h-9 w-auto"
+      />
+      <Image
+    src="/Grafico/Nombre-white.svg"
+    alt="Speleum"
+    width={140}
+    height={32}
+    className="h-7 w-auto"
+  />
+</div>
     <Link
       href="/play"
       className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 py-2 text-sm font-medium tracking-wide text-white transition hover:bg-white/10"
@@ -104,7 +117,7 @@ export default function Home() {
             Oscuridad · Exploración · Supervivencia
           </div>
 
-          <h1 className="text-5xl font-semibold tracking-[0.35em] text-white sm:text-7xl">
+          <h1 className="text-5xl font-serif font-semibold tracking-[0.35em] text-white sm:text-7xl">
             SPELEUM
           </h1>
 
@@ -394,9 +407,7 @@ export default function Home() {
             </div>
 
             <div>
-              <p className="mb-4 text-xs tracking-[0.25em] text-zinc-500">
-                MASCOTA / LOGO
-              </p>
+              
 
               <motion.div
                 animate={{ y: [0, -6, 0] }}
@@ -407,12 +418,13 @@ export default function Home() {
                 }}
                 className="relative flex h-44 items-center justify-center overflow-hidden rounded-4xl border border-white/10 bg-white/3"
               >
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.08),transparent_70%)]" />
                 <div className="relative text-center">
-                  <div className="mx-auto h-16 w-16 rounded-full border border-white/15 bg-white/5" />
-                  <p className="mt-4 text-xs tracking-[0.25em] text-zinc-500">
-                    espacio para ajolote / logo
-                  </p>
+                  <Image
+        src="/Grafico/Logo blanco.svg"
+        alt="Speleum logo"
+        width={100}
+        height={50}
+      />
                 </div>
               </motion.div>
             </div>
