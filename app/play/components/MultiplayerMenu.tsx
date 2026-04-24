@@ -151,7 +151,7 @@ export function MultiplayerMenu({
     <section className="relative z-10 min-h-screen overflow-hidden px-5 py-8">
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-5xl items-center justify-center">
         <div className="grid w-full gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="rounded-[2rem] border border-white/10 bg-black/40 p-7 backdrop-blur-md">
+          <div className="rounded-4xl border border-white/10 bg-black/40 p-7 backdrop-blur-md">
             <div className="flex items-center justify-between gap-3">
               <button
                 type="button"
@@ -172,8 +172,8 @@ export function MultiplayerMenu({
               SALA PRIVADA
             </h1>
             <p className="mt-4 max-w-xl text-sm leading-7 text-zinc-400">
-              Crea una sala por codigo para jugar 1 vs 1 sin romper la version local.
-              El servidor valida movimientos y solo envia el estado visible.
+              Crea una sala por codigo para 2 a 4 criaturas. El servidor valida
+              movimiento, combate y solo envia el estado que entra en tu vision.
             </p>
 
             <div className="mt-8 grid gap-4 sm:grid-cols-2">
@@ -200,13 +200,13 @@ export function MultiplayerMenu({
                 <button
                   type="button"
                   onClick={submitCreate}
-                  className="rounded-[1.5rem] bg-white px-6 py-4 text-left text-black transition hover:bg-zinc-200"
+                  className="rounded-3xl bg-white px-6 py-4 text-left text-black transition hover:bg-zinc-200"
                 >
                   <p className="text-xs tracking-[0.24em] text-zinc-500">CREAR</p>
                   <p className="mt-2 text-lg font-semibold">Abrir sala privada</p>
                 </button>
 
-                <div className="rounded-[1.5rem] border border-white/10 bg-black/35 p-4">
+                <div className="rounded-3xl border border-white/10 bg-black/35 p-4">
                   <p className="text-xs tracking-[0.24em] text-zinc-500">UNIRSE</p>
                   <div className="mt-3 flex gap-3">
                     <input
@@ -272,13 +272,13 @@ export function MultiplayerMenu({
             )}
           </div>
 
-          <aside className="rounded-[2rem] border border-white/10 bg-black/30 p-7 backdrop-blur-md">
+          <aside className="rounded-4xl border border-white/10 bg-black/30 p-7 backdrop-blur-md">
             <p className="text-xs tracking-[0.3em] text-zinc-500">RESUMEN</p>
             <div className="mt-5 space-y-4 text-sm leading-7 text-zinc-300">
               <p>Vision limitada a 8 casillas alrededor del jugador.</p>
-              <p>El otro explorador solo aparece si entra en tu rango visible.</p>
+              <p>Las otras criaturas solo aparecen si entran en tu rango visible.</p>
               <p>La sala vive en memoria y se pierde al reiniciar el servidor.</p>
-              <p>Si el otro jugador se desconecta, la interfaz te lo avisa.</p>
+              <p>La partida inicia con 2 jugadores y soporta hasta 4.</p>
             </div>
 
             {errorMessage && (

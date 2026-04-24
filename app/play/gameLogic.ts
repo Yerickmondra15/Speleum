@@ -10,8 +10,12 @@ import type {
 import {
   CAVE_HEIGHT,
   CAVE_WIDTH,
+  DEFEND_DAMAGE_REDUCTION,
   ENEMY_RADIUS,
   PLAYER_RADIUS,
+  SAFE_ZONE_SANITY_RECOVERY,
+  SANITY_DAMAGE_PER_TICK,
+  SANITY_DAMAGE_THRESHOLD,
   caveWalls,
 } from "./gameConfig";
 
@@ -195,6 +199,37 @@ export function hitHazard(position: PlayerPosition, hazards: HazardArea[]) {
 
 export function reachedGoal(position: PlayerPosition, goal: GoalArea) {
   return circleIntersectsRect(position, PLAYER_RADIUS, goal);
+}
+
+export function applyDamage(
+  health: number,
+  damage: number,
+  isDefending: boolean,
+) {
+  const mitigation = isDefending ? 1 - DEFEND_DAMAGE_REDUCTION : 1;
+
+  return Math.max(0, Math.round(health - damage * mitigation));
+}
+
+export function updateSanity(
+  sanity: number,
+  deltaSeconds: number,
+  isSafeZone: boolean,
+  darknessDrainPerSecond: number,
+) {
+  const delta = isSafeZone
+    ? SAFE_ZONE_SANITY_RECOVERY * deltaSeconds
+    : -darknessDrainPerSecond * deltaSeconds;
+
+  return clamp(Math.round((sanity + delta) * 100) / 100, 0, 100);
+}
+
+export function sanityHealthPenalty(sanity: number, deltaSeconds: number) {
+  if (sanity > SANITY_DAMAGE_THRESHOLD) {
+    return 0;
+  }
+
+  return Math.max(0, Math.round(SANITY_DAMAGE_PER_TICK * deltaSeconds));
 }
 
 export function createEnemyState(config: EnemyConfig): EnemyState {

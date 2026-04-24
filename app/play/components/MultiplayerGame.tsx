@@ -1,18 +1,23 @@
 "use client";
 
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Radio, Users } from "lucide-react";
+import { ArrowLeft, Radio, Skull, Users } from "lucide-react";
 import type { CharacterOption, GameStatus, PlayerPosition } from "../gameConfig";
 import {
   ATTACK_COOLDOWN,
+  DEFEND_COOLDOWN,
   MAX_HEALTH,
+  MAX_SANITY,
   VISION_RADIUS,
   caveZones,
+  characterOptions,
   pointsOfInterest,
 } from "../gameConfig";
 import { distanceBetween, getZoneForPosition } from "../gameLogic";
-import type { MultiplayerStatePayload } from "../types";
+import type { MatchResultEntry, MultiplayerStatePayload } from "../types";
+import { getCharacterName } from "../types";
 import { ensureSocketConnection, getSocket } from "@/lib/socket";
+import { appendLocalRanking } from "@/lib/ranking";
 import { ActionControls } from "./ActionControls";
 import { GameHud } from "./GameHud";
 import { GameMap } from "./GameMap";
@@ -41,6 +46,32 @@ function emptyDirectionState(): DirectionState {
   };
 }
 
+function ResultsTable({ results }: { results: MatchResultEntry[] }) {
+  if (results.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="overflow-hidden rounded-[1.2rem] border border-white/10 bg-black/35">
+      <div className="grid grid-cols-[4rem_1fr_4rem] gap-3 border-b border-white/10 px-4 py-3 text-left text-[0.65rem] tracking-[0.24em] text-zinc-500">
+        <span>PUESTO</span>
+        <span>CRIATURA</span>
+        <span>KILLS</span>
+      </div>
+      {results.map((entry) => (
+        <div
+          key={entry.playerId}
+          className="grid grid-cols-[4rem_1fr_4rem] gap-3 px-4 py-3 text-sm text-zinc-200"
+        >
+          <span>#{entry.placement}</span>
+          <span>{entry.name}</span>
+          <span>{entry.kills}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function MultiplayerGame({
   roomCode,
   selectedCharacter,
@@ -54,6 +85,7 @@ export function MultiplayerGame({
   const [disconnectedMessage, setDisconnectedMessage] = useState<string | null>(null);
   const pointerTargetRef = useRef<PlayerPosition | null>(null);
   const keyStateRef = useRef<DirectionState>(emptyDirectionState());
+  const rankingStoredRef = useRef(false);
 
   useEffect(() => {
     const socket = ensureSocketConnection();
@@ -63,15 +95,15 @@ export function MultiplayerGame({
       }
 
       setGameState(state);
-      setMessage(state.message ?? "Explora con cuidado.");
+      setMessage(state.message ?? "La cueva escucha todos tus movimientos.");
     };
     const handlePlayerLeft = (payload: { roomCode?: string; message?: string }) => {
       if (payload.roomCode !== roomCode) {
         return;
       }
 
-      setDisconnectedMessage(payload.message ?? "El otro jugador se desconecto.");
-      setMessage(payload.message ?? "El otro jugador se desconecto.");
+      setDisconnectedMessage(payload.message ?? "Una criatura desaparecio en la oscuridad.");
+      setMessage(payload.message ?? "Una criatura desaparecio en la oscuridad.");
     };
     const handleGameOver = (payload: { message?: string }) => {
       setMessage(payload.message ?? "La partida termino.");
@@ -93,17 +125,38 @@ export function MultiplayerGame({
     };
   }, [roomCode]);
 
+  useEffect(() => {
+    if (!gameState || gameState.status !== "finished" || rankingStoredRef.current) {
+      return;
+    }
+
+    const winner = gameState.results[0];
+
+    if (!winner) {
+      return;
+    }
+
+    appendLocalRanking({
+      id: `${gameState.roomCode}-${Date.now()}`,
+      recordedAt: new Date().toISOString(),
+      winnerName: winner.name,
+      winnerCharacterId: winner.characterId,
+      roomCode: gameState.roomCode,
+      totalPlayers: gameState.results.length,
+      durationMs: Math.max(...gameState.results.map((entry) => entry.survivedMs)),
+      standings: gameState.results,
+    });
+    rankingStoredRef.current = true;
+  }, [gameState]);
+
   const self = gameState?.self ?? null;
-  const player = useMemo(
-    () => self?.position ?? { x: 0, y: 0 },
-    [self?.position],
-  );
+  const player = useMemo(() => self?.position ?? { x: 0, y: 0 }, [self?.position]);
   const enemy = gameState?.enemy ?? null;
   const currentZone = useMemo(() => getZoneForPosition(player, caveZones), [player]);
   const gameStatus: GameStatus =
     self?.status === "won"
       ? "won"
-      : self?.status === "lost"
+      : self?.status === "lost" || self?.status === "left"
         ? "lost"
         : "playing";
 
@@ -118,19 +171,21 @@ export function MultiplayerGame({
 
   const objective =
     gameStatus === "won"
-      ? "Ganaste la carrera hacia la salida."
+      ? "Eres la ultima criatura viva."
       : gameStatus === "lost"
-        ? "La expedicion termino para ti."
-        : "Llega a la salida antes que el otro explorador.";
+        ? "La cadena de la vida continuo sin ti."
+        : "Sobrevive, conserva la cordura y conviertete en la ultima criatura viva.";
 
   const enemyStateLabel = enemy
     ? enemy.mode === "chase"
-      ? "amenaza visible"
-      : "patrulla visible"
-    : "sin contacto";
+      ? "la cueva acecha"
+      : "eco hostil"
+    : "sin rastro";
 
-  const health = gameStatus === "lost" ? 0 : MAX_HEALTH;
+  const health = self?.combat.health ?? MAX_HEALTH;
+  const sanity = self?.combat.sanity ?? MAX_SANITY;
   const cooldownRemaining = Math.max(0, cooldownEndsAt - now);
+  const isDefending = Boolean(self?.combat.isDefending);
 
   const emitMovement = useEffectEvent(() => {
     if (!self || !gameState || gameState.status !== "playing" || gameStatus !== "playing") {
@@ -201,6 +256,9 @@ export function MultiplayerGame({
       event.preventDefault();
       setActiveAction("move");
       setDirectionState("right", true);
+    } else if (event.key.toLowerCase() === " ") {
+      event.preventDefault();
+      handleAttack();
     }
   });
 
@@ -235,7 +293,7 @@ export function MultiplayerGame({
     setMessage("Avanzas con cuidado por la cueva.");
   };
 
-  const handleAttack = () => {
+  function handleAttack() {
     if (gameStatus !== "playing" || cooldownRemaining > 0) {
       return;
     }
@@ -243,18 +301,38 @@ export function MultiplayerGame({
     getSocket().emit("player-attack", { roomCode });
     setActiveAction("attack");
     setCooldownEndsAt(Date.now() + ATTACK_COOLDOWN);
-    setMessage("Ataque enviado al servidor.");
-  };
+    setMessage("Tu criatura arremete contra todo lo que tenga cerca.");
+  }
 
   const handleDefend = () => {
+    if (gameStatus !== "playing" || cooldownRemaining > 0) {
+      return;
+    }
+
+    getSocket().emit("player-defend", { roomCode });
     setActiveAction("defend");
-    setMessage("La defensa activa queda pendiente para una siguiente iteracion.");
+    setCooldownEndsAt(Date.now() + DEFEND_COOLDOWN);
+    setMessage("Tu criatura endurece el cuerpo para resistir un impacto.");
   };
 
   const handleExit = () => {
     getSocket().emit("leave-room", { roomCode });
     onExitToMenu();
   };
+
+  const overlaySummary = gameState ? (
+    <div className="space-y-4">
+      <div className="rounded-[1.1rem] border border-white/10 bg-black/35 px-4 py-3 text-left text-sm text-zinc-300">
+        <p>
+          Sala <span className="text-white">{roomCode}</span>
+        </p>
+        <p className="mt-1">
+          Supervivientes finales: <span className="text-white">{gameState.aliveCount}</span>
+        </p>
+      </div>
+      <ResultsTable results={gameState.results} />
+    </div>
+  ) : null;
 
   if (!gameState || !self) {
     return (
@@ -268,7 +346,7 @@ export function MultiplayerGame({
 
   return (
     <section className="relative z-10 min-h-screen overflow-hidden">
-      <header className="pointer-events-none absolute inset-x-0 top-0 z-[70] flex items-center justify-between px-4 py-4">
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-70 flex items-center justify-between px-4 py-4">
         <button
           type="button"
           onClick={handleExit}
@@ -295,7 +373,7 @@ export function MultiplayerGame({
         otherPlayers={gameState.otherPlayers}
         signals={gameState.signals}
         activeAction={activeAction}
-        isDefending={false}
+        isDefending={isDefending}
         currentZone={currentZone}
         gameStatus={gameStatus}
         visionRadius={VISION_RADIUS}
@@ -309,11 +387,14 @@ export function MultiplayerGame({
         zoneMessage={disconnectedMessage}
         health={health}
         maxHealth={MAX_HEALTH}
+        sanity={sanity}
+        maxSanity={MAX_SANITY}
+        aliveCount={gameState.aliveCount}
         enemyStateLabel={enemyStateLabel}
         isPaused={false}
       />
 
-      <div className="absolute right-4 top-24 z-[70] w-64 max-w-[calc(100vw-2rem)]">
+      <div className="absolute right-4 top-24 z-70 w-64 max-w-[calc(100vw-2rem)]">
         <RadarPanel
           player={player}
           enemy={enemy}
@@ -322,15 +403,44 @@ export function MultiplayerGame({
         />
       </div>
 
-      <div className="pointer-events-none absolute right-4 top-[22rem] z-[70] hidden max-w-xs rounded-[1.25rem] border border-white/10 bg-black/45 p-4 text-sm text-zinc-300 backdrop-blur-md lg:block">
-        <p className="text-xs tracking-[0.25em] text-zinc-500">MULTIJUGADOR</p>
+      <div className="pointer-events-none absolute right-4 top-88 z-70 hidden max-w-xs rounded-[1.25rem] border border-white/10 bg-black/45 p-4 text-sm text-zinc-300 backdrop-blur-md lg:block">
+        <p className="text-xs tracking-[0.25em] text-zinc-500">CADENA DE VIDA</p>
         <p className="mt-2">Conexion: {getSocket().connected ? "estable" : "reconectando"}</p>
-        <p className="mt-2">Sala: {roomCode}</p>
+        <p className="mt-2">Criaturas en sala: {gameState.playerCount}/{gameState.maxPlayers}</p>
+        <p className="mt-2">Ultimos vivos: {gameState.aliveCount}</p>
         <p className="mt-2">Punto cercano: {nearestPoint?.label ?? currentZone.name}</p>
         <p className="mt-2">Vision: 8 casillas alrededor.</p>
         <div className="mt-3 inline-flex items-center gap-2 text-xs tracking-[0.2em] text-cyan-100">
           <Radio className="h-4 w-4" />
-          {gameState.playerCount}/2 conectados
+          {self.combat.kills} bajas
+        </div>
+      </div>
+
+      <div className="absolute bottom-28 left-4 z-70 hidden w-88 rounded-[1.25rem] border border-white/10 bg-black/45 p-4 text-sm text-zinc-300 backdrop-blur-md xl:block">
+        <div className="flex items-center justify-between">
+          <p className="text-xs tracking-[0.25em] text-zinc-500">RESULTADOS PARCIALES</p>
+          <Skull className="h-4 w-4 text-zinc-500" />
+        </div>
+        <div className="mt-4 space-y-3">
+          {gameState.results.slice(0, 4).map((entry) => (
+            <div
+              key={entry.playerId}
+              className="flex items-center justify-between rounded-xl border border-white/10 bg-black/35 px-3 py-2"
+            >
+              <div>
+                <p className="text-sm text-white">
+                  #{entry.placement} {entry.name}
+                </p>
+                <p className="text-xs text-zinc-500">
+                  {getCharacterName(characterOptions, entry.characterId)}
+                </p>
+              </div>
+              <div className="text-right text-xs text-zinc-400">
+                <p>{entry.kills} kills</p>
+                <p>{entry.status}</p>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -338,7 +448,7 @@ export function MultiplayerGame({
         activeAction={activeAction}
         cooldownRemaining={cooldownRemaining}
         isRecovering={cooldownRemaining > 0}
-        isDefending={false}
+        isDefending={isDefending}
         onMove={() => setActiveAction("move")}
         onAttack={handleAttack}
         onDefend={handleDefend}
@@ -348,6 +458,14 @@ export function MultiplayerGame({
         status={gameStatus}
         onRestart={() => window.location.reload()}
         onExitToMenu={handleExit}
+        titleOverride={gameStatus === "won" ? "Ultima Criatura Viva" : "Eliminado"}
+        messageOverride={
+          gameStatus === "won"
+            ? "Dominaste la cueva y cerraste la cadena de la vida a tu favor."
+            : "Tu criatura cayo. La oscuridad sigue reclamando al resto."
+        }
+        buttonLabelOverride="Volver a jugar"
+        summary={overlaySummary}
       />
     </section>
   );

@@ -2,25 +2,40 @@ import { createServer } from "node:http";
 import { Server } from "socket.io";
 import type { PlayerPosition } from "../app/play/gameConfig";
 import {
+  ATTACK_COOLDOWN,
+  ATTACK_RADIUS,
+  CAVE_ATTACK_DAMAGE,
+  DARKNESS_SANITY_DRAIN,
+  DEFEND_COOLDOWN,
+  MAX_HEALTH,
+  MAX_ROOM_PLAYERS,
+  MAX_SANITY,
+  MIN_ROOM_PLAYERS,
+  PLAYER_ATTACK_DAMAGE,
   PLAYER_SPEED,
   VISION_RADIUS,
+  caveZones,
   characterOptions,
-  goalArea,
   hazardAreas,
   multiplayerSpawnPositions,
   stalkerConfig,
 } from "../app/play/gameConfig";
 import {
+  applyDamage,
   createEnemyState,
+  distanceBetween,
+  getZoneForPosition,
   hitHazard,
   isWithinVision,
   moveTowardPosition,
   moveWithCollisions,
-  reachedGoal,
+  sanityHealthPenalty,
   updateEnemyState,
+  updateSanity,
 } from "../app/play/gameLogic";
 import type { EnemyState } from "../app/play/gameLogic";
 import type {
+  MatchResultEntry,
   MultiplayerPlayerState,
   MultiplayerRoomStatus,
   MultiplayerStatePayload,
@@ -29,23 +44,35 @@ import type {
 
 type ServerPlayerState = MultiplayerPlayerState & {
   socketId: string;
+  connectedAt: number;
+  lastAttackAt: number;
+  defendingUntil: number;
+};
+
+type ServerEnemyState = EnemyState & {
+  lastAttackAt: number;
 };
 
 type ServerRoomState = {
   code: string;
   status: MultiplayerRoomStatus;
   createdAt: number;
-  enemy: EnemyState;
+  startedAt: number | null;
+  finishedAt: number | null;
+  enemy: ServerEnemyState;
   players: Map<string, ServerPlayerState>;
   signals: RadarSignal[];
   winnerId: string | null;
   message: string | null;
+  results: MatchResultEntry[];
 };
 
 const PORT = Number(process.env.SOCKET_PORT ?? 4001);
-const REQUIRED_PLAYERS = 2;
 const MOVE_INTERVAL_MS = 80;
 const ATTACK_SIGNAL_DURATION = 1800;
+const DEFEND_SIGNAL_DURATION = 1000;
+const PLAYER_ATTACK_RANGE = ATTACK_RADIUS * 0.72;
+const ENEMY_ATTACK_RANGE = stalkerConfig.touchRange + 16;
 const rooms = new Map<string, ServerRoomState>();
 
 function generateRoomCode(): string {
@@ -88,9 +115,9 @@ function getPlayerBySocket(socketId: string) {
   return null;
 }
 
-function getActivePlayers(room: ServerRoomState) {
+function getAlivePlayers(room: ServerRoomState) {
   return [...room.players.values()].filter(
-    (player) => player.connected && player.status === "playing",
+    (player) => player.connected && player.status === "playing" && player.combat.health > 0,
   );
 }
 
@@ -101,8 +128,69 @@ function cleanupSignals(room: ServerRoomState) {
   );
 }
 
+function createInitialCombatState() {
+  return {
+    health: MAX_HEALTH,
+    maxHealth: MAX_HEALTH,
+    sanity: MAX_SANITY,
+    maxSanity: MAX_SANITY,
+    isDefending: false,
+    kills: 0,
+    damageDealt: 0,
+    eliminatedAt: null,
+  };
+}
+
+function toPublicPlayer(player: ServerPlayerState): MultiplayerPlayerState {
+  return {
+    id: player.id,
+    name: player.name,
+    characterId: player.characterId,
+    position: player.position,
+    status: player.status,
+    isReady: player.isReady,
+    connected: player.connected,
+    lastAction: player.lastAction,
+    combat: {
+      ...player.combat,
+    },
+  };
+}
+
+function buildResults(room: ServerRoomState): MatchResultEntry[] {
+  const now = room.finishedAt ?? Date.now();
+  const sorted = [...room.players.values()].sort((a, b) => {
+    const aAlive = a.status === "won" || a.status === "playing";
+    const bAlive = b.status === "won" || b.status === "playing";
+
+    if (aAlive !== bAlive) {
+      return aAlive ? -1 : 1;
+    }
+
+    const aTime = a.combat.eliminatedAt ?? now;
+    const bTime = b.combat.eliminatedAt ?? now;
+
+    return bTime - aTime;
+  });
+
+  return sorted.map((player, index) => ({
+    playerId: player.id,
+    name: player.name,
+    characterId: player.characterId,
+    placement: index + 1,
+    status: player.status,
+    kills: player.combat.kills,
+    damageDealt: player.combat.damageDealt,
+    survivedMs:
+      (player.combat.eliminatedAt ?? room.finishedAt ?? now) -
+      (room.startedAt ?? room.createdAt),
+  }));
+}
+
 function emitState(room: ServerRoomState, io: Server) {
   cleanupSignals(room);
+  room.results = buildResults(room);
+  const alivePlayers = getAlivePlayers(room);
 
   for (const player of room.players.values()) {
     if (!player.connected) {
@@ -112,16 +200,7 @@ function emitState(room: ServerRoomState, io: Server) {
     const payload: MultiplayerStatePayload = {
       roomCode: room.code,
       status: room.status,
-      self: {
-        id: player.id,
-        name: player.name,
-        characterId: player.characterId,
-        position: player.position,
-        status: player.status,
-        isReady: player.isReady,
-        connected: player.connected,
-        lastAction: player.lastAction,
-      },
+      self: toPublicPlayer(player),
       otherPlayers: [...room.players.values()]
         .filter(
           (other) =>
@@ -129,16 +208,7 @@ function emitState(room: ServerRoomState, io: Server) {
             other.connected &&
             isWithinVision(player.position, other.position, VISION_RADIUS),
         )
-        .map((other) => ({
-          id: other.id,
-          name: other.name,
-          characterId: other.characterId,
-          position: other.position,
-          status: other.status,
-          isReady: other.isReady,
-          connected: other.connected,
-          lastAction: other.lastAction,
-        })),
+        .map(toPublicPlayer),
       enemy: isWithinVision(
         player.position,
         { x: room.enemy.x, y: room.enemy.y },
@@ -151,7 +221,11 @@ function emitState(room: ServerRoomState, io: Server) {
       ),
       winnerId: room.winnerId,
       playerCount: [...room.players.values()].filter((entry) => entry.connected).length,
-      requiredPlayers: REQUIRED_PLAYERS,
+      aliveCount: alivePlayers.length,
+      minPlayers: MIN_ROOM_PLAYERS,
+      maxPlayers: MAX_ROOM_PLAYERS,
+      requiredPlayers: MIN_ROOM_PLAYERS,
+      results: room.results,
       message: room.message,
     };
 
@@ -159,22 +233,66 @@ function emitState(room: ServerRoomState, io: Server) {
   }
 }
 
+function addSignal(
+  room: ServerRoomState,
+  type: RadarSignal["type"],
+  position: PlayerPosition,
+  ownerId?: string,
+) {
+  room.signals.push({
+    id: Date.now() + room.signals.length,
+    type,
+    x: position.x,
+    y: position.y,
+    createdAt: Date.now(),
+    duration: type === "defend" ? DEFEND_SIGNAL_DURATION : ATTACK_SIGNAL_DURATION,
+    ownerId,
+  });
+}
+
+function eliminatePlayer(
+  room: ServerRoomState,
+  player: ServerPlayerState,
+  reason: string,
+  attacker?: ServerPlayerState | null,
+) {
+  if (player.status === "lost" || player.status === "left" || player.status === "won") {
+    return;
+  }
+
+  player.status = "lost";
+  player.combat.health = 0;
+  player.combat.eliminatedAt = Date.now();
+  player.combat.isDefending = false;
+  player.defendingUntil = 0;
+  room.message = reason;
+
+  if (attacker && attacker.id !== player.id) {
+    attacker.combat.kills += 1;
+  }
+}
+
 function finishRoom(room: ServerRoomState, io: Server, winnerId: string | null, message: string) {
   room.status = "finished";
+  room.finishedAt = Date.now();
   room.winnerId = winnerId;
   room.message = message;
 
   for (const player of room.players.values()) {
     if (winnerId && player.id === winnerId) {
       player.status = "won";
-    } else if (player.status !== "left") {
+    } else if (player.status === "playing") {
       player.status = "lost";
+      player.combat.eliminatedAt = room.finishedAt;
     }
   }
+
+  room.results = buildResults(room);
 
   io.to(room.code).emit("game-over", {
     winnerId,
     message,
+    results: room.results,
   });
   emitState(room, io);
 }
@@ -184,32 +302,76 @@ function evaluateRoom(room: ServerRoomState, io: Server) {
     return;
   }
 
-  const activePlayers = getActivePlayers(room);
+  const now = Date.now();
 
-  if (activePlayers.length === 0) {
-    finishRoom(room, io, null, "La expedicion termino sin sobrevivientes.");
+  for (const player of room.players.values()) {
+    player.combat.isDefending = player.defendingUntil > now;
+  }
+
+  const alivePlayers = getAlivePlayers(room);
+
+  if (alivePlayers.length <= 1) {
+    const winner = alivePlayers[0] ?? null;
+    finishRoom(
+      room,
+      io,
+      winner?.id ?? null,
+      winner
+        ? `${winner.name} domina la cadena de la vida.`
+        : "La cueva consumio a todas las criaturas.",
+    );
     return;
   }
 
-  for (const player of activePlayers) {
+  for (const player of alivePlayers) {
     if (hitHazard(player.position, hazardAreas)) {
-      player.status = "lost";
-      room.message = `${player.name} cayo en una zona peligrosa.`;
+      eliminatePlayer(room, player, `${player.name} fue tragado por la cueva.`);
+      continue;
+    }
+
+    const zone = getZoneForPosition(player.position, caveZones);
+    player.combat.sanity = updateSanity(
+      player.combat.sanity,
+      MOVE_INTERVAL_MS / 1000,
+      zone.tone === "safe",
+      DARKNESS_SANITY_DRAIN,
+    );
+
+    const sanityDamage = sanityHealthPenalty(
+      player.combat.sanity,
+      MOVE_INTERVAL_MS / 1000,
+    );
+
+    if (sanityDamage > 0) {
+      player.combat.health = applyDamage(
+        player.combat.health,
+        sanityDamage,
+        player.combat.isDefending,
+      );
+
+      if (player.combat.health <= 0) {
+        eliminatePlayer(
+          room,
+          player,
+          `${player.name} perdio la cordura y la oscuridad lo devoro.`,
+        );
+      }
     }
   }
 
-  const survivors = getActivePlayers(room);
+  const survivors = getAlivePlayers(room);
 
-  if (survivors.length === 0) {
-    finishRoom(room, io, null, "Ambos exploradores quedaron atrapados.");
+  if (survivors.length <= 1) {
+    const winner = survivors[0] ?? null;
+    finishRoom(
+      room,
+      io,
+      winner?.id ?? null,
+      winner
+        ? `${winner.name} resiste como la ultima criatura viva.`
+        : "La cueva consumio a todas las criaturas.",
+    );
     return;
-  }
-
-  for (const player of survivors) {
-    if (reachedGoal(player.position, goalArea)) {
-      finishRoom(room, io, player.id, `${player.name} encontro la salida.`);
-      return;
-    }
   }
 
   const enemyTarget = survivors.reduce((closest, candidate) => {
@@ -222,34 +384,51 @@ function evaluateRoom(room: ServerRoomState, io: Server) {
     return candidateDistance < closestDistance ? candidate : closest;
   });
 
-  room.enemy = updateEnemyState(
-    room.enemy,
-    enemyTarget.position,
-    stalkerConfig,
-    MOVE_INTERVAL_MS / 1000,
-    "playing",
-  );
+  room.enemy = {
+    ...updateEnemyState(
+      room.enemy,
+      enemyTarget.position,
+      stalkerConfig,
+      MOVE_INTERVAL_MS / 1000,
+      "playing",
+    ),
+    lastAttackAt: room.enemy.lastAttackAt,
+  };
 
-  const caughtPlayer = survivors.find((player) => {
-    const enemyPosition = { x: room.enemy.x, y: room.enemy.y };
-
-    return (
-      Math.hypot(
-        player.position.x - enemyPosition.x,
-        player.position.y - enemyPosition.y,
-      ) <= stalkerConfig.touchRange
+  if (
+    now - room.enemy.lastAttackAt >= ATTACK_COOLDOWN &&
+    distanceBetween(room.enemy, enemyTarget.position) <= ENEMY_ATTACK_RANGE
+  ) {
+    room.enemy.lastAttackAt = now;
+    enemyTarget.combat.health = applyDamage(
+      enemyTarget.combat.health,
+      CAVE_ATTACK_DAMAGE,
+      enemyTarget.combat.isDefending,
     );
-  });
+    addSignal(room, "attack", enemyTarget.position, "cave");
 
-  if (caughtPlayer) {
-    const winner = survivors.find((player) => player.id !== caughtPlayer.id) ?? null;
+    if (enemyTarget.combat.health <= 0) {
+      eliminatePlayer(
+        room,
+        enemyTarget,
+        `${enemyTarget.name} fue cazado por la cueva.`,
+      );
+    } else {
+      room.message = `La cueva golpeo a ${enemyTarget.name}.`;
+    }
+  }
+
+  const finalSurvivors = getAlivePlayers(room);
+
+  if (finalSurvivors.length <= 1) {
+    const winner = finalSurvivors[0] ?? null;
     finishRoom(
       room,
       io,
       winner?.id ?? null,
       winner
-        ? `${winner.name} sobrevivio al acechante.`
-        : "El acechante alcanzo a ambos exploradores.",
+        ? `${winner.name} resistio hasta el final.`
+        : "Ninguna criatura sobrevivio al colapso.",
     );
     return;
   }
@@ -279,23 +458,33 @@ io.on("connection", (socket) => {
       code: roomCode,
       status: "waiting",
       createdAt: Date.now(),
-      enemy: createEnemyState(stalkerConfig),
+      startedAt: null,
+      finishedAt: null,
+      enemy: {
+        ...createEnemyState(stalkerConfig),
+        lastAttackAt: 0,
+      },
       players: new Map(),
       signals: [],
       winnerId: null,
-      message: "Esperando a un segundo explorador.",
+      message: "Sala creada. Reune al menos dos criaturas para iniciar.",
+      results: [],
     };
 
     const player: ServerPlayerState = {
       id: playerId,
       socketId: socket.id,
-      name: sanitizeName(name, `Explorador-${roomCode.slice(0, 3)}`),
+      name: sanitizeName(name, `Criatura-${roomCode.slice(0, 3)}`),
       characterId: characterId ?? "cave-axolotl",
       position: multiplayerSpawnPositions[0],
       status: "waiting",
       isReady: false,
       connected: true,
       lastAction: "move",
+      combat: createInitialCombatState(),
+      connectedAt: Date.now(),
+      lastAttackAt: 0,
+      defendingUntil: 0,
     };
 
     room.players.set(player.id, player);
@@ -320,27 +509,34 @@ io.on("connection", (socket) => {
         return;
       }
 
-      if (room.players.size >= REQUIRED_PLAYERS) {
+      if (room.players.size >= MAX_ROOM_PLAYERS) {
         socket.emit("error-message", "La sala ya esta completa.");
         return;
       }
 
+      const spawnIndex = Math.min(room.players.size, multiplayerSpawnPositions.length - 1);
       const code = normalizedCode ?? "";
-
       const player: ServerPlayerState = {
         id: crypto.randomUUID(),
         socketId: socket.id,
-        name: sanitizeName(name, `Explorador-${code.slice(0, 3)}`),
+        name: sanitizeName(name, `Criatura-${code.slice(0, 3)}`),
         characterId: characterId ?? "cave-axolotl",
-        position: multiplayerSpawnPositions[1] ?? multiplayerSpawnPositions[0],
+        position: multiplayerSpawnPositions[spawnIndex] ?? multiplayerSpawnPositions[0],
         status: "waiting",
         isReady: false,
         connected: true,
         lastAction: "move",
+        combat: createInitialCombatState(),
+        connectedAt: Date.now(),
+        lastAttackAt: 0,
+        defendingUntil: 0,
       };
 
       room.players.set(player.id, player);
-      room.message = "Sala completa. Ambos jugadores deben marcarse como listos.";
+      room.message =
+        room.players.size >= MIN_ROOM_PLAYERS
+          ? "La sala puede iniciar. Todas las criaturas deben marcarse como listas."
+          : "Esperando mas criaturas para abrir la caceria.";
       socket.join(code);
       emitState(room, io);
     },
@@ -356,18 +552,33 @@ io.on("connection", (socket) => {
 
     const player = match.player;
     player.isReady = true;
-    room.message = `${player.name} esta listo.`;
+    room.message = `${player.name} esta listo para la caceria.`;
 
+    const connectedPlayers = [...room.players.values()].filter((entry) => entry.connected);
     const everyoneReady =
-      room.players.size === REQUIRED_PLAYERS &&
-      [...room.players.values()].every((entry) => entry.isReady && entry.connected);
+      connectedPlayers.length >= MIN_ROOM_PLAYERS &&
+      connectedPlayers.every((entry) => entry.isReady);
 
     if (everyoneReady) {
       room.status = "playing";
-      room.message = "Partida iniciada.";
+      room.startedAt = Date.now();
+      room.finishedAt = null;
+      room.winnerId = null;
+      room.message = "La cueva se cierra. Sobrevive la ultima criatura.";
 
       for (const entry of room.players.values()) {
-        entry.status = "playing";
+        entry.status = entry.connected ? "playing" : "left";
+        entry.position =
+          multiplayerSpawnPositions[
+            Math.min(
+              [...room.players.values()].findIndex((playerItem) => playerItem.id === entry.id),
+              multiplayerSpawnPositions.length - 1,
+            )
+          ] ?? multiplayerSpawnPositions[0];
+        entry.combat = createInitialCombatState();
+        entry.lastAction = "move";
+        entry.lastAttackAt = 0;
+        entry.defendingUntil = 0;
       }
     }
 
@@ -413,11 +624,82 @@ io.on("connection", (socket) => {
 
       player.position = nextPosition;
       player.lastAction = "move";
+      addSignal(room, "move", player.position, player.id);
       emitState(room, io);
     },
   );
 
   socket.on("player-attack", ({ roomCode }: { roomCode?: string }) => {
+    const room = roomCode ? rooms.get(roomCode) : null;
+    const match = getPlayerBySocket(socket.id);
+
+    if (!room || !match || match.room.code !== room.code || room.status !== "playing") {
+      return;
+    }
+
+    const attacker = match.player;
+
+    if (attacker.status !== "playing") {
+      return;
+    }
+
+    const now = Date.now();
+
+    if (now - attacker.lastAttackAt < ATTACK_COOLDOWN) {
+      socket.emit("error-message", "Tu criatura aun esta recuperandose.");
+      return;
+    }
+
+    attacker.lastAttackAt = now;
+    attacker.lastAction = "attack";
+    addSignal(room, "attack", attacker.position, attacker.id);
+
+    let inflictedDamage = 0;
+
+    for (const target of getAlivePlayers(room)) {
+      if (target.id === attacker.id) {
+        continue;
+      }
+
+      if (distanceBetween(attacker.position, target.position) > PLAYER_ATTACK_RANGE) {
+        continue;
+      }
+
+      const previousHealth = target.combat.health;
+      target.combat.health = applyDamage(
+        target.combat.health,
+        PLAYER_ATTACK_DAMAGE,
+        target.combat.isDefending,
+      );
+      inflictedDamage += previousHealth - target.combat.health;
+
+      if (target.combat.health <= 0) {
+        eliminatePlayer(
+          room,
+          target,
+          `${attacker.name} depredo a ${target.name}.`,
+          attacker,
+        );
+      }
+    }
+
+    if (distanceBetween(attacker.position, room.enemy) <= PLAYER_ATTACK_RANGE) {
+      room.message =
+        inflictedDamage > 0
+          ? `${attacker.name} agito la cueva con un ataque.`
+          : `${attacker.name} ataco, pero no encontro presa.`;
+    }
+
+    attacker.combat.damageDealt += inflictedDamage;
+
+    if (inflictedDamage === 0 && !room.message) {
+      room.message = `${attacker.name} ataco, pero no encontro presa.`;
+    }
+
+    emitState(room, io);
+  });
+
+  socket.on("player-defend", ({ roomCode }: { roomCode?: string }) => {
     const room = roomCode ? rooms.get(roomCode) : null;
     const match = getPlayerBySocket(socket.id);
 
@@ -431,17 +713,11 @@ io.on("connection", (socket) => {
       return;
     }
 
-    player.lastAction = "attack";
-    room.signals.push({
-      id: Date.now(),
-      type: "attack",
-      x: player.position.x,
-      y: player.position.y,
-      createdAt: Date.now(),
-      duration: ATTACK_SIGNAL_DURATION,
-      ownerId: player.id,
-    });
-    room.message = `${player.name} genero una resonancia en la cueva.`;
+    player.lastAction = "defend";
+    player.defendingUntil = Date.now() + DEFEND_COOLDOWN;
+    player.combat.isDefending = true;
+    addSignal(room, "defend", player.position, player.id);
+    room.message = `${player.name} endurece su caparazon por un instante.`;
     emitState(room, io);
   });
 
@@ -453,19 +729,25 @@ io.on("connection", (socket) => {
       return;
     }
 
-    room.players.delete(match.player.id);
+    const player = match.player;
+
+    if (room.status === "playing" && player.status === "playing") {
+      eliminatePlayer(room, player, `${player.name} abandono la cueva.`);
+    }
+
+    player.connected = false;
+    player.status = player.status === "waiting" ? "left" : player.status;
     socket.leave(room.code);
 
-    if (room.players.size === 0) {
+    if (![...room.players.values()].some((entry) => entry.connected)) {
       rooms.delete(room.code);
       return;
     }
 
-    room.status = "waiting";
-    room.message = `${match.player.name} abandono la sala.`;
+    room.message = `${player.name} abandono la sala.`;
     io.to(room.code).emit("player-left", {
       roomCode: room.code,
-      playerId: match.player.id,
+      playerId: player.id,
       message: room.message,
     });
     emitState(room, io);
@@ -479,14 +761,19 @@ io.on("connection", (socket) => {
     }
 
     const { room, player } = match;
-    room.players.delete(player.id);
+    player.connected = false;
 
-    if (room.players.size === 0) {
+    if (room.status === "playing" && player.status === "playing") {
+      eliminatePlayer(room, player, `${player.name} desaparecio en la oscuridad.`);
+    } else if (player.status === "waiting") {
+      player.status = "left";
+    }
+
+    if (![...room.players.values()].some((entry) => entry.connected)) {
       rooms.delete(room.code);
       return;
     }
 
-    room.status = "waiting";
     room.message = `${player.name} se desconecto.`;
     io.to(room.code).emit("player-left", {
       roomCode: room.code,

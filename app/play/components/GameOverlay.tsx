@@ -1,12 +1,17 @@
 "use client";
 
 import Image from "next/image";
+import type { ReactNode } from "react";
 import type { GameStatus } from "../gameConfig";
 
 type GameOverlayProps = {
   status: GameStatus;
   onRestart: () => void;
   onExitToMenu: () => void;
+  titleOverride?: string;
+  messageOverride?: string;
+  buttonLabelOverride?: string;
+  summary?: ReactNode;
 };
 
 const overlayContent: Record<
@@ -15,12 +20,12 @@ const overlayContent: Record<
 > = {
   won: {
     title: "Ganaste",
-    message: "Hallaste la salida y cruzaste la ultima camara con vida.",
+    message: "Fuiste la ultima criatura viva en la cueva.",
     buttonLabel: "Reiniciar",
   },
   lost: {
     title: "Perdiste",
-    message: "La cueva te cerro el paso antes de alcanzar la salida.",
+    message: "La cueva te encontro antes del final.",
     buttonLabel: "Intentar de nuevo",
   },
 };
@@ -29,16 +34,23 @@ export function GameOverlay({
   status,
   onRestart,
   onExitToMenu,
+  titleOverride,
+  messageOverride,
+  buttonLabelOverride,
+  summary,
 }: GameOverlayProps) {
   if (status === "playing" || status === "paused") {
     return null;
   }
 
   const content = overlayContent[status];
+  const title = titleOverride ?? content.title;
+  const message = messageOverride ?? content.message;
+  const buttonLabel = buttonLabelOverride ?? content.buttonLabel;
 
   return (
-    <div className="absolute inset-0 z-[90] flex items-center justify-center bg-black/72 px-4 backdrop-blur-md">
-      <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.96),rgba(10,10,12,0.96))] p-8 text-center shadow-[0_30px_80px_rgba(0,0,0,0.65)]">
+    <div className="absolute inset-0 z-90 flex items-center justify-center bg-black/72 px-4 backdrop-blur-md">
+      <div className="w-full max-w-md rounded-4xl border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.96),rgba(10,10,12,0.96))] p-8 text-center shadow-[0_30px_80px_rgba(0,0,0,0.65)]">
         <div className="flex justify-center">
           <Image
             src="/Grafico/Logo blanco.svg"
@@ -50,9 +62,10 @@ export function GameOverlay({
         </div>
         <p className="mt-3 text-xs tracking-[0.36em] text-zinc-500">SPELEUM</p>
         <h2 className="mt-4 text-4xl font-semibold tracking-[0.12em] text-white">
-          {content.title}
+          {title}
         </h2>
-        <p className="mt-4 text-sm leading-7 text-zinc-300">{content.message}</p>
+        <p className="mt-4 text-sm leading-7 text-zinc-300">{message}</p>
+        {summary && <div className="mt-6">{summary}</div>}
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
           <button
@@ -60,7 +73,7 @@ export function GameOverlay({
             onClick={onRestart}
             className="flex-1 rounded-full bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200"
           >
-            {content.buttonLabel}
+            {buttonLabel}
           </button>
           <button
             type="button"

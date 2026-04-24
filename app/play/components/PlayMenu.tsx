@@ -21,8 +21,8 @@ export function PlayMenu({
   return (
     <section className="relative z-10 min-h-screen overflow-hidden px-5">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_42%,rgba(255,255,255,0.08),transparent_19%),radial-gradient(circle_at_58%_58%,rgba(82,9,20,0.22),transparent_34%)]" />
-      <div className="absolute left-1/2 top-1/2 h-[42rem] w-[42rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/5" />
-      <div className="absolute left-1/2 top-1/2 h-[30rem] w-[30rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/5" />
+      <div className="absolute left-1/2 top-1/2 h-168 w-2xl -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/5" />
+      <div className="absolute left-1/2 top-1/2 h-120 w-120 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/5" />
       <div className="absolute bottom-8 left-8 hidden text-xs tracking-[0.28em] text-zinc-600 sm:block">
         {selectedCharacter.name}
       </div>
@@ -40,8 +40,8 @@ export function PlayMenu({
           PLAY
         </h1>
         <p className="mt-7 max-w-2xl text-sm leading-7 text-zinc-400 sm:text-base">
-          Desciende con vision limitada, lee las senales de la cueva y decide
-          cada accion antes de revelar tu posicion.
+          Sobrevive con vision limitada, lee las senales de la cueva y decide
+          cada accion antes de convertirte en presa.
         </p>
 
         <div className="mt-12 flex flex-wrap justify-center gap-3">

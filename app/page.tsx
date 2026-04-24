@@ -7,10 +7,12 @@ import {
   CircleHelp,
   User,
   Play,
+  LogIn,
   Lightbulb,
   ChevronDown,
 } from "lucide-react";
 import { motion, type Variants } from "framer-motion";
+import { readSession } from "@/lib/session";
 
 const fadeUp: Variants = {
   hidden: { opacity: 0, y: 35, filter: "blur(6px)" },
@@ -27,6 +29,10 @@ const fadeUp: Variants = {
 
 export default function Home() {
   const [turnedOn, setTurnedOn] = useState(false);
+  const [hasSession] = useState(() => Boolean(readSession()?.isLoggedIn));
+
+  const primaryHref = hasSession ? "/play" : "/login";
+  const primaryLabel = hasSession ? "Jugar ahora" : "Iniciar sesion";
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-black text-white">
@@ -78,11 +84,19 @@ export default function Home() {
   />
 </div>
     <Link
-      href="/play"
-      className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 py-2 text-sm font-medium tracking-wide text-white transition hover:bg-white/10"
+      href={primaryHref}
+      className={`flex items-center gap-2 rounded-full border px-5 py-2 text-sm font-medium tracking-wide transition ${
+        hasSession
+          ? "border-rose-200/30 bg-rose-300/90 text-black shadow-[0_0_24px_rgba(251,113,133,0.28)] hover:bg-rose-200"
+          : "border-white/10 bg-white/5 text-white hover:bg-white/10"
+      }`}
     >
-      <Play className="h-4 w-4 fill-white" />
-      Play
+      {hasSession ? (
+        <Play className="h-4 w-4 fill-black" />
+      ) : (
+        <LogIn className="h-4 w-4" />
+      )}
+      {primaryLabel}
     </Link>
 
     <div className="flex items-center gap-3">
@@ -98,6 +112,13 @@ export default function Home() {
         className="rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10"
       >
         <CircleHelp className="h-5 w-5 text-zinc-200" />
+      </Link>
+
+      <Link
+        href="/login"
+        className="rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10"
+      >
+        <LogIn className="h-5 w-5 text-zinc-200" />
       </Link>
 
       <Link
@@ -198,10 +219,14 @@ export default function Home() {
 
           <div className="mt-10 flex flex-col items-center gap-4">
             <Link
-              href="/play"
-              className="rounded-full border border-white/10 bg-white px-7 py-3 text-sm font-semibold text-black transition hover:scale-[1.02] hover:bg-zinc-200"
+              href={primaryHref}
+              className={`rounded-full border px-7 py-3 text-sm font-semibold transition hover:scale-[1.02] ${
+                hasSession
+                  ? "border-rose-200/30 bg-rose-300 text-black shadow-[0_0_28px_rgba(251,113,133,0.28)] hover:bg-rose-200"
+                  : "border-white/10 bg-white text-black hover:bg-zinc-200"
+              }`}
             >
-              Entrar a jugar
+              {primaryLabel}
             </Link>
 
             <div className="flex items-center gap-2 text-sm text-zinc-500">
@@ -362,10 +387,16 @@ export default function Home() {
 
               <div className="mt-6 flex gap-3">
                 <Link
-                  href="/play"
+                  href={primaryHref}
                   className="rounded-full bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200"
                 >
-                  Play
+                  {primaryLabel}
+                </Link>
+                <Link
+                  href="/login"
+                  className="rounded-full border border-white/10 bg-white/5 px-6 py-3 text-sm text-white transition hover:bg-white/10"
+                >
+                  Login
                 </Link>
                 <Link
                   href="/How-to-play"
@@ -385,7 +416,10 @@ export default function Home() {
                   Inicio
                 </Link>
                 <Link href="/play" className="transition hover:text-white">
-                  Play
+                  Jugar
+                </Link>
+                <Link href="/login" className="transition hover:text-white">
+                  Login
                 </Link>
                 <Link href="/ranking" className="transition hover:text-white">
                   Ranking

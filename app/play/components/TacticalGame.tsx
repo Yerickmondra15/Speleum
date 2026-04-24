@@ -86,7 +86,7 @@ export function TacticalGame({
   const [health, setHealth] = useState(MAX_HEALTH);
   const [signals, setSignals] = useState<RadarSignal[]>([]);
   const [message, setMessage] = useState(
-    "Encuentra la salida luminosa sin quedar atrapado en la cueva.",
+    "Sobrevive a la cueva y mantente fuera del alcance del acechante.",
   );
   const [zoneMessage, setZoneMessage] = useState<string | null>(
     caveZones[0]?.ambient ?? null,
@@ -184,7 +184,7 @@ export function TacticalGame({
     if (distanceBetween(nextPlayer, nextEnemy) <= stalkerConfig.touchRange) {
       return {
         status: "lost",
-        message: "El acechante te alcanzo antes de llegar a la salida.",
+        message: "El acechante te alcanzo antes de consolidar tu dominio.",
       };
     }
 
@@ -198,7 +198,7 @@ export function TacticalGame({
     if (reachedGoal(nextPlayer, goalArea)) {
       return {
         status: "won",
-        message: "Alcanzaste la salida luminosa y escapaste de la cueva.",
+        message: "Tomaste la camara umbral y saliste con ventaja.",
       };
     }
 
@@ -330,10 +330,10 @@ export function TacticalGame({
 
   const objective =
     gameStatus === "won"
-      ? "Salida alcanzada."
+      ? "Camara dominante asegurada."
       : gameStatus === "lost"
-        ? "Vuelve a intentarlo y evita al acechante."
-        : "Encuentra la salida luminosa al norte del sistema.";
+        ? "Vuelve a intentarlo y adapta tu ruta en la oscuridad."
+        : "Avanza hacia la camara umbral sin caer ante la cueva.";
 
   const enemyStateLabel = enemy.mode === "chase" ? "amenaza activa" : "patrulla";
 
@@ -400,7 +400,7 @@ export function TacticalGame({
       setMessage("Partida en pausa. Reanuda cuando quieras seguir.");
     } else if (gameStatus === "paused") {
       setGameStatus("playing");
-      setMessage("La expedicion continua. Encuentra la salida.");
+      setMessage("La expedicion continua. Mantente vivo en la oscuridad.");
     }
   };
 
@@ -501,7 +501,7 @@ export function TacticalGame({
     defendingUntilRef.current = 0;
     setHealth(MAX_HEALTH);
     setSignals([]);
-    setMessage("Encuentra la salida luminosa sin quedar atrapado en la cueva.");
+    setMessage("Sobrevive a la cueva y mantente fuera del alcance del acechante.");
     showZoneMessage(caveZones[0]?.ambient ?? "");
     lastZoneIdRef.current = caveZones[0]?.id ?? "";
     previousTimeRef.current = null;
@@ -509,7 +509,7 @@ export function TacticalGame({
 
   return (
     <section className="relative z-10 min-h-screen overflow-hidden">
-      <header className="pointer-events-none absolute inset-x-0 top-0 z-[70] flex items-center justify-between px-4 py-4">
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-70 flex items-center justify-between px-4 py-4">
         <button
           type="button"
           onClick={onExitToMenu}
@@ -557,7 +557,7 @@ export function TacticalGame({
         onTogglePause={togglePause}
       />
 
-      <div className="absolute right-4 top-24 z-[70] w-64 max-w-[calc(100vw-2rem)]">
+      <div className="absolute right-4 top-24 z-70 w-64 max-w-[calc(100vw-2rem)]">
         <RadarPanel
           player={player}
           enemy={enemy}
@@ -566,11 +566,10 @@ export function TacticalGame({
         />
       </div>
 
-      <div className="pointer-events-none absolute right-4 top-[22rem] z-[70] hidden max-w-xs rounded-[1.25rem] border border-white/10 bg-black/45 p-4 text-sm text-zinc-300 backdrop-blur-md lg:block">
+      <div className="pointer-events-none absolute right-4 top-88 z-70 hidden max-w-xs rounded-[1.25rem] border border-white/10 bg-black/45 p-4 text-sm text-zinc-300 backdrop-blur-md lg:block">
         <p className="text-xs tracking-[0.25em] text-zinc-500">REFERENCIA</p>
         <p className="mt-2">Objetivo: {objective}</p>
         <p className="mt-2">Zona cercana: {nearestPoint?.label ?? currentZone.name}</p>
-        <p className="mt-2">Controles: clic, WASD o flechas.</p>
       </div>
 
       <ActionControls

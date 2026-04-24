@@ -63,7 +63,8 @@ export const CAVE_WIDTH = 5200;
 export const CAVE_HEIGHT = 3200;
 export const PLAYER_RADIUS = 24;
 export const ENEMY_RADIUS = 26;
-export const MAX_HEALTH = 1;
+export const MAX_HEALTH = 100;
+export const MAX_SANITY = 100;
 export const KEYBOARD_STEP = 110;
 export const PLAYER_SPEED = 240;
 export const VISION_TILE_SIZE = 80;
@@ -73,6 +74,15 @@ export const MOVE_DISTANCE_COOLDOWN = 7;
 export const ATTACK_COOLDOWN = 2600;
 export const DEFEND_COOLDOWN = 1900;
 export const ATTACK_RADIUS = 210;
+export const PLAYER_ATTACK_DAMAGE = 28;
+export const CAVE_ATTACK_DAMAGE = 20;
+export const DEFEND_DAMAGE_REDUCTION = 0.55;
+export const DARKNESS_SANITY_DRAIN = 7;
+export const SAFE_ZONE_SANITY_RECOVERY = 4;
+export const SANITY_DAMAGE_THRESHOLD = 12;
+export const SANITY_DAMAGE_PER_TICK = 8;
+export const MAX_ROOM_PLAYERS = 4;
+export const MIN_ROOM_PLAYERS = 2;
 
 export const startPosition: PlayerPosition = {
   x: 500,
@@ -83,6 +93,14 @@ export const multiplayerSpawnPositions: PlayerPosition[] = [
   startPosition,
   {
     x: 860,
+    y: 2860,
+  },
+  {
+    x: 1120,
+    y: 2860,
+  },
+  {
+    x: 1380,
     y: 2860,
   },
 ];
@@ -144,68 +162,68 @@ export const caveZones: Zone[] = [
   {
     id: "safe-hollow",
     name: "Refugio inicial",
-    subtitle: "Zona segura",
+    subtitle: "Respira y escucha",
     tone: "safe",
     x: 120,
     y: 2280,
     width: 1180,
     height: 760,
-    ambient: "El eco es tenue. Aprovecha para orientarte.",
+    ambient: "La roca amortigua el ruido. Recuperas compostura por un instante.",
   },
   {
     id: "thin-tunnels",
     name: "Tuneles estrechos",
-    subtitle: "Paso angosto",
+    subtitle: "Cuello de botella",
     tone: "tunnels",
     x: 1200,
     y: 1700,
     width: 1420,
     height: 1220,
-    ambient: "Las paredes aprietan. Un mal paso te deja sin ruta.",
+    ambient: "Las paredes aprietan. Aqui cada encuentro se vuelve letal.",
   },
   {
     id: "false-passage",
     name: "Grieta falsa",
-    subtitle: "Camino enganoso",
+    subtitle: "Engano mineral",
     tone: "trap",
     x: 1700,
     y: 520,
     width: 1040,
     height: 940,
-    ambient: "Hay luz debil, pero no toda abertura conduce a la salida.",
+    ambient: "La cueva susurra rutas falsas y castiga la distraccion.",
   },
   {
     id: "open-abyss",
     name: "Camara abierta",
-    subtitle: "Zona de riesgo",
+    subtitle: "Exposicion total",
     tone: "open",
     x: 2480,
     y: 1360,
     width: 1540,
     height: 1360,
-    ambient: "La visibilidad mejora, pero tambien quedas expuesto.",
+    ambient: "La amplitud te da aire, pero tambien te vuelve un objetivo.",
   },
   {
     id: "hunter-den",
     name: "Nido del acechante",
-    subtitle: "Zona de enemigos",
+    subtitle: "Corazon hostil",
     tone: "danger",
     x: 3000,
     y: 320,
     width: 1700,
     height: 1320,
-    ambient: "Algo se mueve aqui arriba. Mantente fuera de su alcance.",
+    ambient: "Algo respira contigo. La cueva caza a quien se quede quieto.",
   },
   {
     id: "final-gate",
-    name: "Umbral de salida",
-    subtitle: "Meta",
+    name: "Camara umbral",
+    subtitle: "Presion extrema",
     tone: "goal",
     x: 4300,
     y: 160,
     width: 740,
     height: 700,
-    ambient: "Una claridad fria marca la salida del sistema.",
+    ambient: "No hay salida. Solo roca, hambre y criaturas buscando el final.",
   },
 ];
 
@@ -277,7 +295,7 @@ export const hazardAreas: HazardArea[] = [
 
 export const goalArea: GoalArea = {
   id: "exit",
-  label: "salida luminosa",
+  label: "camara umbral",
   x: 4460,
   y: 300,
   width: 300,
@@ -308,5 +326,5 @@ export const pointsOfInterest: PointOfInterest[] = [
   { id: "wrong-turn", label: "luz falsa", x: 2110, y: 930 },
   { id: "chasm", label: "camara abierta", x: 3180, y: 1980 },
   { id: "den", label: "nido oscuro", x: 3720, y: 900 },
-  { id: "gate", label: "salida", x: 4610, y: 440 },
+  { id: "gate", label: "umbral", x: 4610, y: 440 },
 ];
