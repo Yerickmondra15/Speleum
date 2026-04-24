@@ -1,19 +1,22 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { ArrowLeft, Play, UserRound } from "lucide-react";
 import type { CharacterOption } from "../gameConfig";
 
 type PlayMenuProps = {
   selectedCharacter: CharacterOption;
   onOpenCharacters: () => void;
-  onStart: () => void;
+  onStartLocal: () => void;
+  onStartMultiplayer: () => void;
 };
 
 export function PlayMenu({
   selectedCharacter,
   onOpenCharacters,
-  onStart,
+  onStartLocal,
+  onStartMultiplayer,
 }: PlayMenuProps) {
   return (
     <section className="relative z-10 min-h-screen overflow-hidden px-5">
@@ -25,6 +28,13 @@ export function PlayMenu({
       </div>
 
       <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center text-center">
+        <Image
+          src="/Grafico/Nombre-white.svg"
+          alt="Speleum"
+          width={180}
+          height={40}
+          className="h-8 w-auto opacity-90"
+        />
         <p className="text-xs tracking-[0.42em] text-zinc-500">SPELEUM</p>
         <h1 className="mt-6 text-6xl font-semibold tracking-[0.32em] text-white sm:text-8xl">
           PLAY
@@ -37,11 +47,19 @@ export function PlayMenu({
         <div className="mt-12 flex flex-wrap justify-center gap-3">
             <button
               type="button"
-              onClick={onStart}
+              onClick={onStartLocal}
               className="inline-flex items-center gap-2 rounded-full bg-white px-8 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200"
             >
               <Play className="h-4 w-4 fill-black" />
-              Jugar
+              Local
+            </button>
+            <button
+              type="button"
+              onClick={onStartMultiplayer}
+              className="inline-flex items-center gap-2 rounded-full border border-cyan-200/20 bg-cyan-950/50 px-8 py-3 text-sm text-cyan-100 transition hover:bg-cyan-900/60"
+            >
+              <Play className="h-4 w-4 fill-cyan-100" />
+              Multijugador
             </button>
             <button
               type="button"

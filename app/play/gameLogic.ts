@@ -1,0 +1,251 @@
+import type {
+  EnemyConfig,
+  GameStatus,
+  GoalArea,
+  HazardArea,
+  PlayerPosition,
+  Rect,
+  Zone,
+} from "./gameConfig";
+import {
+  CAVE_HEIGHT,
+  CAVE_WIDTH,
+  ENEMY_RADIUS,
+  PLAYER_RADIUS,
+  caveWalls,
+} from "./gameConfig";
+
+export type EnemyMode = "patrol" | "chase";
+
+export type EnemyState = {
+  x: number;
+  y: number;
+  mode: EnemyMode;
+  patrolIndex: number;
+};
+
+export function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+export function distanceBetween(a: PlayerPosition, b: PlayerPosition) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+export function isWithinVision(
+  origin: PlayerPosition,
+  target: PlayerPosition,
+  radius: number,
+) {
+  return distanceBetween(origin, target) <= radius;
+}
+
+export function pointInRect(point: PlayerPosition, rect: Rect) {
+  return (
+    point.x >= rect.x &&
+    point.x <= rect.x + rect.width &&
+    point.y >= rect.y &&
+    point.y <= rect.y + rect.height
+  );
+}
+
+export function circleIntersectsRect(
+  circle: PlayerPosition,
+  radius: number,
+  rect: Rect,
+) {
+  const closestX = clamp(circle.x, rect.x, rect.x + rect.width);
+  const closestY = clamp(circle.y, rect.y, rect.y + rect.height);
+  const distanceX = circle.x - closestX;
+  const distanceY = circle.y - closestY;
+
+  return distanceX * distanceX + distanceY * distanceY < radius * radius;
+}
+
+export function clampToMap(position: PlayerPosition, radius = PLAYER_RADIUS) {
+  return {
+    x: clamp(position.x, radius, CAVE_WIDTH - radius),
+    y: clamp(position.y, radius, CAVE_HEIGHT - radius),
+  };
+}
+
+export function canStandAt(position: PlayerPosition, radius = PLAYER_RADIUS) {
+  return !caveWalls.some((wall) => circleIntersectsRect(position, radius, wall));
+}
+
+export function canTravelBetween(
+  from: PlayerPosition,
+  to: PlayerPosition,
+  radius = PLAYER_RADIUS,
+) {
+  const distance = Math.hypot(to.x - from.x, to.y - from.y);
+  const steps = Math.max(1, Math.ceil(distance / 18));
+
+  for (let index = 1; index <= steps; index += 1) {
+    const progress = index / steps;
+    const sample = {
+      x: from.x + (to.x - from.x) * progress,
+      y: from.y + (to.y - from.y) * progress,
+    };
+
+    if (!canStandAt(sample, radius)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export function limitMoveDistance(
+  from: PlayerPosition,
+  target: PlayerPosition,
+  maxDistance: number,
+) {
+  const distance = Math.hypot(target.x - from.x, target.y - from.y);
+
+  if (distance <= maxDistance) {
+    return target;
+  }
+
+  const scale = maxDistance / distance;
+
+  return {
+    x: from.x + (target.x - from.x) * scale,
+    y: from.y + (target.y - from.y) * scale,
+  };
+}
+
+export function moveWithCollisions(
+  from: PlayerPosition,
+  delta: PlayerPosition,
+  radius = PLAYER_RADIUS,
+) {
+  const intendedPosition = clampToMap(
+    {
+      x: from.x + delta.x,
+      y: from.y + delta.y,
+    },
+    radius,
+  );
+
+  if (canTravelBetween(from, intendedPosition, radius)) {
+    return intendedPosition;
+  }
+
+  const horizontalStep = clampToMap(
+    {
+      x: from.x + delta.x,
+      y: from.y,
+    },
+    radius,
+  );
+
+  if (canTravelBetween(from, horizontalStep, radius)) {
+    return horizontalStep;
+  }
+
+  const verticalStep = clampToMap(
+    {
+      x: from.x,
+      y: from.y + delta.y,
+    },
+    radius,
+  );
+
+  if (canTravelBetween(from, verticalStep, radius)) {
+    return verticalStep;
+  }
+
+  return from;
+}
+
+export function moveTowardPosition(
+  from: PlayerPosition,
+  target: PlayerPosition,
+  maxDistance: number,
+  radius = PLAYER_RADIUS,
+) {
+  const deltaX = target.x - from.x;
+  const deltaY = target.y - from.y;
+  const distance = Math.hypot(deltaX, deltaY);
+
+  if (distance === 0) {
+    return from;
+  }
+
+  const scale = Math.min(1, maxDistance / distance);
+
+  return moveWithCollisions(
+    from,
+    {
+      x: deltaX * scale,
+      y: deltaY * scale,
+    },
+    radius,
+  );
+}
+
+export function getZoneForPosition(position: PlayerPosition, zones: Zone[]) {
+  return zones.find((zone) => pointInRect(position, zone)) ?? zones[0];
+}
+
+export function hitHazard(position: PlayerPosition, hazards: HazardArea[]) {
+  return hazards.some((hazard) => circleIntersectsRect(position, PLAYER_RADIUS, hazard));
+}
+
+export function reachedGoal(position: PlayerPosition, goal: GoalArea) {
+  return circleIntersectsRect(position, PLAYER_RADIUS, goal);
+}
+
+export function createEnemyState(config: EnemyConfig): EnemyState {
+  return {
+    x: config.start.x,
+    y: config.start.y,
+    mode: "patrol",
+    patrolIndex: 0,
+  };
+}
+
+export function updateEnemyState(
+  current: EnemyState,
+  player: PlayerPosition,
+  config: EnemyConfig,
+  deltaSeconds: number,
+  gameStatus: GameStatus,
+) {
+  if (gameStatus !== "playing") {
+    return current;
+  }
+
+  const enemyPosition = { x: current.x, y: current.y };
+  const playerDistance = distanceBetween(enemyPosition, player);
+  const shouldChase = playerDistance <= config.detectionRange;
+  const shouldReturnToPatrol =
+    current.mode === "chase" && playerDistance >= config.giveUpRange;
+  const targetMode: EnemyMode =
+    shouldChase || (!shouldReturnToPatrol && current.mode === "chase")
+      ? "chase"
+      : "patrol";
+
+  const patrolTarget = config.patrolPoints[current.patrolIndex] ?? config.start;
+  const target = targetMode === "chase" ? player : patrolTarget;
+  const speed = targetMode === "chase" ? config.chaseSpeed : config.speed;
+  const nextPosition = moveTowardPosition(
+    enemyPosition,
+    target,
+    speed * deltaSeconds,
+    ENEMY_RADIUS,
+  );
+
+  const reachedPatrolPoint =
+    targetMode === "patrol" && distanceBetween(nextPosition, patrolTarget) < 20;
+
+  return {
+    x: nextPosition.x,
+    y: nextPosition.y,
+    mode: targetMode,
+    patrolIndex: reachedPatrolPoint
+      ? (current.patrolIndex + 1) % config.patrolPoints.length
+      : current.patrolIndex,
+  };
+}

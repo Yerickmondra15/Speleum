@@ -8,14 +8,31 @@ import { TacticalGame } from "./TacticalGame";
 import { PlayMenu } from "./PlayMenu";
 import { MatchmakingScreen } from "./MatchmakingScreen";
 import { LoadingCaveScreen } from "./LoadingCaveScreen";
+import { MultiplayerMenu } from "./MultiplayerMenu";
+import { MultiplayerGame } from "./MultiplayerGame";
 import { useAuth } from "../../auth/AuthProvider";
 
-type Screen = "menu" | "characters" | "searching" | "loading" | "game";
+type Screen =
+  | "menu"
+  | "characters"
+  | "searching"
+  | "loading"
+  | "game"
+  | "multiplayer-menu"
+  | "multiplayer-game";
+type PlayMode = "local" | "multiplayer";
 const SELECTED_CREATURE_KEY = "speleum.selectedCreature.v1";
 
 export function PlayScene() {
   const { user, updateActiveCreature } = useAuth();
   const [screen, setScreen] = useState<Screen>("menu");
+  const [playMode, setPlayMode] = useState<PlayMode>("local");
+  const [multiplayerSession, setMultiplayerSession] = useState<{
+    roomCode: string;
+    playerId: string;
+    playerName: string;
+    characterId: string;
+  } | null>(null);
   const [storedCharacterId, setStoredCharacterId] = useState(() => {
     if (typeof window === "undefined") return "cave-axolotl";
 
@@ -69,7 +86,14 @@ export function PlayScene() {
         <PlayMenu
           selectedCharacter={selectedCharacter}
           onOpenCharacters={() => setScreen("characters")}
-          onStart={() => setScreen("searching")}
+          onStartLocal={() => {
+            setPlayMode("local");
+            setScreen("searching");
+          }}
+          onStartMultiplayer={() => {
+            setPlayMode("multiplayer");
+            setScreen("multiplayer-menu");
+          }}
         />
       )}
 
@@ -78,7 +102,9 @@ export function PlayScene() {
           selectedCharacterId={selectedCharacterId}
           onBack={() => setScreen("menu")}
           onSelect={selectCharacter}
-          onStart={() => setScreen("searching")}
+          onStart={() =>
+            setScreen(playMode === "multiplayer" ? "multiplayer-menu" : "searching")
+          }
         />
       )}
 
@@ -93,10 +119,33 @@ export function PlayScene() {
         <LoadingCaveScreen selectedCharacter={selectedCharacter} />
       )}
 
+      {screen === "multiplayer-menu" && (
+        <MultiplayerMenu
+          selectedCharacter={selectedCharacter}
+          defaultPlayerName={user?.name ?? "Explorador"}
+          onBack={() => setScreen("menu")}
+          onGameStart={(session) => {
+            setMultiplayerSession(session);
+            setScreen("multiplayer-game");
+          }}
+        />
+      )}
+
       {screen === "game" && (
         <TacticalGame
           selectedCharacter={selectedCharacter}
           onExitToMenu={() => setScreen("menu")}
+        />
+      )}
+
+      {screen === "multiplayer-game" && multiplayerSession && (
+        <MultiplayerGame
+          roomCode={multiplayerSession.roomCode}
+          selectedCharacter={selectedCharacter}
+          onExitToMenu={() => {
+            setMultiplayerSession(null);
+            setScreen("menu");
+          }}
         />
       )}
     </main>

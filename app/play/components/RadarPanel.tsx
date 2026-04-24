@@ -3,10 +3,12 @@
 import { Radio } from "lucide-react";
 import type { PlayerPosition } from "../gameConfig";
 import { CAVE_HEIGHT, CAVE_WIDTH } from "../gameConfig";
-import type { RadarSignal } from "./TacticalGame";
+import type { EnemyState } from "../gameLogic";
+import type { RadarSignal } from "../types";
 
 type RadarPanelProps = {
   player: PlayerPosition;
+  enemy: EnemyState | null;
   signals: RadarSignal[];
   cooldownRemaining: number;
 };
@@ -32,6 +34,7 @@ function signalClass(type: RadarSignal["type"]) {
 
 export function RadarPanel({
   player,
+  enemy,
   signals,
   cooldownRemaining,
 }: RadarPanelProps) {
@@ -72,6 +75,21 @@ export function RadarPanel({
             <div className="mx-auto mt-1 h-1.5 w-1.5 rounded-full bg-rose-300" />
           </div>
         </div>
+
+        {enemy && (
+          <div
+            className="absolute -translate-x-1/2 -translate-y-1/2"
+            style={markerStyle(enemy)}
+          >
+            <div
+              className={`rounded-full border ${
+                enemy.mode === "chase"
+                  ? "h-[1.125rem] w-[1.125rem] border-rose-200 bg-rose-400/55 shadow-[0_0_16px_rgba(127,29,29,0.8)]"
+                  : "h-3 w-3 border-violet-200/60 bg-violet-300/25"
+              }`}
+            />
+          </div>
+        )}
       </div>
 
       <div className="mt-4 grid gap-2 text-xs text-zinc-500">
@@ -85,6 +103,12 @@ export function RadarPanel({
             {cooldownRemaining > 0
               ? `${(cooldownRemaining / 1000).toFixed(1)}s`
               : "lista"}
+          </span>
+        </div>
+        <div className="flex justify-between">
+          <span>Acechante</span>
+          <span className="text-zinc-300">
+            {enemy ? (enemy.mode === "chase" ? "persigue" : "patrulla") : "sin contacto"}
           </span>
         </div>
       </div>

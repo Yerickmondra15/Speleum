@@ -262,15 +262,14 @@ export default function Home() {
         <section className="mx-auto max-w-6xl px-6 pb-24">
           <div className="mb-10 max-w-2xl">
             <p className="text-xs tracking-[0.25em] text-zinc-500">
-              CRIATURAS
+              PERSONAJES
             </p>
             <h2 className="mt-3 text-3xl font-semibold text-white">
-              Dos formas de leer la oscuridad
+              Personajes
             </h2>
             <p className="mt-4 leading-7 text-zinc-400">
-              El ajolote de cueva explora con estabilidad y sensibilidad. El
-              camaron de cueva entra con impulsos evasivos, menos senal al
-              moverse y recuperacion mas rapida.
+              Cada criatura tiene una forma distinta de moverse, explorar y
+              sobrevivir en la cueva.
             </p>
           </div>
 
@@ -278,11 +277,11 @@ export default function Home() {
             {[
               {
                 name: "Ajolote de cueva",
-                text: "Equilibrado, constante y facil de leer. Ideal para aprender la tension de los turnos.",
+                text: "Un ejemplo de explorador estable, sensible al entorno y facil de controlar en espacios reducidos.",
               },
               {
                 name: "Camaron de cueva",
-                text: "Agil y evasivo. Sus movimientos dejan rastros mas tenues en el radar.",
+                text: "Un ejemplo de criatura agil y evasiva, util para rutas tensas y movimientos mas discretos.",
               },
             ].map((creature) => (
               <motion.div

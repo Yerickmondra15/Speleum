@@ -1,0 +1,76 @@
+"use client";
+
+import Image from "next/image";
+import type { GameStatus } from "../gameConfig";
+
+type GameOverlayProps = {
+  status: GameStatus;
+  onRestart: () => void;
+  onExitToMenu: () => void;
+};
+
+const overlayContent: Record<
+  Extract<GameStatus, "won" | "lost">,
+  { title: string; message: string; buttonLabel: string }
+> = {
+  won: {
+    title: "Ganaste",
+    message: "Hallaste la salida y cruzaste la ultima camara con vida.",
+    buttonLabel: "Reiniciar",
+  },
+  lost: {
+    title: "Perdiste",
+    message: "La cueva te cerro el paso antes de alcanzar la salida.",
+    buttonLabel: "Intentar de nuevo",
+  },
+};
+
+export function GameOverlay({
+  status,
+  onRestart,
+  onExitToMenu,
+}: GameOverlayProps) {
+  if (status === "playing" || status === "paused") {
+    return null;
+  }
+
+  const content = overlayContent[status];
+
+  return (
+    <div className="absolute inset-0 z-[90] flex items-center justify-center bg-black/72 px-4 backdrop-blur-md">
+      <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.96),rgba(10,10,12,0.96))] p-8 text-center shadow-[0_30px_80px_rgba(0,0,0,0.65)]">
+        <div className="flex justify-center">
+          <Image
+            src="/Grafico/Logo blanco.svg"
+            alt="Speleum"
+            width={42}
+            height={42}
+            className="h-10 w-auto opacity-90"
+          />
+        </div>
+        <p className="mt-3 text-xs tracking-[0.36em] text-zinc-500">SPELEUM</p>
+        <h2 className="mt-4 text-4xl font-semibold tracking-[0.12em] text-white">
+          {content.title}
+        </h2>
+        <p className="mt-4 text-sm leading-7 text-zinc-300">{content.message}</p>
+
+        <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+          <button
+            type="button"
+            onClick={onRestart}
+            className="flex-1 rounded-full bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200"
+          >
+            {content.buttonLabel}
+          </button>
+          <button
+            type="button"
+            onClick={onExitToMenu}
+            className="flex-1 rounded-full border border-white/10 bg-black/45 px-5 py-3 text-sm text-zinc-200 transition hover:bg-white/10"
+          >
+            Volver al menu
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

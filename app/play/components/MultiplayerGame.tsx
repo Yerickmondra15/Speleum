@@ -1,0 +1,354 @@
+"use client";
+
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { ArrowLeft, Radio, Users } from "lucide-react";
+import type { CharacterOption, GameStatus, PlayerPosition } from "../gameConfig";
+import {
+  ATTACK_COOLDOWN,
+  MAX_HEALTH,
+  VISION_RADIUS,
+  caveZones,
+  pointsOfInterest,
+} from "../gameConfig";
+import { distanceBetween, getZoneForPosition } from "../gameLogic";
+import type { MultiplayerStatePayload } from "../types";
+import { ensureSocketConnection, getSocket } from "@/lib/socket";
+import { ActionControls } from "./ActionControls";
+import { GameHud } from "./GameHud";
+import { GameMap } from "./GameMap";
+import { GameOverlay } from "./GameOverlay";
+import { RadarPanel } from "./RadarPanel";
+
+type MultiplayerGameProps = {
+  roomCode: string;
+  selectedCharacter: CharacterOption;
+  onExitToMenu: () => void;
+};
+
+type DirectionState = {
+  up: boolean;
+  down: boolean;
+  left: boolean;
+  right: boolean;
+};
+
+function emptyDirectionState(): DirectionState {
+  return {
+    up: false,
+    down: false,
+    left: false,
+    right: false,
+  };
+}
+
+export function MultiplayerGame({
+  roomCode,
+  selectedCharacter,
+  onExitToMenu,
+}: MultiplayerGameProps) {
+  const [gameState, setGameState] = useState<MultiplayerStatePayload | null>(null);
+  const [message, setMessage] = useState("Conectando con la sala...");
+  const [activeAction, setActiveAction] = useState<"move" | "attack" | "defend">("move");
+  const [cooldownEndsAt, setCooldownEndsAt] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  const [disconnectedMessage, setDisconnectedMessage] = useState<string | null>(null);
+  const pointerTargetRef = useRef<PlayerPosition | null>(null);
+  const keyStateRef = useRef<DirectionState>(emptyDirectionState());
+
+  useEffect(() => {
+    const socket = ensureSocketConnection();
+    const handleGameState = (state: MultiplayerStatePayload) => {
+      if (state.roomCode !== roomCode) {
+        return;
+      }
+
+      setGameState(state);
+      setMessage(state.message ?? "Explora con cuidado.");
+    };
+    const handlePlayerLeft = (payload: { roomCode?: string; message?: string }) => {
+      if (payload.roomCode !== roomCode) {
+        return;
+      }
+
+      setDisconnectedMessage(payload.message ?? "El otro jugador se desconecto.");
+      setMessage(payload.message ?? "El otro jugador se desconecto.");
+    };
+    const handleGameOver = (payload: { message?: string }) => {
+      setMessage(payload.message ?? "La partida termino.");
+    };
+    const handleError = (nextMessage: string) => {
+      setMessage(nextMessage);
+    };
+
+    socket.on("game-state", handleGameState);
+    socket.on("player-left", handlePlayerLeft);
+    socket.on("game-over", handleGameOver);
+    socket.on("error-message", handleError);
+
+    return () => {
+      socket.off("game-state", handleGameState);
+      socket.off("player-left", handlePlayerLeft);
+      socket.off("game-over", handleGameOver);
+      socket.off("error-message", handleError);
+    };
+  }, [roomCode]);
+
+  const self = gameState?.self ?? null;
+  const player = useMemo(
+    () => self?.position ?? { x: 0, y: 0 },
+    [self?.position],
+  );
+  const enemy = gameState?.enemy ?? null;
+  const currentZone = useMemo(() => getZoneForPosition(player, caveZones), [player]);
+  const gameStatus: GameStatus =
+    self?.status === "won"
+      ? "won"
+      : self?.status === "lost"
+        ? "lost"
+        : "playing";
+
+  const nearestPoint = useMemo(() => {
+    return pointsOfInterest
+      .map((point) => ({
+        ...point,
+        distance: Math.round(Math.hypot(player.x - point.x, player.y - point.y)),
+      }))
+      .sort((a, b) => a.distance - b.distance)[0];
+  }, [player]);
+
+  const objective =
+    gameStatus === "won"
+      ? "Ganaste la carrera hacia la salida."
+      : gameStatus === "lost"
+        ? "La expedicion termino para ti."
+        : "Llega a la salida antes que el otro explorador.";
+
+  const enemyStateLabel = enemy
+    ? enemy.mode === "chase"
+      ? "amenaza visible"
+      : "patrulla visible"
+    : "sin contacto";
+
+  const health = gameStatus === "lost" ? 0 : MAX_HEALTH;
+  const cooldownRemaining = Math.max(0, cooldownEndsAt - now);
+
+  const emitMovement = useEffectEvent(() => {
+    if (!self || !gameState || gameState.status !== "playing" || gameStatus !== "playing") {
+      return;
+    }
+
+    const socket = getSocket();
+    const keys = keyStateRef.current;
+    const vectorX = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+    const vectorY = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
+
+    if (vectorX !== 0 || vectorY !== 0) {
+      socket.emit("player-move", {
+        roomCode,
+        direction: { x: vectorX, y: vectorY },
+      });
+      return;
+    }
+
+    if (!pointerTargetRef.current) {
+      return;
+    }
+
+    socket.emit("player-move", {
+      roomCode,
+      target: pointerTargetRef.current,
+    });
+
+    if (distanceBetween(player, pointerTargetRef.current) < 18) {
+      pointerTargetRef.current = null;
+    }
+  });
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setNow(Date.now());
+      emitMovement();
+    }, 80);
+
+    return () => window.clearInterval(interval);
+  }, []);
+
+  const setDirectionState = (direction: keyof DirectionState, value: boolean) => {
+    keyStateRef.current = {
+      ...keyStateRef.current,
+      [direction]: value,
+    };
+  };
+
+  const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (event.repeat || gameStatus !== "playing") {
+      return;
+    }
+
+    if (event.key === "ArrowUp" || event.key.toLowerCase() === "w") {
+      event.preventDefault();
+      setActiveAction("move");
+      setDirectionState("up", true);
+    } else if (event.key === "ArrowDown" || event.key.toLowerCase() === "s") {
+      event.preventDefault();
+      setActiveAction("move");
+      setDirectionState("down", true);
+    } else if (event.key === "ArrowLeft" || event.key.toLowerCase() === "a") {
+      event.preventDefault();
+      setActiveAction("move");
+      setDirectionState("left", true);
+    } else if (event.key === "ArrowRight" || event.key.toLowerCase() === "d") {
+      event.preventDefault();
+      setActiveAction("move");
+      setDirectionState("right", true);
+    }
+  });
+
+  const onKeyUp = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key === "ArrowUp" || event.key.toLowerCase() === "w") {
+      setDirectionState("up", false);
+    } else if (event.key === "ArrowDown" || event.key.toLowerCase() === "s") {
+      setDirectionState("down", false);
+    } else if (event.key === "ArrowLeft" || event.key.toLowerCase() === "a") {
+      setDirectionState("left", false);
+    } else if (event.key === "ArrowRight" || event.key.toLowerCase() === "d") {
+      setDirectionState("right", false);
+    }
+  });
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => onKeyDown(event);
+    const handleKeyUp = (event: KeyboardEvent) => onKeyUp(event);
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, []);
+
+  const handleMoveIntent = (target: PlayerPosition) => {
+    pointerTargetRef.current = target;
+    setActiveAction("move");
+    setMessage("Avanzas con cuidado por la cueva.");
+  };
+
+  const handleAttack = () => {
+    if (gameStatus !== "playing" || cooldownRemaining > 0) {
+      return;
+    }
+
+    getSocket().emit("player-attack", { roomCode });
+    setActiveAction("attack");
+    setCooldownEndsAt(Date.now() + ATTACK_COOLDOWN);
+    setMessage("Ataque enviado al servidor.");
+  };
+
+  const handleDefend = () => {
+    setActiveAction("defend");
+    setMessage("La defensa activa queda pendiente para una siguiente iteracion.");
+  };
+
+  const handleExit = () => {
+    getSocket().emit("leave-room", { roomCode });
+    onExitToMenu();
+  };
+
+  if (!gameState || !self) {
+    return (
+      <section className="relative z-10 flex min-h-screen items-center justify-center px-5 text-white">
+        <div className="rounded-[1.8rem] border border-white/10 bg-black/45 px-6 py-5 text-sm text-zinc-300 backdrop-blur-md">
+          Conectando a la sala {roomCode}...
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="relative z-10 min-h-screen overflow-hidden">
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-[70] flex items-center justify-between px-4 py-4">
+        <button
+          type="button"
+          onClick={handleExit}
+          className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/55 px-4 py-2 text-sm text-zinc-300 backdrop-blur-md transition hover:text-white"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Menu
+        </button>
+
+        <div className="rounded-full border border-white/10 bg-black/45 px-5 py-2 text-center backdrop-blur-md">
+          <p className="text-[0.65rem] tracking-[0.34em] text-zinc-500">SALA</p>
+          <h1 className="text-sm font-semibold tracking-[0.28em] text-white">{roomCode}</h1>
+        </div>
+
+        <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-black/45 px-4 py-2 text-xs text-zinc-400 backdrop-blur-md sm:flex">
+          <Users className="h-4 w-4" />
+          {selectedCharacter.name}
+        </div>
+      </header>
+
+      <GameMap
+        player={player}
+        enemy={enemy}
+        otherPlayers={gameState.otherPlayers}
+        signals={gameState.signals}
+        activeAction={activeAction}
+        isDefending={false}
+        currentZone={currentZone}
+        gameStatus={gameStatus}
+        visionRadius={VISION_RADIUS}
+        onChooseDestination={handleMoveIntent}
+      />
+
+      <GameHud
+        zone={currentZone}
+        objective={objective}
+        message={message}
+        zoneMessage={disconnectedMessage}
+        health={health}
+        maxHealth={MAX_HEALTH}
+        enemyStateLabel={enemyStateLabel}
+        isPaused={false}
+      />
+
+      <div className="absolute right-4 top-24 z-[70] w-64 max-w-[calc(100vw-2rem)]">
+        <RadarPanel
+          player={player}
+          enemy={enemy}
+          signals={gameState.signals}
+          cooldownRemaining={cooldownRemaining}
+        />
+      </div>
+
+      <div className="pointer-events-none absolute right-4 top-[22rem] z-[70] hidden max-w-xs rounded-[1.25rem] border border-white/10 bg-black/45 p-4 text-sm text-zinc-300 backdrop-blur-md lg:block">
+        <p className="text-xs tracking-[0.25em] text-zinc-500">MULTIJUGADOR</p>
+        <p className="mt-2">Conexion: {getSocket().connected ? "estable" : "reconectando"}</p>
+        <p className="mt-2">Sala: {roomCode}</p>
+        <p className="mt-2">Punto cercano: {nearestPoint?.label ?? currentZone.name}</p>
+        <p className="mt-2">Vision: 8 casillas alrededor.</p>
+        <div className="mt-3 inline-flex items-center gap-2 text-xs tracking-[0.2em] text-cyan-100">
+          <Radio className="h-4 w-4" />
+          {gameState.playerCount}/2 conectados
+        </div>
+      </div>
+
+      <ActionControls
+        activeAction={activeAction}
+        cooldownRemaining={cooldownRemaining}
+        isRecovering={cooldownRemaining > 0}
+        isDefending={false}
+        onMove={() => setActiveAction("move")}
+        onAttack={handleAttack}
+        onDefend={handleDefend}
+      />
+
+      <GameOverlay
+        status={gameStatus}
+        onRestart={() => window.location.reload()}
+        onExitToMenu={handleExit}
+      />
+    </section>
+  );
+}
