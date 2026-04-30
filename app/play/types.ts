@@ -1,7 +1,7 @@
 import type { ActionKind, CharacterOption, PlayerPosition } from "./gameConfig";
-import type { EnemyState } from "./gameLogic";
+import type { EnemyState, ThreatLevel } from "./gameLogic";
 
-export type SignalType = "move" | "attack" | "defend";
+export type SignalType = "move" | "attack" | "defend" | "danger";
 
 export type RadarSignal = {
   id: number;
@@ -29,6 +29,9 @@ export type PlayerCombatState = {
   sanity: number;
   maxSanity: number;
   isDefending: boolean;
+  threatLevel: ThreatLevel;
+  idleMs: number;
+  moveCooldownRemaining: number;
   kills: number;
   damageDealt: number;
   eliminatedAt: number | null;

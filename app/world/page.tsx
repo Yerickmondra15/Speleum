@@ -1,5 +1,7 @@
+import Image from "next/image";
 import Link from "next/link";
 import { ArrowLeft, EyeOff, Radio, Waves } from "lucide-react";
+import { creatures } from "@/lib/creatures";
 
 const sections = [
   {
@@ -16,33 +18,6 @@ const sections = [
     icon: Waves,
     title: "Adaptacion",
     text: "Cada criatura toma una idea biologica y la vuelve mecanica. El ajolote es estable y sensible; el camaron usa impulsos evasivos y deja menos huella al desplazarse.",
-  },
-];
-
-const creatures = [
-  {
-    name: "Ajolote de cueva",
-    biology:
-      "Inspirado en anfibios palidos y sensibles al entorno, con lectura constante del espacio cercano.",
-    game: "En juego es equilibrado: buen control, senal normal y recuperacion estable.",
-  },
-  {
-    name: "Camaron de cueva",
-    biology:
-      "Inspirado en crustaceos de cueva que se orientan por tacto, corrientes y movimientos breves.",
-    game: "En juego es evasivo: se desplaza mas lejos, recupera antes y su movimiento se detecta menos.",
-  },
-  {
-    name: "Pez ciego",
-    biology:
-      "Muchos peces de cueva reducen la vision y dependen de presion, corriente y memoria espacial.",
-    game: "Su lectura de corrientes queda reservada para una mecanica futura.",
-  },
-  {
-    name: "Cangrejo cavernicola",
-    biology:
-      "Los crustaceos de cueva suelen aprovechar grietas, paredes y zonas estrechas.",
-    game: "Su identidad apunta a controlar pasillos y resistir encuentros cercanos.",
   },
 ];
 
@@ -115,17 +90,31 @@ export default function WorldPage() {
         <div className="grid gap-5 md:grid-cols-2">
           {creatures.map((creature) => (
             <article
-              key={creature.name}
+              key={creature.id}
               className="rounded-4xl border border-white/10 bg-white/3 p-7"
             >
-              <h3 className="text-xl font-semibold text-white">
-                {creature.name}
-              </h3>
+              <div className="mb-5 flex items-center gap-4">
+                <div className="relative h-20 w-20 overflow-hidden rounded-3xl border border-white/10 bg-black/25">
+                  <Image
+                    src={creature.imagenIlustracion}
+                    alt={creature.nombre}
+                    fill
+                    sizes="80px"
+                    className="object-contain p-2"
+                  />
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold text-white">
+                    {creature.nombre}
+                  </h3>
+                  <p className="mt-1 text-sm text-zinc-500">{creature.rol}</p>
+                </div>
+              </div>
               <p className="mt-4 text-sm leading-7 text-zinc-400">
-                {creature.biology}
+                {creature.descripcionCorta}
               </p>
               <p className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-4 text-sm leading-6 text-zinc-300">
-                {creature.game}
+                {creature.habilidad}
               </p>
             </article>
           ))}

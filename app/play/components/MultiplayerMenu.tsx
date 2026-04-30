@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Copy, Radio, Users } from "lucide-react";
 import type { CharacterOption } from "../gameConfig";
@@ -190,8 +191,21 @@ export function MultiplayerMenu({
 
               <div className="rounded-[1.4rem] border border-white/10 bg-black/35 p-4">
                 <span className="text-xs tracking-[0.22em] text-zinc-500">CRIATURA</span>
-                <p className="mt-3 text-lg text-white">{selectedCharacter.name}</p>
-                <p className="mt-1 text-sm text-zinc-500">{selectedCharacter.role}</p>
+                <div className="mt-3 flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-zinc-100/90">
+                    <Image
+                      src={selectedCharacter.imageGame}
+                      alt={selectedCharacter.name}
+                      width={36}
+                      height={36}
+                      className="h-9 w-9 object-contain"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-lg text-white">{selectedCharacter.name}</p>
+                    <p className="mt-1 text-sm text-zinc-500">{selectedCharacter.role}</p>
+                  </div>
+                </div>
               </div>
             </div>
 

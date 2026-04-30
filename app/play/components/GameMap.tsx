@@ -1,7 +1,9 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, MouseEvent } from "react";
+import { getCreatureById } from "@/lib/creatures";
 import type {
   ActionKind,
   GameStatus,
@@ -28,6 +30,7 @@ import type { MultiplayerPlayerState, RadarSignal } from "../types";
 
 type GameMapProps = {
   player: PlayerPosition;
+  playerCharacterId: string;
   enemy: EnemyState | null;
   signals: RadarSignal[];
   activeAction: ActionKind;
@@ -56,6 +59,10 @@ function pointStyle(point: PlayerPosition): CSSProperties {
 }
 
 function signalClass(type: RadarSignal["type"]) {
+  if (type === "danger") {
+    return "border-rose-200/70 bg-rose-300/12 shadow-[0_0_28px_rgba(251,113,133,0.3)]";
+  }
+
   if (type === "attack") {
     return "border-red-300/80 bg-red-400/10 shadow-[0_0_34px_rgba(127,29,29,0.45)]";
   }
@@ -84,6 +91,10 @@ function zoneClass(tone: Zone["tone"]) {
     return "bg-[radial-gradient(circle_at_62%_28%,rgba(76,5,25,0.2),transparent_18%),linear-gradient(145deg,rgba(18,5,10,0.94),rgba(65,10,28,0.72))]";
   }
 
+  if (tone === "trap") {
+    return "bg-[radial-gradient(circle_at_50%_52%,rgba(125,48,63,0.12),transparent_28%),linear-gradient(180deg,rgba(19,12,18,0.92),rgba(42,16,24,0.76))]";
+  }
+
   if (tone === "goal") {
     return "bg-[radial-gradient(circle_at_50%_45%,rgba(244,244,245,0.2),transparent_24%),linear-gradient(180deg,rgba(40,40,48,0.85),rgba(16,16,20,0.9))]";
   }
@@ -99,6 +110,7 @@ function hazardClass(hazard: HazardArea) {
 
 export function GameMap({
   player,
+  playerCharacterId,
   enemy,
   signals,
   activeAction,
@@ -111,6 +123,7 @@ export function GameMap({
 }: GameMapProps) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const [viewportSize, setViewportSize] = useState({ width: 1200, height: 760 });
+  const playerCreature = getCreatureById(playerCharacterId);
 
   useEffect(() => {
     const node = viewportRef.current;
@@ -190,6 +203,7 @@ export function GameMap({
         >
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_16%_86%,rgba(72,13,24,0.24),transparent_16%),radial-gradient(circle_at_78%_18%,rgba(56,16,36,0.19),transparent_20%),radial-gradient(circle_at_56%_52%,rgba(255,255,255,0.032),transparent_22%),linear-gradient(135deg,#050202,#110509_50%,#030101)]" />
           <div className="absolute inset-0 opacity-25 [background-image:linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.015)_1px,transparent_1px)] [background-size:88px_88px]" />
+          <div className="absolute inset-0 opacity-20 [background-image:radial-gradient(rgba(255,255,255,0.03)_1px,transparent_1px)] [background-size:42px_42px]" />
 
           {caveZones.map((zone) => (
             <div
@@ -204,6 +218,7 @@ export function GameMap({
               <div className="absolute left-6 top-5 text-[0.68rem] tracking-[0.26em] text-zinc-500">
                 {zone.subtitle}
               </div>
+              <div className="pointer-events-none absolute inset-0 opacity-35 [mask-image:radial-gradient(circle_at_center,black,transparent_72%)] [background-image:radial-gradient(rgba(255,255,255,0.07)_1px,transparent_1px)] [background-size:28px_28px]" />
             </div>
           ))}
 
@@ -283,7 +298,17 @@ export function GameMap({
                 }`}
                 style={{ width: ENEMY_RADIUS * 2, height: ENEMY_RADIUS * 2 }}
               >
-                <div className="absolute inset-3 rounded-full bg-zinc-950" />
+                <div className="absolute inset-1 flex items-center justify-center overflow-hidden rounded-full bg-zinc-950/75">
+                  <Image
+                    src={getCreatureById("cave-spider").imagenJuego}
+                    alt="Amenaza"
+                    width={36}
+                    height={36}
+                    className={`h-9 w-9 object-contain ${
+                      enemy.mode === "chase" ? "animate-pulse" : ""
+                    }`}
+                  />
+                </div>
               </div>
             </div>
           )}
@@ -298,7 +323,15 @@ export function GameMap({
                 className="relative rounded-full border border-cyan-200/70 bg-cyan-300/25 shadow-[0_0_22px_rgba(103,232,249,0.35)]"
                 style={{ width: PLAYER_RADIUS * 2, height: PLAYER_RADIUS * 2 }}
               >
-                <div className="absolute inset-3 rounded-full bg-cyan-950" />
+                <div className="absolute inset-1 flex items-center justify-center overflow-hidden rounded-full bg-cyan-950/70">
+                  <Image
+                    src={getCreatureById(otherPlayer.characterId).imagenJuego}
+                    alt={otherPlayer.name}
+                    width={34}
+                    height={34}
+                    className="h-8.5 w-8.5 object-contain"
+                  />
+                </div>
               </div>
               <div className="absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/75 px-2 py-1 text-[0.65rem] tracking-[0.18em] text-cyan-100">
                 {otherPlayer.name}
@@ -314,7 +347,15 @@ export function GameMap({
               className="relative rounded-full border border-white/50 bg-zinc-100 shadow-[0_0_28px_rgba(255,255,255,0.48)]"
               style={{ width: PLAYER_RADIUS * 2, height: PLAYER_RADIUS * 2 }}
             >
-              <div className="absolute left-1/2 top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-rose-300 shadow-[0_0_16px_rgba(253,164,175,0.95)]" />
+              <div className="absolute inset-1 flex items-center justify-center overflow-hidden rounded-full bg-white/70">
+                <Image
+                  src={playerCreature.imagenJuego}
+                  alt={playerCreature.nombre}
+                  width={40}
+                  height={40}
+                  className="h-10 w-10 animate-[pulse_3s_ease-in-out_infinite] object-contain"
+                />
+              </div>
               {isDefending && (
                 <div className="absolute -inset-2 rounded-full border border-zinc-100/65 shadow-[0_0_22px_rgba(228,228,231,0.3)]" />
               )}

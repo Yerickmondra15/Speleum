@@ -12,6 +12,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { motion, type Variants } from "framer-motion";
+import { LIGHTS_ON_KEY, creatures } from "@/lib/creatures";
 import { readSession } from "@/lib/session";
 
 const fadeUp: Variants = {
@@ -28,11 +29,22 @@ const fadeUp: Variants = {
 };
 
 export default function Home() {
-  const [turnedOn, setTurnedOn] = useState(false);
+  const [turnedOn, setTurnedOn] = useState(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+
+    return window.localStorage.getItem(LIGHTS_ON_KEY) === "true";
+  });
   const [hasSession] = useState(() => Boolean(readSession()?.isLoggedIn));
 
   const primaryHref = hasSession ? "/play" : "/login";
   const primaryLabel = hasSession ? "Jugar ahora" : "Iniciar sesion";
+
+  const handleTurnOn = () => {
+    setTurnedOn(true);
+    window.localStorage.setItem(LIGHTS_ON_KEY, "true");
+  };
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-black text-white">
@@ -43,7 +55,7 @@ export default function Home() {
           <div className="flex flex-col items-center">
 
             <button
-              onClick={() => setTurnedOn(true)}
+              onClick={handleTurnOn}
               className="group relative flex h-24 w-24 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900/70 transition duration-300 hover:scale-105 hover:border-zinc-400 hover:bg-zinc-800"
             >
               <Lightbulb className="h-10 w-10 text-zinc-300 transition group-hover:text-yellow-200" />
@@ -299,29 +311,28 @@ export default function Home() {
           </div>
 
           <div className="grid gap-6 md:grid-cols-2">
-            {[
-              {
-                name: "Ajolote de cueva",
-                text: "Un ejemplo de explorador estable, sensible al entorno y facil de controlar en espacios reducidos.",
-              },
-              {
-                name: "Camaron de cueva",
-                text: "Un ejemplo de criatura agil y evasiva, util para rutas tensas y movimientos mas discretos.",
-              },
-            ].map((creature) => (
+            {creatures.slice(0, 2).map((creature) => (
               <motion.div
-                key={creature.name}
+                key={creature.id}
                 variants={fadeUp}
                 initial="hidden"
                 whileInView="visible"
                 viewport={{ once: true, amount: 0.2 }}
                 className="rounded-4xl border border-white/10 bg-white/3 p-7"
               >
-                <div className="mb-5 h-14 w-14 rounded-full border border-white/20 bg-zinc-100/80 shadow-[0_0_28px_rgba(255,255,255,0.12)]" />
+                <div className="mb-5 flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-zinc-100/80 shadow-[0_0_28px_rgba(255,255,255,0.12)]">
+                  <Image
+                    src={creature.imagenJuego}
+                    alt={creature.nombre}
+                    width={40}
+                    height={40}
+                    className="h-10 w-10 object-contain"
+                  />
+                </div>
                 <h3 className="text-xl font-semibold text-white">
-                  {creature.name}
+                  {creature.nombre}
                 </h3>
-                <p className="mt-3 leading-7 text-zinc-400">{creature.text}</p>
+                <p className="mt-3 leading-7 text-zinc-400">{creature.descripcionCorta}</p>
               </motion.div>
             ))}
           </div>

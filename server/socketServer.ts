@@ -11,8 +11,10 @@ import {
   MAX_ROOM_PLAYERS,
   MAX_SANITY,
   MIN_ROOM_PLAYERS,
+  MOVE_BURST_IDLE_MS,
   PLAYER_ATTACK_DAMAGE,
   PLAYER_SPEED,
+  THREAT_DEATH_MS,
   VISION_RADIUS,
   caveZones,
   characterOptions,
@@ -22,18 +24,21 @@ import {
 } from "../app/play/gameConfig";
 import {
   applyDamage,
+  calculateMoveCooldown,
   createEnemyState,
   distanceBetween,
+  getThreatLevel,
   getZoneForPosition,
   hitHazard,
   isWithinVision,
   moveTowardPosition,
   moveWithCollisions,
   sanityHealthPenalty,
+  shouldFinalizeMoveBurst,
   updateEnemyState,
   updateSanity,
 } from "../app/play/gameLogic";
-import type { EnemyState } from "../app/play/gameLogic";
+import type { EnemyState, ThreatLevel } from "../app/play/gameLogic";
 import type {
   MatchResultEntry,
   MultiplayerPlayerState,
@@ -46,6 +51,10 @@ type ServerPlayerState = MultiplayerPlayerState & {
   socketId: string;
   connectedAt: number;
   lastAttackAt: number;
+  lastMoveAt: number;
+  lastDefendAt: number;
+  moveCooldownUntil: number;
+  movementBurstDistance: number;
   defendingUntil: number;
 };
 
@@ -135,6 +144,9 @@ function createInitialCombatState() {
     sanity: MAX_SANITY,
     maxSanity: MAX_SANITY,
     isDefending: false,
+    threatLevel: "calm" as ThreatLevel,
+    idleMs: 0,
+    moveCooldownRemaining: 0,
     kills: 0,
     damageDealt: 0,
     eliminatedAt: null,
@@ -245,7 +257,12 @@ function addSignal(
     x: position.x,
     y: position.y,
     createdAt: Date.now(),
-    duration: type === "defend" ? DEFEND_SIGNAL_DURATION : ATTACK_SIGNAL_DURATION,
+    duration:
+      type === "defend"
+        ? DEFEND_SIGNAL_DURATION
+        : type === "danger"
+          ? 1400
+          : ATTACK_SIGNAL_DURATION,
     ownerId,
   });
 }
@@ -306,6 +323,7 @@ function evaluateRoom(room: ServerRoomState, io: Server) {
 
   for (const player of room.players.values()) {
     player.combat.isDefending = player.defendingUntil > now;
+    player.combat.moveCooldownRemaining = Math.max(0, player.moveCooldownUntil - now);
   }
 
   const alivePlayers = getAlivePlayers(room);
@@ -324,6 +342,39 @@ function evaluateRoom(room: ServerRoomState, io: Server) {
   }
 
   for (const player of alivePlayers) {
+    if (
+      player.movementBurstDistance > 0 &&
+      shouldFinalizeMoveBurst(player.lastMoveAt, now) &&
+      now >= player.moveCooldownUntil
+    ) {
+      player.moveCooldownUntil =
+        now +
+        calculateMoveCooldown(
+          player.movementBurstDistance,
+          characterOptions.find((option) => option.id === player.characterId)
+            ?.moveCooldownMultiplier ?? 1,
+        );
+      player.movementBurstDistance = 0;
+      player.combat.moveCooldownRemaining = Math.max(0, player.moveCooldownUntil - now);
+    }
+
+    player.combat.idleMs = now - player.lastMoveAt;
+    const previousThreat = player.combat.threatLevel;
+    player.combat.threatLevel = getThreatLevel(player.combat.idleMs);
+
+    if (player.combat.threatLevel !== previousThreat && player.combat.threatLevel !== "calm") {
+      addSignal(room, "danger", player.position, player.id);
+    }
+
+    if (player.combat.idleMs >= THREAT_DEATH_MS) {
+      eliminatePlayer(
+        room,
+        player,
+        `${player.name} se quedo quieto demasiado tiempo y la cueva lo encontro.`,
+      );
+      continue;
+    }
+
     if (hitHazard(player.position, hazardAreas)) {
       eliminatePlayer(room, player, `${player.name} fue tragado por la cueva.`);
       continue;
@@ -333,7 +384,10 @@ function evaluateRoom(room: ServerRoomState, io: Server) {
     player.combat.sanity = updateSanity(
       player.combat.sanity,
       MOVE_INTERVAL_MS / 1000,
-      zone.tone === "safe",
+      zone,
+      now - player.lastMoveAt < MOVE_BURST_IDLE_MS,
+      player.combat.threatLevel,
+      room.enemy.mode,
       DARKNESS_SANITY_DRAIN,
     );
 
@@ -484,6 +538,10 @@ io.on("connection", (socket) => {
       combat: createInitialCombatState(),
       connectedAt: Date.now(),
       lastAttackAt: 0,
+      lastMoveAt: Date.now(),
+      lastDefendAt: 0,
+      moveCooldownUntil: 0,
+      movementBurstDistance: 0,
       defendingUntil: 0,
     };
 
@@ -529,6 +587,10 @@ io.on("connection", (socket) => {
         combat: createInitialCombatState(),
         connectedAt: Date.now(),
         lastAttackAt: 0,
+        lastMoveAt: Date.now(),
+        lastDefendAt: 0,
+        moveCooldownUntil: 0,
+        movementBurstDistance: 0,
         defendingUntil: 0,
       };
 
@@ -578,6 +640,10 @@ io.on("connection", (socket) => {
         entry.combat = createInitialCombatState();
         entry.lastAction = "move";
         entry.lastAttackAt = 0;
+        entry.lastMoveAt = room.startedAt ?? Date.now();
+        entry.lastDefendAt = 0;
+        entry.moveCooldownUntil = 0;
+        entry.movementBurstDistance = 0;
         entry.defendingUntil = 0;
       }
     }
@@ -609,6 +675,13 @@ io.on("connection", (socket) => {
         return;
       }
 
+      const now = Date.now();
+
+      if (now < player.moveCooldownUntil) {
+        socket.emit("error-message", "Tu criatura aun recupera el impulso.");
+        return;
+      }
+
       const maxDistance = getMoveSpeed(player.characterId) * (MOVE_INTERVAL_MS / 1000);
       let nextPosition = player.position;
 
@@ -622,9 +695,16 @@ io.on("connection", (socket) => {
         });
       }
 
+      const movedDistance = distanceBetween(player.position, nextPosition);
       player.position = nextPosition;
       player.lastAction = "move";
-      addSignal(room, "move", player.position, player.id);
+      if (movedDistance > 0.1) {
+        player.lastMoveAt = now;
+        player.movementBurstDistance += movedDistance;
+        player.combat.idleMs = 0;
+        player.combat.threatLevel = "calm";
+        addSignal(room, "move", player.position, player.id);
+      }
       emitState(room, io);
     },
   );
@@ -647,6 +727,11 @@ io.on("connection", (socket) => {
 
     if (now - attacker.lastAttackAt < ATTACK_COOLDOWN) {
       socket.emit("error-message", "Tu criatura aun esta recuperandose.");
+      return;
+    }
+
+    if (now < attacker.moveCooldownUntil) {
+      socket.emit("error-message", "Tu criatura aun recupera el impulso.");
       return;
     }
 
@@ -713,8 +798,21 @@ io.on("connection", (socket) => {
       return;
     }
 
+    const now = Date.now();
+
+    if (now - player.lastDefendAt < DEFEND_COOLDOWN) {
+      socket.emit("error-message", "Tu criatura aun no puede defenderse otra vez.");
+      return;
+    }
+
+    if (now < player.moveCooldownUntil) {
+      socket.emit("error-message", "Tu criatura aun recupera el impulso.");
+      return;
+    }
+
     player.lastAction = "defend";
-    player.defendingUntil = Date.now() + DEFEND_COOLDOWN;
+    player.lastDefendAt = now;
+    player.defendingUntil = now + DEFEND_COOLDOWN;
     player.combat.isDefending = true;
     addSignal(room, "defend", player.position, player.id);
     room.message = `${player.name} endurece su caparazon por un instante.`;

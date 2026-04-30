@@ -1,6 +1,7 @@
 "use client";
 
-import { Radio, X } from "lucide-react";
+import Image from "next/image";
+import { X } from "lucide-react";
 import type { CharacterOption } from "../gameConfig";
 
 const searchPhrases = [
@@ -38,7 +39,15 @@ export function MatchmakingScreen({
         <div className="absolute h-full w-px bg-white/5" />
 
         <div className="relative text-center">
-          <Radio className="mx-auto h-8 w-8 text-zinc-300" />
+          <div className="mx-auto flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-zinc-100/90 shadow-[0_0_38px_rgba(255,255,255,0.18)]">
+            <Image
+              src={selectedCharacter.imageGame}
+              alt={selectedCharacter.name}
+              width={62}
+              height={62}
+              className="h-16 w-16 object-contain"
+            />
+          </div>
           <p className="mt-7 text-xs tracking-[0.36em] text-zinc-500">
             ENLACE SUBTERRANEO
           </p>

@@ -1,14 +1,24 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, LogOut, Play, UserRound } from "lucide-react";
+import { getCreatureById, SELECTED_CREATURE_KEY } from "@/lib/creatures";
 import { clearSession, readSession, type SpeleumSession } from "@/lib/session";
 
 export function ProfilePanel() {
   const router = useRouter();
   const [session] = useState<SpeleumSession | null>(() => readSession());
+  const [activeCreatureId] = useState(() => {
+    if (typeof window === "undefined") {
+      return "cave-axolotl";
+    }
+
+    return window.localStorage.getItem(SELECTED_CREATURE_KEY) ?? "cave-axolotl";
+  });
+  const activeCreature = getCreatureById(activeCreatureId);
 
   useEffect(() => {
     if (!session) {
@@ -61,8 +71,14 @@ export function ProfilePanel() {
 
         <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-6 backdrop-blur-md">
           <div className="flex items-center gap-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full border border-white/20 bg-zinc-100/90">
-              <UserRound className="h-7 w-7 text-black" />
+            <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-zinc-100/90">
+              <Image
+                src={activeCreature.imagenJuego}
+                alt={activeCreature.nombre}
+                width={44}
+                height={44}
+                className="h-11 w-11 object-contain"
+              />
             </div>
             <div>
               <p className="text-xs tracking-[0.24em] text-zinc-500">
@@ -87,6 +103,14 @@ export function ProfilePanel() {
               <span className="text-zinc-500">Estado</span>
               <span className="text-zinc-200">sesion guardada</span>
             </div>
+            <div className="flex justify-between rounded-2xl border border-white/10 bg-black/35 px-4 py-3">
+              <span className="text-zinc-500">Criatura activa</span>
+              <span className="text-zinc-200">{activeCreature.nombre}</span>
+            </div>
+            <div className="flex justify-between rounded-2xl border border-white/10 bg-black/35 px-4 py-3">
+              <span className="text-zinc-500">Habilidad</span>
+              <span className="max-w-52 text-right text-zinc-200">{activeCreature.habilidad}</span>
+            </div>
           </div>
 
           <div className="mt-7 flex flex-wrap gap-3">
@@ -96,6 +120,13 @@ export function ProfilePanel() {
             >
               <Play className="h-4 w-4 fill-black" />
               Ir a jugar
+            </Link>
+            <Link
+              href="/play"
+              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/40 px-6 py-3 text-sm text-zinc-300 transition hover:text-white"
+            >
+              <UserRound className="h-4 w-4" />
+              Cambiar criatura
             </Link>
             <button
               type="button"

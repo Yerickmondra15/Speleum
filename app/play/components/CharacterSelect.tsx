@@ -1,6 +1,7 @@
 "use client";
 
-import { ArrowLeft, Lock, Play } from "lucide-react";
+import Image from "next/image";
+import { ArrowLeft, Play } from "lucide-react";
 import { characterOptions, type CharacterOption } from "../gameConfig";
 
 type CharacterSelectProps = {
@@ -16,6 +17,13 @@ export function CharacterSelect({
   onSelect,
   onStart,
 }: CharacterSelectProps) {
+  const selectedCharacter =
+    characterOptions.find((character) => character.id === selectedCharacterId) ??
+    characterOptions[0];
+  const statEntries = Object.entries(selectedCharacter.stats) as Array<
+    [keyof typeof selectedCharacter.stats, number]
+  >;
+
   return (
     <section className="relative z-10 mx-auto flex min-h-screen max-w-7xl flex-col px-5 py-8">
       <header className="flex items-center justify-between border-b border-white/5 pb-5">
@@ -42,30 +50,75 @@ export function CharacterSelect({
             Cada criatura cambia la forma de moverte y la senal que dejas en el
             radar. Elige una entrada antes de buscar partida.
           </p>
+
+          <div className="mt-8 overflow-hidden rounded-[1.6rem] border border-white/10 bg-white/[0.035]">
+            <div className="relative flex min-h-72 items-center justify-center border-b border-white/10 bg-[radial-gradient(circle,rgba(255,255,255,0.07),transparent_70%)] p-6">
+              <Image
+                src={selectedCharacter.imageIllustration}
+                alt={selectedCharacter.name}
+                width={280}
+                height={280}
+                className="max-h-64 w-auto object-contain"
+              />
+            </div>
+            <div className="grid gap-4 p-5">
+              <div>
+                <h2 className="text-2xl font-semibold text-white">
+                  {selectedCharacter.name}
+                </h2>
+                <p className="mt-1 text-sm text-zinc-400">{selectedCharacter.role}</p>
+                <p className="mt-3 text-sm leading-6 text-zinc-400">
+                  {selectedCharacter.description}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+                <p className="text-xs tracking-[0.22em] text-zinc-500">HABILIDAD</p>
+                <p className="mt-2 text-sm text-zinc-200">{selectedCharacter.ability}</p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {statEntries.map(([label, value]) => (
+                  <div key={label} className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                    <div className="mb-2 flex items-center justify-between text-xs text-zinc-500">
+                      <span className="capitalize">{label}</span>
+                      <span className="text-zinc-200">{value}</span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                      <div
+                        className="h-full rounded-full bg-rose-200/80"
+                        style={{ width: `${value}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="grid gap-3">
           {characterOptions.map((character) => {
             const isSelected = selectedCharacterId === character.id;
-            const isLocked = character.status === "locked";
 
             return (
               <button
                 key={character.id}
                 type="button"
-                disabled={isLocked}
                 onClick={() => onSelect(character)}
                 className={`grid grid-cols-[4rem_1fr_auto] items-center gap-4 rounded-[1.25rem] border p-4 text-left transition ${
                   isSelected
                     ? "border-white/35 bg-white/10"
                     : "border-white/10 bg-white/[0.035] hover:bg-white/[0.06]"
-                } ${isLocked ? "cursor-not-allowed opacity-45" : ""}`}
+                }`}
               >
-                <div className="relative flex h-16 w-16 items-center justify-center rounded-full border border-white/20 bg-zinc-100/80">
-                  <div
-                    className={`h-3 w-3 rounded-full ${
-                      isLocked ? "bg-zinc-500" : "bg-rose-300"
-                    }`}
+                <div className="relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-zinc-100/80">
+                  <Image
+                    src={character.imageGame}
+                    alt={character.name}
+                    width={46}
+                    height={46}
+                    className="h-11 w-11 object-contain"
                   />
                 </div>
 
@@ -75,19 +128,12 @@ export function CharacterSelect({
                     {character.role}
                   </p>
                   <p className="mt-2 text-xs leading-5 text-zinc-500">
-                    {character.trait}
+                    {character.ability}
                   </p>
                 </div>
 
                 <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">
-                  {isLocked ? (
-                    <span className="inline-flex items-center gap-2">
-                      <Lock className="h-3.5 w-3.5" />
-                      Proximamente
-                    </span>
-                  ) : (
-                    isSelected ? "Activa" : "Disponible"
-                  )}
+                  {isSelected ? "Activa" : "Disponible"}
                 </div>
               </button>
             );
@@ -99,7 +145,7 @@ export function CharacterSelect({
             className="mt-3 inline-flex w-fit items-center gap-2 justify-self-end rounded-full bg-white px-7 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200"
           >
             <Play className="h-4 w-4 fill-black" />
-            Iniciar
+            Seleccionar criatura
           </button>
         </div>
       </div>

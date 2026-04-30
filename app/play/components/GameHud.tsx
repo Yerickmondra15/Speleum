@@ -1,9 +1,12 @@
 "use client";
 
+import Image from "next/image";
 import { Heart, Pause, Play, Target } from "lucide-react";
-import type { Zone } from "../gameConfig";
+import { getSanityStateLabel } from "../gameLogic";
+import type { CharacterOption, Zone } from "../gameConfig";
 
 type GameHudProps = {
+  selectedCharacter: CharacterOption;
   zone: Zone;
   objective: string;
   message: string;
@@ -19,6 +22,7 @@ type GameHudProps = {
 };
 
 export function GameHud({
+  selectedCharacter,
   zone,
   objective,
   message,
@@ -32,12 +36,42 @@ export function GameHud({
   isPaused,
   onTogglePause,
 }: GameHudProps) {
+  const sanityLabel =
+    typeof sanity === "number" ? getSanityStateLabel(sanity) : null;
+
   return (
     <>
-      <div className="pointer-events-none absolute left-4 top-24 z-70 max-w-sm rounded-[1.25rem] border border-white/10 bg-black/55 p-4 backdrop-blur-md">
-        <p className="text-xs tracking-[0.25em] text-zinc-500">{zone.subtitle}</p>
-        <h2 className="mt-1 text-lg font-semibold text-white">{zone.name}</h2>
+      <div
+        className={`pointer-events-none absolute left-4 top-24 z-70 max-w-sm rounded-[1.25rem] border bg-black/55 p-4 backdrop-blur-md ${
+          sanityLabel === "critico"
+            ? "border-rose-200/35 shadow-[0_0_40px_rgba(251,113,133,0.14)]"
+            : "border-white/10"
+        }`}
+      >
+        <div className="flex items-start gap-3">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-zinc-100/90">
+            <Image
+              src={selectedCharacter.imageGame}
+              alt={selectedCharacter.name}
+              width={40}
+              height={40}
+              className="h-10 w-10 object-contain"
+            />
+          </div>
+          <div>
+            <p className="text-xs tracking-[0.25em] text-zinc-500">{zone.subtitle}</p>
+            <h2 className="mt-1 text-lg font-semibold text-white">{zone.name}</h2>
+            <p className="mt-1 text-xs text-zinc-500">{selectedCharacter.name}</p>
+          </div>
+        </div>
         <p className="mt-2 text-sm leading-6 text-zinc-300">{message}</p>
+        {sanityLabel && sanityLabel !== "estable" && (
+          <p className="mt-3 text-xs tracking-[0.16em] text-rose-100/80">
+            {sanityLabel === "critico"
+              ? "La quietud te esta rompiendo."
+              : "Tu estabilidad empieza a caer."}
+          </p>
+        )}
         {zoneMessage && (
           <p className="mt-3 rounded-xl border border-rose-200/10 bg-rose-200/5 px-3 py-2 text-xs tracking-[0.08em] text-rose-100/85">
             {zoneMessage}
@@ -65,7 +99,7 @@ export function GameHud({
         </div>
         {typeof sanity === "number" && typeof maxSanity === "number" && (
           <div className="mt-3 flex items-center justify-between text-xs text-zinc-400">
-            <span>Sanidad</span>
+            <span>Sanidad {sanityLabel ? `· ${sanityLabel}` : ""}</span>
             <span className="text-zinc-200">
               {Math.round(sanity)}/{maxSanity}
             </span>

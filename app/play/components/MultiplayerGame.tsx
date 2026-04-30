@@ -184,8 +184,12 @@ export function MultiplayerGame({
 
   const health = self?.combat.health ?? MAX_HEALTH;
   const sanity = self?.combat.sanity ?? MAX_SANITY;
-  const cooldownRemaining = Math.max(0, cooldownEndsAt - now);
+  const cooldownRemaining = Math.max(
+    self?.combat.moveCooldownRemaining ?? 0,
+    Math.max(0, cooldownEndsAt - now),
+  );
   const isDefending = Boolean(self?.combat.isDefending);
+  const threatLevel = self?.combat.threatLevel ?? "calm";
 
   const emitMovement = useEffectEvent(() => {
     if (!self || !gameState || gameState.status !== "playing" || gameStatus !== "playing") {
@@ -236,7 +240,7 @@ export function MultiplayerGame({
   };
 
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (event.repeat || gameStatus !== "playing") {
+    if (event.repeat || gameStatus !== "playing" || cooldownRemaining > 0) {
       return;
     }
 
@@ -288,6 +292,11 @@ export function MultiplayerGame({
   }, []);
 
   const handleMoveIntent = (target: PlayerPosition) => {
+    if (cooldownRemaining > 0) {
+      setMessage("Tu criatura aun recupera el impulso.");
+      return;
+    }
+
     pointerTargetRef.current = target;
     setActiveAction("move");
     setMessage("Avanzas con cuidado por la cueva.");
@@ -369,6 +378,7 @@ export function MultiplayerGame({
 
       <GameMap
         player={player}
+        playerCharacterId={selectedCharacter.id}
         enemy={enemy}
         otherPlayers={gameState.otherPlayers}
         signals={gameState.signals}
@@ -381,6 +391,7 @@ export function MultiplayerGame({
       />
 
       <GameHud
+        selectedCharacter={selectedCharacter}
         zone={currentZone}
         objective={objective}
         message={message}
@@ -410,6 +421,7 @@ export function MultiplayerGame({
         <p className="mt-2">Ultimos vivos: {gameState.aliveCount}</p>
         <p className="mt-2">Punto cercano: {nearestPoint?.label ?? currentZone.name}</p>
         <p className="mt-2">Vision: 8 casillas alrededor.</p>
+        <p className="mt-2">Quietud: {threatLevel}</p>
         <div className="mt-3 inline-flex items-center gap-2 text-xs tracking-[0.2em] text-cyan-100">
           <Radio className="h-4 w-4" />
           {self.combat.kills} bajas

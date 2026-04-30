@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import type { CharacterOption } from "../gameConfig";
 
@@ -30,8 +31,14 @@ export function LoadingCaveScreen({ selectedCharacter }: LoadingCaveScreenProps)
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.075),transparent_34%),radial-gradient(circle_at_bottom,rgba(82,9,20,0.28),transparent_46%)]" />
 
       <div className="relative text-center">
-        <div className="mx-auto flex h-28 w-28 items-center justify-center rounded-full border border-white/15 bg-zinc-100/90 shadow-[0_0_48px_rgba(255,255,255,0.22)]">
-          <div className="h-5 w-5 rounded-full bg-rose-300 shadow-[0_0_20px_rgba(253,164,175,0.95)]" />
+        <div className="mx-auto flex h-28 w-28 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-zinc-100/90 shadow-[0_0_48px_rgba(255,255,255,0.22)]">
+          <Image
+            src={selectedCharacter.imageGame}
+            alt={selectedCharacter.name}
+            width={72}
+            height={72}
+            className="h-18 w-18 animate-pulse object-contain"
+          />
         </div>
 
         <p className="mt-8 text-xs tracking-[0.35em] text-zinc-500">

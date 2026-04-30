@@ -8,18 +8,30 @@ import type {
   Zone,
 } from "./gameConfig";
 import {
+  CHASE_SANITY_DRAIN,
   CAVE_HEIGHT,
   CAVE_WIDTH,
   DEFEND_DAMAGE_REDUCTION,
+  FEAR_CRITICAL_THRESHOLD,
+  FEAR_WARNING_THRESHOLD,
+  IDLE_SANITY_DRAIN,
+  MOVE_BASE_COOLDOWN,
+  MOVE_BURST_IDLE_MS,
+  MOVE_DISTANCE_COOLDOWN,
+  MOVING_SANITY_RECOVERY,
   ENEMY_RADIUS,
   PLAYER_RADIUS,
   SAFE_ZONE_SANITY_RECOVERY,
   SANITY_DAMAGE_PER_TICK,
   SANITY_DAMAGE_THRESHOLD,
+  THREAT_DEATH_MS,
+  THREAT_HUNT_MS,
+  THREAT_WARNING_MS,
   caveWalls,
 } from "./gameConfig";
 
 export type EnemyMode = "patrol" | "chase";
+export type ThreatLevel = "calm" | "uneasy" | "hunted" | "doomed";
 
 export type EnemyState = {
   x: number;
@@ -211,15 +223,86 @@ export function applyDamage(
   return Math.max(0, Math.round(health - damage * mitigation));
 }
 
+export function calculateMoveCooldown(
+  distance: number,
+  moveCooldownMultiplier = 1,
+) {
+  if (distance <= 0) {
+    return 0;
+  }
+
+  return Math.round(
+    (MOVE_BASE_COOLDOWN + distance * MOVE_DISTANCE_COOLDOWN) *
+      moveCooldownMultiplier,
+  );
+}
+
+export function shouldFinalizeMoveBurst(lastMoveAt: number, now: number) {
+  return now - lastMoveAt >= MOVE_BURST_IDLE_MS;
+}
+
+export function getThreatLevel(idleMs: number): ThreatLevel {
+  if (idleMs >= THREAT_DEATH_MS) {
+    return "doomed";
+  }
+
+  if (idleMs >= THREAT_HUNT_MS) {
+    return "hunted";
+  }
+
+  if (idleMs >= THREAT_WARNING_MS) {
+    return "uneasy";
+  }
+
+  return "calm";
+}
+
+export function getSanityStateLabel(sanity: number) {
+  if (sanity <= FEAR_CRITICAL_THRESHOLD) {
+    return "critico";
+  }
+
+  if (sanity <= FEAR_WARNING_THRESHOLD) {
+    return "inestable";
+  }
+
+  return "estable";
+}
+
 export function updateSanity(
   sanity: number,
   deltaSeconds: number,
-  isSafeZone: boolean,
+  zone: Zone,
+  isMoving: boolean,
+  threatLevel: ThreatLevel,
+  enemyMode: EnemyMode,
   darknessDrainPerSecond: number,
 ) {
-  const delta = isSafeZone
-    ? SAFE_ZONE_SANITY_RECOVERY * deltaSeconds
-    : -darknessDrainPerSecond * deltaSeconds;
+  let delta = 0;
+
+  if (zone.tone === "safe") {
+    delta += SAFE_ZONE_SANITY_RECOVERY * deltaSeconds;
+  } else {
+    delta -= (darknessDrainPerSecond + zone.pressure) * deltaSeconds;
+  }
+
+  if (isMoving) {
+    delta += MOVING_SANITY_RECOVERY * deltaSeconds;
+  } else {
+    delta -= IDLE_SANITY_DRAIN * deltaSeconds;
+  }
+
+  if (threatLevel === "uneasy") {
+    delta -= 3 * deltaSeconds;
+  } else if (threatLevel === "hunted") {
+    delta -= 7 * deltaSeconds;
+  } else if (threatLevel === "doomed") {
+    delta -= 12 * deltaSeconds;
+  }
+
+  if (enemyMode === "chase") {
+    delta -= CHASE_SANITY_DRAIN * deltaSeconds;
+  }
 
   return clamp(Math.round((sanity + delta) * 100) / 100, 0, 100);
 }

@@ -21,6 +21,10 @@ function markerStyle(position: PlayerPosition) {
 }
 
 function signalClass(type: RadarSignal["type"]) {
+  if (type === "danger") {
+    return "h-4.5 w-4.5 border-rose-200 bg-rose-300/30 shadow-[0_0_18px_rgba(251,113,133,0.55)]";
+  }
+
   if (type === "attack") {
     return "h-5 w-5 border-red-200 bg-red-400/40 shadow-[0_0_22px_rgba(248,113,113,0.75)]";
   }

@@ -11,7 +11,9 @@ import type {
 import {
   ATTACK_COOLDOWN,
   DEFEND_COOLDOWN,
+  DARKNESS_SANITY_DRAIN,
   MAX_HEALTH,
+  MAX_SANITY,
   PLAYER_SPEED,
   caveZones,
   goalArea,
@@ -22,14 +24,20 @@ import {
 } from "../gameConfig";
 import {
   clampToMap,
+  calculateMoveCooldown,
   createEnemyState,
   distanceBetween,
+  getThreatLevel,
   getZoneForPosition,
   hitHazard,
+  limitMoveDistance,
   moveTowardPosition,
   moveWithCollisions,
   reachedGoal,
+  sanityHealthPenalty,
+  shouldFinalizeMoveBurst,
   updateEnemyState,
+  updateSanity,
 } from "../gameLogic";
 import type { RadarSignal, SignalType } from "../types";
 import { ActionControls } from "./ActionControls";
@@ -84,6 +92,8 @@ export function TacticalGame({
   const [defendingUntil, setDefendingUntil] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const [health, setHealth] = useState(MAX_HEALTH);
+  const [sanity, setSanity] = useState(MAX_SANITY);
+  const [threatLevel, setThreatLevel] = useState<ReturnType<typeof getThreatLevel>>("calm");
   const [signals, setSignals] = useState<RadarSignal[]>([]);
   const [message, setMessage] = useState(
     "Sobrevive a la cueva y mantente fuera del alcance del acechante.",
@@ -98,9 +108,14 @@ export function TacticalGame({
   const enemyRef = useRef(enemy);
   const gameStatusRef = useRef(gameStatus);
   const defendingUntilRef = useRef(defendingUntil);
+  const healthRef = useRef(MAX_HEALTH);
+  const sanityRef = useRef(MAX_SANITY);
   const pointerTargetRef = useRef<PlayerPosition | null>(null);
   const keyStateRef = useRef<DirectionState>(emptyDirectionState());
   const lastZoneIdRef = useRef(caveZones[0]?.id ?? "");
+  const lastMoveAtRef = useRef(0);
+  const movementBurstDistanceRef = useRef(0);
+  const lastThreatLevelRef = useRef(getThreatLevel(0));
 
   const currentZone = useMemo(
     () => getZoneForPosition(player, caveZones),
@@ -116,8 +131,22 @@ export function TacticalGame({
   }, [player]);
 
   useEffect(() => {
+    if (lastMoveAtRef.current === 0) {
+      lastMoveAtRef.current = Date.now();
+    }
+  }, []);
+
+  useEffect(() => {
     enemyRef.current = enemy;
   }, [enemy]);
+
+  useEffect(() => {
+    healthRef.current = health;
+  }, [health]);
+
+  useEffect(() => {
+    sanityRef.current = sanity;
+  }, [sanity]);
 
   useEffect(() => {
     gameStatusRef.current = gameStatus;
@@ -158,7 +187,13 @@ export function TacticalGame({
 
   const addSignal = (type: SignalType, position: PlayerPosition) => {
     const baseDuration =
-      type === "attack" ? 1900 : type === "move" ? 1300 : 950;
+      type === "attack"
+        ? 1900
+        : type === "move"
+          ? 1300
+          : type === "danger"
+            ? 1200
+            : 950;
     const duration =
       type === "move"
         ? Math.round(baseDuration * selectedCharacter.moveSignalMultiplier)
@@ -273,17 +308,65 @@ export function TacticalGame({
     );
 
     let nextPlayer = playerRef.current;
+    let movedDistance = 0;
 
     if (
       gameStatusRef.current === "playing" &&
-      time >= defendingUntilRef.current
+      time >= defendingUntilRef.current &&
+      time >= cooldownEndsAt
     ) {
       nextPlayer = movePlayerTowardTarget(playerRef.current, deltaSeconds);
+      movedDistance = distanceBetween(nextPlayer, playerRef.current);
 
-      if (distanceBetween(nextPlayer, playerRef.current) > 0.1) {
+      if (movedDistance > 0.1) {
         playerRef.current = nextPlayer;
         setPlayer(nextPlayer);
+        lastMoveAtRef.current = time;
+        movementBurstDistanceRef.current += movedDistance;
       }
+    }
+
+    if (
+      movementBurstDistanceRef.current > 0 &&
+      shouldFinalizeMoveBurst(lastMoveAtRef.current, time) &&
+      time >= cooldownEndsAt
+    ) {
+      setCooldownEndsAt(
+        time +
+          calculateMoveCooldown(
+            movementBurstDistanceRef.current,
+            selectedCharacter.moveCooldownMultiplier,
+          ),
+      );
+      movementBurstDistanceRef.current = 0;
+    }
+
+    const idleMs = time - lastMoveAtRef.current;
+    const threatLevel = getThreatLevel(idleMs);
+    setThreatLevel(threatLevel);
+
+    if (
+      threatLevel !== lastThreatLevelRef.current &&
+      threatLevel !== "calm" &&
+      gameStatusRef.current === "playing"
+    ) {
+      addSignal("danger", playerRef.current);
+      setMessage(
+        threatLevel === "uneasy"
+          ? "La quietud se vuelve peligrosa. Muevete."
+          : "Algo responde a tu inmovilidad. Rompe el silencio.",
+      );
+      lastThreatLevelRef.current = threatLevel;
+    } else if (threatLevel === "calm") {
+      lastThreatLevelRef.current = "calm";
+    }
+
+    if (threatLevel === "doomed" && gameStatusRef.current === "playing") {
+      applyOutcome({
+        status: "lost",
+        message: "Te quedaste quieto demasiado tiempo y la cueva te encontro.",
+      });
+      return;
     }
 
     const nextEnemy = updateEnemyState(
@@ -297,7 +380,35 @@ export function TacticalGame({
     enemyRef.current = nextEnemy;
     setEnemy(nextEnemy);
 
+    const zone = getZoneForPosition(nextPlayer, caveZones);
+    const nextSanity = updateSanity(
+      sanityRef.current,
+      deltaSeconds,
+      zone,
+      movedDistance > 0.1,
+      threatLevel,
+      nextEnemy.mode,
+      DARKNESS_SANITY_DRAIN,
+    );
+    setSanity(nextSanity);
+
+    const sanityDamage = sanityHealthPenalty(nextSanity, deltaSeconds);
+
+    if (sanityDamage > 0 && gameStatusRef.current === "playing") {
+      const nextHealth = Math.max(0, healthRef.current - sanityDamage);
+      healthRef.current = nextHealth;
+      setHealth(nextHealth);
+    }
+
     if (gameStatusRef.current === "playing") {
+      if (sanityDamage > 0 && healthRef.current <= 0) {
+        applyOutcome({
+          status: "lost",
+          message: "El miedo te vacio por completo. La cueva te reclamo.",
+        });
+        return;
+      }
+
       applyOutcome(
         getOutcome(nextPlayer, {
           x: nextEnemy.x,
@@ -342,8 +453,17 @@ export function TacticalGame({
       return;
     }
 
+    if (cooldownRemaining > 0) {
+      setMessage("Tu criatura aun recupera el impulso anterior.");
+      return;
+    }
+
     setActiveAction("move");
-    pointerTargetRef.current = clampToMap(target);
+    pointerTargetRef.current = limitMoveDistance(
+      playerRef.current,
+      clampToMap(target),
+      selectedCharacter.moveRange,
+    );
     addSignal("move", playerRef.current);
     setMessage("Te deslizas hacia la zona marcada. Mantente lejos del acechante.");
   };
@@ -389,6 +509,11 @@ export function TacticalGame({
       return;
     }
 
+    if (cooldownRemaining > 0) {
+      setMessage("Aun no puedes volver a moverte.");
+      return;
+    }
+
     setActiveAction("move");
     setMessage("Usa clic o teclado para moverte con suavidad por la cueva.");
   };
@@ -425,6 +550,10 @@ export function TacticalGame({
     }
 
     if (gameStatusRef.current !== "playing") {
+      return;
+    }
+
+    if (cooldownEndsAt > Date.now()) {
       return;
     }
 
@@ -500,11 +629,18 @@ export function TacticalGame({
     setDefendingUntil(0);
     defendingUntilRef.current = 0;
     setHealth(MAX_HEALTH);
+    healthRef.current = MAX_HEALTH;
+    setSanity(MAX_SANITY);
+    sanityRef.current = MAX_SANITY;
     setSignals([]);
     setMessage("Sobrevive a la cueva y mantente fuera del alcance del acechante.");
     showZoneMessage(caveZones[0]?.ambient ?? "");
     lastZoneIdRef.current = caveZones[0]?.id ?? "";
     previousTimeRef.current = null;
+    lastMoveAtRef.current = Date.now();
+    movementBurstDistanceRef.current = 0;
+    lastThreatLevelRef.current = "calm";
+    setThreatLevel("calm");
   };
 
   return (
@@ -536,6 +672,7 @@ export function TacticalGame({
 
       <GameMap
         player={player}
+        playerCharacterId={selectedCharacter.id}
         enemy={enemy}
         signals={signals}
         activeAction={activeAction}
@@ -546,12 +683,15 @@ export function TacticalGame({
       />
 
       <GameHud
+        selectedCharacter={selectedCharacter}
         zone={currentZone}
         objective={objective}
         message={message}
         zoneMessage={zoneMessage}
         health={health}
         maxHealth={MAX_HEALTH}
+        sanity={sanity}
+        maxSanity={MAX_SANITY}
         enemyStateLabel={enemyStateLabel}
         isPaused={gameStatus === "paused"}
         onTogglePause={togglePause}
@@ -570,6 +710,7 @@ export function TacticalGame({
         <p className="text-xs tracking-[0.25em] text-zinc-500">REFERENCIA</p>
         <p className="mt-2">Objetivo: {objective}</p>
         <p className="mt-2">Zona cercana: {nearestPoint?.label ?? currentZone.name}</p>
+        <p className="mt-2">Quietud: {threatLevel}</p>
       </div>
 
       <ActionControls

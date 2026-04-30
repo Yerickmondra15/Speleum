@@ -79,8 +79,14 @@ export function PlayMenu({
         </div>
 
         <div className="mt-14 flex items-center gap-4 text-left">
-          <div className="relative flex h-16 w-16 items-center justify-center rounded-full border border-white/25 bg-zinc-100/90 shadow-[0_0_34px_rgba(255,255,255,0.25)]">
-            <div className="h-3.5 w-3.5 rounded-full bg-rose-300 shadow-[0_0_18px_rgba(253,164,175,0.9)]" />
+          <div className="relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-white/25 bg-zinc-100/90 shadow-[0_0_34px_rgba(255,255,255,0.25)]">
+            <Image
+              src={selectedCharacter.imageGame}
+              alt={selectedCharacter.name}
+              width={48}
+              height={48}
+              className="h-12 w-12 object-contain"
+            />
           </div>
           <div>
             <p className="text-sm font-semibold text-white">
