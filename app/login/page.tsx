@@ -13,7 +13,7 @@ import {
   User,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
-import { readSession, writeSession } from "@/lib/session";
+import { useAuth } from "../auth/AuthProvider";
 
 type AuthMode = "login" | "register";
 type FocusedField =
@@ -137,92 +137,233 @@ function CaveAxolotl({
 
   const isCoveringEyes = eyePosition === "closed";
 
+  const pupilOffset =
+    eyePosition === "left" ? -2.5 : eyePosition === "right" ? 2.5 : 0;
+
+  const eyeColor = showAlert ? "#ffe0ea" : "#f4f4f5";
+  const eyeGlow = showAlert ? "0.9" : "0.45";
+
   return (
-    <div className="relative flex items-center justify-center">
-      <svg viewBox="0 0 160 100" className="relative h-24 w-36 overflow-visible">
-        <ellipse
-          cx="82"
-          cy="55"
-          rx="42"
-          ry="24"
-          className={`transition-all duration-300 ${
-            showAlert ? "fill-rose-500/10" : "fill-rose-400/5"
-          }`}
-        />
-        <path
-          d="M118 58 C134 50, 147 56, 150 64 C145 68, 133 71, 118 65 Z"
-          className="fill-zinc-800"
-        />
-        <ellipse
-          cx="88"
-          cy="57"
-          rx="38"
-          ry="21"
-          className="fill-zinc-800"
-        />
-        <ellipse cx="48" cy="46" rx="26" ry="20" className="fill-zinc-800" />
+    <div className="relative flex items-center justify-center py-1">
+      <svg
+        viewBox="0 0 220 125"
+        className="relative h-28 w-44 overflow-visible"
+        aria-hidden="true"
+      >
+        <defs>
+          <radialGradient id="crabEyeGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#ffe4ec" />
+            <stop offset="55%" stopColor="#fb7185" />
+            <stop offset="100%" stopColor="#fb718500" />
+          </radialGradient>
 
-        <g className={showAlert ? "fill-rose-300/90" : "fill-rose-400/75"}>
-          <path d="M24 31 C14 20, 10 19, 14 33 C17 37, 22 37, 24 31 Z" />
-          <path d="M29 27 C23 13, 19 13, 21 29 C23 34, 28 33, 29 27 Z" />
-          <path d="M35 25 C33 11, 29 11, 30 26 C31 31, 35 30, 35 25 Z" />
-          <path d="M61 31 C71 20, 75 19, 71 33 C68 37, 63 37, 61 31 Z" />
-          <path d="M56 27 C62 13, 66 13, 64 29 C62 34, 57 33, 56 27 Z" />
-          <path d="M50 25 C52 11, 56 11, 55 26 C54 31, 50 30, 50 25 Z" />
-        </g>
+          <linearGradient id="crabShell" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor={showAlert ? "#30272d" : "#29292e"} />
+            <stop offset="100%" stopColor="#111113" />
+          </linearGradient>
 
-        {isCoveringEyes ? (
-          <>
-            <ellipse
-              cx="37"
-              cy="44"
-              rx="8"
-              ry="5"
-              transform="rotate(-18 37 44)"
-              className="fill-zinc-700"
-            />
-            <ellipse
-              cx="57"
-              cy="44"
-              rx="8"
-              ry="5"
-              transform="rotate(18 57 44)"
-              className="fill-zinc-700"
-            />
-          </>
-        ) : (
-          <>
-            <circle cx="39" cy="43" r="7" className="fill-white" />
-            <circle cx="57" cy="43" r="7" className="fill-white" />
-            <circle
-              cx={
-                eyePosition === "left" ? 36.5 : eyePosition === "right" ? 41.5 : 39
-              }
-              cy="43.5"
-              r="3.2"
-              className={showAlert ? "fill-rose-300" : "fill-zinc-900"}
-            />
-            <circle
-              cx={
-                eyePosition === "left" ? 54.5 : eyePosition === "right" ? 59.5 : 57
-              }
-              cy="43.5"
-              r="3.2"
-              className={showAlert ? "fill-rose-300" : "fill-zinc-900"}
-            />
-          </>
-        )}
+          <linearGradient id="crabClaw" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor={showAlert ? "#9b5c6b" : "#6b4a55"} />
+            <stop offset="100%" stopColor={showAlert ? "#4a222d" : "#32242a"} />
+          </linearGradient>
 
-        {showAlert ? (
-          <ellipse cx="48" cy="60" rx="4.5" ry="3.5" className="fill-zinc-900" />
-        ) : (
+          <linearGradient id="crabLeg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#27272c" />
+            <stop offset="100%" stopColor="#09090b" />
+          </linearGradient>
+        </defs>
+
+        {/* sombra */}
+        <ellipse cx="110" cy="100" rx="70" ry="12" className="fill-black/45" />
+
+        {/* criatura */}
+        <g>
+          <animateTransform
+            attributeName="transform"
+            type="translate"
+            values="0 0; 0 -2; 0 0"
+            dur="4.5s"
+            repeatCount="indefinite"
+          />
+
+          {/* patas traseras */}
+          <g fill="url(#crabLeg)" stroke="#18181b" strokeWidth="1.4">
+            <path d="M60 64 C42 55 26 58 19 70 C31 72 46 70 61 66 Z" />
+            <path d="M61 76 C43 76 29 84 25 97 C39 95 52 89 65 80 Z" />
+            <path d="M160 64 C178 55 194 58 201 70 C189 72 174 70 159 66 Z" />
+            <path d="M159 76 C177 76 191 84 195 97 C181 95 168 89 155 80 Z" />
+          </g>
+
+          {/* pinza izquierda */}
+          <g
+            className="transition-all duration-300"
+            transform={
+              isCoveringEyes
+                ? "translate(15 -8) rotate(13 70 76)"
+                : showAlert
+                  ? "translate(-2 -5) rotate(-8 70 76)"
+                  : "rotate(-2 70 76)"
+            }
+          >
+            <path
+              d="M52 76 C36 61 17 63 11 79 C7 93 23 105 42 98 C55 94 64 84 72 72 Z"
+              fill="url(#crabClaw)"
+              stroke="#111113"
+              strokeWidth="1.8"
+            />
+            <path
+              d="M72 72 C55 68 42 73 36 88 C51 88 63 82 75 73 Z"
+              className="fill-zinc-950"
+            />
+            <path
+              d="M25 77 C38 69 56 71 70 76"
+              className="fill-none stroke-rose-100/25"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+            />
+            <circle cx="45" cy="82" r="2.2" className="fill-rose-100/20" />
+          </g>
+
+          {/* pinza derecha */}
+          <g
+            className="transition-all duration-300"
+            transform={
+              isCoveringEyes
+                ? "translate(-15 -8) rotate(-13 150 76)"
+                : showAlert
+                  ? "translate(2 -5) rotate(8 150 76)"
+                  : "rotate(2 150 76)"
+            }
+          >
+            <path
+              d="M168 76 C184 61 203 63 209 79 C213 93 197 105 178 98 C165 94 156 84 148 72 Z"
+              fill="url(#crabClaw)"
+              stroke="#111113"
+              strokeWidth="1.8"
+            />
+            <path
+              d="M148 72 C165 68 178 73 184 88 C169 88 157 82 145 73 Z"
+              className="fill-zinc-950"
+            />
+            <path
+              d="M195 77 C182 69 164 71 150 76"
+              className="fill-none stroke-rose-100/25"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+            />
+            <circle cx="175" cy="82" r="2.2" className="fill-rose-100/20" />
+          </g>
+
+          {/* caparazón */}
           <path
-            d="M41 58 Q48 63 55 58"
-            className="fill-none stroke-zinc-500"
-            strokeWidth="2"
+            d="M48 58 C51 32 74 19 110 19 C146 19 169 32 172 58 C169 83 145 95 110 95 C75 95 51 83 48 58 Z"
+            fill="url(#crabShell)"
+            stroke={showAlert ? "#fb7185" : "#27272a"}
+            strokeWidth={showAlert ? "1.4" : "1"}
+            className="transition-all duration-300"
+          />
+
+          {/* borde frontal */}
+          <path
+            d="M61 72 C76 85 91 89 110 89 C129 89 144 85 159 72 C145 79 126 82 110 82 C94 82 75 79 61 72 Z"
+            className="fill-black/25"
+          />
+
+          {/* picos */}
+          <g className={showAlert ? "fill-rose-200/45" : "fill-zinc-600/70"}>
+            <path d="M67 38 L76 21 L85 40 Z" />
+            <path d="M100 28 L110 8 L121 29 Z" />
+            <path d="M136 38 L146 22 L154 41 Z" />
+            <path d="M52 59 L61 48 L68 61 Z" />
+            <path d="M152 61 L160 48 L168 60 Z" />
+          </g>
+
+          {/* textura de roca */}
+          <g className="fill-zinc-700/30">
+            <circle cx="82" cy="49" r="3" />
+            <circle cx="101" cy="39" r="2.4" />
+            <circle cx="121" cy="44" r="3.2" />
+            <circle cx="139" cy="58" r="2.8" />
+            <circle cx="72" cy="64" r="2.5" />
+            <circle cx="110" cy="61" r="4" />
+          </g>
+
+          {/* brillo suave detrás */}
+          <ellipse
+            cx="110"
+            cy="63"
+            rx="58"
+            ry="38"
+            className={showAlert ? "fill-rose-500/10" : "fill-rose-400/5"}
+          />
+
+          {/* ojos */}
+          <g>
+            <circle
+              cx="88"
+              cy="60"
+              r="15"
+              fill="url(#crabEyeGlow)"
+              opacity={eyeGlow}
+            />
+            <circle
+              cx="132"
+              cy="60"
+              r="15"
+              fill="url(#crabEyeGlow)"
+              opacity={eyeGlow}
+            />
+
+            {isCoveringEyes ? (
+              <g
+                className="fill-none stroke-rose-100/70"
+                strokeWidth="2"
+                strokeLinecap="round"
+              >
+                <path d="M79 61 C84 65 92 65 97 61" />
+                <path d="M123 61 C128 65 136 65 141 61" />
+              </g>
+            ) : (
+              <>
+                <circle cx="88" cy="60" r="7.3" fill={eyeColor} />
+                <circle cx="132" cy="60" r="7.3" fill={eyeColor} />
+
+                <circle
+                  cx={88 + pupilOffset}
+                  cy="61"
+                  r="3"
+                  className={showAlert ? "fill-rose-500" : "fill-zinc-950"}
+                />
+                <circle
+                  cx={132 + pupilOffset}
+                  cy="61"
+                  r="3"
+                  className={showAlert ? "fill-rose-500" : "fill-zinc-950"}
+                />
+
+                <circle cx="85" cy="57" r="1.4" className="fill-white/70" />
+                <circle cx="129" cy="57" r="1.4" className="fill-white/70" />
+              </>
+            )}
+          </g>
+
+          {/* boca */}
+          <path
+            d={showAlert ? "M99 75 Q110 72 121 75" : "M97 73 Q110 80 123 73"}
+            className="fill-none stroke-zinc-400/70"
+            strokeWidth="1.7"
             strokeLinecap="round"
           />
-        )}
+
+          {/* alerta */}
+          {showAlert && (
+            <g className="stroke-rose-300/80" strokeWidth="1.8" strokeLinecap="round">
+              <path d="M48 35 L39 26" />
+              <path d="M172 35 L181 26" />
+              <path d="M110 12 L110 3" />
+            </g>
+          )}
+        </g>
       </svg>
     </div>
   );
@@ -291,13 +432,15 @@ const containerVariants = {
 
 export default function LoginPage() {
   const router = useRouter();
+  const { login, register, status } = useAuth();
   const typingTimeoutRef = useRef<number | null>(null);
-  const [session] = useState(() => readSession());
   const [mode, setMode] = useState<AuthMode>("login");
   const [focusedField, setFocusedField] = useState<FocusedField>("none");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     username: "",
     email: "",
@@ -312,10 +455,10 @@ export default function LoginPage() {
   });
 
   useEffect(() => {
-    if (session?.isLoggedIn) {
+    if (status === "signed-in") {
       router.replace("/");
     }
-  }, [router, session]);
+  }, [router, status]);
 
   const validateForm = useMemo(() => {
     const nextErrors: FormErrors = {};
@@ -329,7 +472,7 @@ export default function LoginPage() {
     }
 
     if (touched.password && formData.password.length < 6) {
-      nextErrors.password = "La contrasena debe tener al menos 6 caracteres.";
+      nextErrors.password = "La contraseña debe tener al menos 6 caracteres.";
     }
 
     if (
@@ -337,13 +480,22 @@ export default function LoginPage() {
       touched.confirmPassword &&
       formData.password !== formData.confirmPassword
     ) {
-      nextErrors.confirmPassword = "Las contrasenas no coinciden.";
+      nextErrors.confirmPassword = "Las contraseñas no coinciden.";
     }
 
     return nextErrors;
   }, [formData, mode, touched]);
 
   const currentErrors = validateForm;
+
+  const isFormReady =
+    validateEmail(formData.email) &&
+    formData.password.length >= 6 &&
+    (mode === "login"
+      ? true
+      : formData.username.trim().length >= 3 &&
+        formData.confirmPassword.length > 0 &&
+        formData.password === formData.confirmPassword);
 
   const passwordsMatch =
     formData.confirmPassword === "" || formData.password === formData.confirmPassword;
@@ -379,6 +531,7 @@ export default function LoginPage() {
     }
 
     setMode(nextMode);
+    setSubmitError(null);
     setTouched({
       username: false,
       email: false,
@@ -393,8 +546,9 @@ export default function LoginPage() {
     });
   };
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setSubmitError(null);
 
     const nextTouched = {
       username: true,
@@ -416,11 +570,11 @@ export default function LoginPage() {
       }
 
       if (formData.password.length < 6) {
-        nextErrors.password = "La contrasena debe tener al menos 6 caracteres.";
+        nextErrors.password = "La contraseña debe tener al menos 6 caracteres.";
       }
 
       if (mode === "register" && formData.password !== formData.confirmPassword) {
-        nextErrors.confirmPassword = "Las contrasenas no coinciden.";
+        nextErrors.confirmPassword = "Las contraseñas no coinciden.";
       }
 
       return nextErrors;
@@ -430,27 +584,38 @@ export default function LoginPage() {
       return;
     }
 
-    writeSession({
-      username:
-        mode === "register"
-          ? formData.username.trim()
-          : formData.email.split("@")[0]?.trim() || "spelunker",
-      email: formData.email.trim(),
-      isLoggedIn: true,
-    });
+    try {
+      setIsSubmitting(true);
 
-    setSuccess(
-      mode === "login"
-        ? "Sesion iniciada correctamente"
-        : "Cuenta creada correctamente",
-    );
+      if (mode === "login") {
+        await login(formData.email.trim(), formData.password);
+      } else {
+        await register(
+          formData.username.trim(),
+          formData.email.trim(),
+          formData.password,
+        );
+      }
 
-    window.setTimeout(() => {
-      router.replace("/");
-    }, 1200);
+      setSuccess(
+        mode === "login"
+          ? "Sesión iniciada correctamente"
+          : "Cuenta creada correctamente",
+      );
+
+      window.setTimeout(() => {
+        router.replace("/");
+      }, 1200);
+    } catch (error) {
+      setSubmitError(
+        error instanceof Error ? error.message : "No se pudo completar la autenticación.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  if (session?.isLoggedIn) {
+  if (status === "signed-in") {
     return (
       <main className="flex min-h-screen items-center justify-center bg-black text-zinc-400">
         Cargando...
@@ -492,7 +657,10 @@ export default function LoginPage() {
               Entrar a Speleum
             </h1>
             <p className="mt-2 text-sm text-zinc-400">
-              Inicia sesion o registra tu criatura para volver a la cueva.
+              Inicia sesión o registra tu criatura para volver a la cueva.
+            </p>
+            <p className="mx-auto mt-4 max-w-xs text-xs uppercase tracking-[0.22em] text-rose-300/70">
+              Seguridad reforzada, acceso rápido y experiencia inmersiva
             </p>
           </div>
 
@@ -517,17 +685,19 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() => handleModeChange("login")}
+              aria-pressed={mode === "login"}
               className={`relative z-10 flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
                 mode === "login"
                   ? "text-rose-300"
                   : "text-zinc-400 hover:text-zinc-300"
               }`}
             >
-              Iniciar sesion
+              Iniciar sesión
             </button>
             <button
               type="button"
               onClick={() => handleModeChange("register")}
+              aria-pressed={mode === "register"}
               className={`relative z-10 flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
                 mode === "register"
                   ? "text-rose-300"
@@ -538,7 +708,7 @@ export default function LoginPage() {
             </button>
           </div>
 
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit} noValidate>
             <AnimatePresence mode="wait">
               <motion.div
                 key={mode}
@@ -555,6 +725,8 @@ export default function LoginPage() {
                       <input
                         type="text"
                         placeholder="Nombre de usuario"
+                        autoComplete="username"
+                        minLength={3}
                         value={formData.username}
                         onChange={(event) =>
                           handleInputChange("username", event.target.value)
@@ -575,7 +747,8 @@ export default function LoginPage() {
                     <Mail className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
                     <input
                       type="email"
-                      placeholder="Correo electronico"
+                      placeholder="Correo electrónico"
+                      autoComplete="email"
                       value={formData.email}
                       onChange={(event) => handleInputChange("email", event.target.value)}
                       onFocus={() => setFocusedField("email")}
@@ -593,7 +766,9 @@ export default function LoginPage() {
                     <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
                     <input
                       type={showPassword ? "text" : "password"}
-                      placeholder="Contrasena"
+                      placeholder="Contraseña"
+                      autoComplete={mode === "login" ? "current-password" : "new-password"}
+                      minLength={6}
                       value={formData.password}
                       onChange={(event) =>
                         handleInputChange("password", event.target.value)
@@ -605,6 +780,7 @@ export default function LoginPage() {
                     <button
                       type="button"
                       onClick={() => setShowPassword((current) => !current)}
+                      aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
                       className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 transition-colors hover:text-zinc-300"
                     >
                       {showPassword ? (
@@ -625,7 +801,9 @@ export default function LoginPage() {
                       <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
                       <input
                         type={showConfirmPassword ? "text" : "password"}
-                        placeholder="Confirmar contrasena"
+                        placeholder="Confirmar contraseña"
+                        autoComplete="new-password"
+                        minLength={6}
                         value={formData.confirmPassword}
                         onChange={(event) =>
                           handleInputChange("confirmPassword", event.target.value)
@@ -637,6 +815,7 @@ export default function LoginPage() {
                       <button
                         type="button"
                         onClick={() => setShowConfirmPassword((current) => !current)}
+                        aria-label={showConfirmPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
                         className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 transition-colors hover:text-zinc-300"
                       >
                         {showConfirmPassword ? (
@@ -655,11 +834,33 @@ export default function LoginPage() {
                 )}
 
                 <motion.div variants={formVariants}>
+                  {submitError && (
+                    <div
+                      role="alert"
+                      className="rounded-xl border border-rose-400/20 bg-rose-950/30 px-4 py-3 text-sm text-rose-200"
+                    >
+                      {submitError}
+                    </div>
+                  )}
+                </motion.div>
+
+                <motion.div variants={formVariants}>
                   <button
                     type="submit"
-                    className="w-full rounded-xl bg-rose-400/80 py-3 text-sm font-semibold text-white shadow-lg shadow-rose-500/20 transition-all hover:bg-rose-400 hover:shadow-rose-500/30 active:scale-[0.98]"
+                    disabled={isSubmitting || !isFormReady}
+                    aria-disabled={isSubmitting || !isFormReady}
+                    aria-busy={isSubmitting}
+                    className={`w-full rounded-xl py-3 text-sm font-semibold text-white shadow-lg transition-all active:scale-[0.98] ${
+                      isSubmitting || !isFormReady
+                        ? "bg-rose-500/25 text-zinc-400 shadow-none"
+                        : "bg-rose-400/80 shadow-rose-500/20 hover:bg-rose-400 hover:shadow-rose-500/30"
+                    }`}
                   >
-                    {mode === "login" ? "Entrar" : "Crear cuenta"}
+                    {isSubmitting
+                      ? "Procesando..."
+                      : mode === "login"
+                        ? "Entrar"
+                        : "Crear cuenta"}
                   </button>
                 </motion.div>
               </motion.div>

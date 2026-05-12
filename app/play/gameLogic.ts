@@ -1,10 +1,12 @@
 import type {
+  EnemyBehaviorType,
   EnemyConfig,
   GameStatus,
   GoalArea,
   HazardArea,
   PlayerPosition,
   Rect,
+  TileCoordinate,
   Zone,
 } from "./gameConfig";
 import {
@@ -18,26 +20,49 @@ import {
   MOVE_BASE_COOLDOWN,
   MOVE_BURST_IDLE_MS,
   MOVE_DISTANCE_COOLDOWN,
+  MOVE_MAX_COOLDOWN,
   MOVING_SANITY_RECOVERY,
-  ENEMY_RADIUS,
   PLAYER_RADIUS,
   SAFE_ZONE_SANITY_RECOVERY,
   SANITY_DAMAGE_PER_TICK,
   SANITY_DAMAGE_THRESHOLD,
+  TILE_SIZE,
   THREAT_DEATH_MS,
   THREAT_HUNT_MS,
   THREAT_WARNING_MS,
   caveWalls,
 } from "./gameConfig";
+import {
+  clampTile,
+  getTileNeighbors,
+  isWalkableTile,
+  stepTowardTile,
+  tileDistance,
+  tileToWorld,
+  worldToTile,
+} from "./tileMap";
 
-export type EnemyMode = "patrol" | "chase";
+export type EnemyBehaviorState = "idle" | "patrol" | "alerted" | "attacking" | "dead";
 export type ThreatLevel = "calm" | "uneasy" | "hunted" | "doomed";
 
 export type EnemyState = {
+  id: string;
+  name: string;
+  behavior: EnemyBehaviorType;
+  spriteCharacterId: string;
   x: number;
   y: number;
-  mode: EnemyMode;
+  hp: number;
+  maxHp: number;
+  alive: boolean;
+  damage: number;
+  detectionRangeTiles: number;
+  attackRangeTiles: number;
+  giveUpRangeTiles: number;
+  tetherRangeTiles: number;
+  state: EnemyBehaviorState;
   patrolIndex: number;
+  lastKnownPlayerTileKey: string | null;
 };
 
 export function clamp(value: number, min: number, max: number) {
@@ -46,6 +71,21 @@ export function clamp(value: number, min: number, max: number) {
 
 export function distanceBetween(a: PlayerPosition, b: PlayerPosition) {
   return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+export function enemyStateLabel(state: EnemyBehaviorState) {
+  switch (state) {
+    case "idle":
+      return "idle";
+    case "patrol":
+      return "patrol";
+    case "alerted":
+      return "alerted";
+    case "attacking":
+      return "attacking";
+    case "dead":
+      return "dead";
+  }
 }
 
 export function isWithinVision(
@@ -231,10 +271,47 @@ export function calculateMoveCooldown(
     return 0;
   }
 
-  return Math.round(
-    (MOVE_BASE_COOLDOWN + distance * MOVE_DISTANCE_COOLDOWN) *
-      moveCooldownMultiplier,
+  const scaled = Math.round(distance * MOVE_DISTANCE_COOLDOWN * moveCooldownMultiplier);
+  return clamp(Math.max(MOVE_BASE_COOLDOWN, scaled), MOVE_BASE_COOLDOWN, MOVE_MAX_COOLDOWN);
+}
+
+export function getAdjacentTilePosition(
+  from: PlayerPosition,
+  delta: { col: number; row: number },
+) {
+  const tile = worldToTile(from);
+
+  return tileToWorld(
+    clampTile({
+      col: tile.col + delta.col,
+      row: tile.row + delta.row,
+    }),
   );
+}
+
+export function moveByTile(
+  from: PlayerPosition,
+  delta: { col: number; row: number },
+  radius = PLAYER_RADIUS,
+) {
+  const target = getAdjacentTilePosition(from, delta);
+
+  if (!canTravelBetween(from, target, radius) || !isWalkableTile(worldToTile(target))) {
+    return from;
+  }
+
+  return target;
+}
+
+export function getTileStepTowardPosition(from: PlayerPosition, target: PlayerPosition) {
+  const currentTile = worldToTile(from);
+  const targetTile = worldToTile(target);
+
+  if (currentTile.col === targetTile.col && currentTile.row === targetTile.row) {
+    return from;
+  }
+
+  return tileToWorld(stepTowardTile(currentTile, targetTile));
 }
 
 export function shouldFinalizeMoveBurst(lastMoveAt: number, now: number) {
@@ -275,7 +352,7 @@ export function updateSanity(
   zone: Zone,
   isMoving: boolean,
   threatLevel: ThreatLevel,
-  enemyMode: EnemyMode,
+  enemyState: EnemyBehaviorState,
   darknessDrainPerSecond: number,
 ) {
   let delta = 0;
@@ -300,7 +377,7 @@ export function updateSanity(
     delta -= 12 * deltaSeconds;
   }
 
-  if (enemyMode === "chase") {
+  if (enemyState === "alerted" || enemyState === "attacking") {
     delta -= CHASE_SANITY_DRAIN * deltaSeconds;
   }
 
@@ -317,53 +394,163 @@ export function sanityHealthPenalty(sanity: number, deltaSeconds: number) {
 
 export function createEnemyState(config: EnemyConfig): EnemyState {
   return {
+    id: config.id,
+    name: config.name,
+    behavior: config.behavior,
+    spriteCharacterId: config.spriteCharacterId,
     x: config.start.x,
     y: config.start.y,
-    mode: "patrol",
+    hp: config.hp,
+    maxHp: config.hp,
+    alive: true,
+    damage: config.damage,
+    detectionRangeTiles: Math.round(config.detectionRange / TILE_SIZE),
+    attackRangeTiles: Math.max(1, Math.round(config.touchRange / TILE_SIZE)),
+    giveUpRangeTiles: Math.round(config.giveUpRange / TILE_SIZE),
+    tetherRangeTiles: Math.round(config.tetherRange / TILE_SIZE),
+    state: config.behavior === "territorial" ? "idle" : "patrol",
     patrolIndex: 0,
+    lastKnownPlayerTileKey: null,
   };
+}
+
+function moveEnemyOneStep(
+  current: EnemyState,
+  target: TileCoordinate,
+): EnemyState {
+  const currentTile = worldToTile(current);
+  const nextTile = stepTowardTile(currentTile, target);
+
+  if (nextTile.col === currentTile.col && nextTile.row === currentTile.row) {
+    return current;
+  }
+
+  const nextPosition = tileToWorld(nextTile);
+
+  return {
+    ...current,
+    x: nextPosition.x,
+    y: nextPosition.y,
+  };
+}
+
+function advancePatrol(current: EnemyState, config: EnemyConfig): EnemyState {
+  if (config.patrolPoints.length === 0) {
+    return current;
+  }
+
+  const patrolTarget = config.patrolPoints[current.patrolIndex] ?? config.start;
+  const patrolTile = worldToTile(patrolTarget);
+  const currentTile = worldToTile(current);
+
+  if (tileDistance(currentTile, patrolTile) === 0) {
+    return {
+      ...current,
+      patrolIndex: (current.patrolIndex + 1) % config.patrolPoints.length,
+    };
+  }
+
+  return moveEnemyOneStep(current, patrolTile);
 }
 
 export function updateEnemyState(
   current: EnemyState,
   player: PlayerPosition,
   config: EnemyConfig,
-  deltaSeconds: number,
+  _deltaSeconds: number,
   gameStatus: GameStatus,
-) {
+): EnemyState {
   if (gameStatus !== "playing") {
     return current;
   }
 
-  const enemyPosition = { x: current.x, y: current.y };
-  const playerDistance = distanceBetween(enemyPosition, player);
-  const shouldChase = playerDistance <= config.detectionRange;
-  const shouldReturnToPatrol =
-    current.mode === "chase" && playerDistance >= config.giveUpRange;
-  const targetMode: EnemyMode =
-    shouldChase || (!shouldReturnToPatrol && current.mode === "chase")
-      ? "chase"
-      : "patrol";
+  if (current.alive === false || current.hp <= 0) {
+    return {
+      ...current,
+      alive: false,
+      hp: 0,
+      state: "dead",
+    };
+  }
 
-  const patrolTarget = config.patrolPoints[current.patrolIndex] ?? config.start;
-  const target = targetMode === "chase" ? player : patrolTarget;
-  const speed = targetMode === "chase" ? config.chaseSpeed : config.speed;
-  const nextPosition = moveTowardPosition(
-    enemyPosition,
-    target,
-    speed * deltaSeconds,
-    ENEMY_RADIUS,
-  );
+  const enemyTile = worldToTile(current);
+  const playerTile = worldToTile(player);
+  const homeTile = worldToTile(config.start);
+  const distanceToPlayer = tileDistance(enemyTile, playerTile);
+  const distanceFromHome = tileDistance(enemyTile, homeTile);
+  const inAttackRange = distanceToPlayer <= current.attackRangeTiles;
+  const detectsPlayer = distanceToPlayer <= current.detectionRangeTiles;
+  const lostPlayer = distanceToPlayer > current.giveUpRangeTiles;
+  const playerInsideTerritory = tileDistance(playerTile, homeTile) <= current.tetherRangeTiles;
 
-  const reachedPatrolPoint =
-    targetMode === "patrol" && distanceBetween(nextPosition, patrolTarget) < 20;
+  if (inAttackRange) {
+    return {
+      ...current,
+      state: "attacking",
+      lastKnownPlayerTileKey: `${playerTile.col},${playerTile.row}`,
+    };
+  }
+
+  if (current.behavior === "stalker") {
+    if (detectsPlayer || (current.state === "alerted" && !lostPlayer)) {
+      return {
+        ...moveEnemyOneStep(current, playerTile),
+        state: "alerted",
+        lastKnownPlayerTileKey: `${playerTile.col},${playerTile.row}`,
+      };
+    }
+
+    return {
+      ...advancePatrol(current, config),
+      state: "patrol",
+      lastKnownPlayerTileKey: null,
+    };
+  }
+
+  if (current.behavior === "territorial") {
+    if (detectsPlayer && playerInsideTerritory && distanceFromHome <= current.tetherRangeTiles + 1) {
+      return {
+        ...moveEnemyOneStep(current, playerTile),
+        state: "alerted",
+        lastKnownPlayerTileKey: `${playerTile.col},${playerTile.row}`,
+      };
+    }
+
+    if (distanceFromHome > 0) {
+      return {
+        ...moveEnemyOneStep(current, homeTile),
+        state: distanceFromHome <= 1 ? "idle" : "patrol",
+        lastKnownPlayerTileKey: null,
+      };
+    }
+
+    return {
+      ...current,
+      state: "idle",
+      lastKnownPlayerTileKey: null,
+    };
+  }
+
+  if (detectsPlayer || (current.state === "alerted" && !lostPlayer)) {
+    return {
+      ...moveEnemyOneStep(current, playerTile),
+      state: "alerted",
+      lastKnownPlayerTileKey: `${playerTile.col},${playerTile.row}`,
+    };
+  }
+
+  const pacedEnemy = advancePatrol(current, config);
 
   return {
-    x: nextPosition.x,
-    y: nextPosition.y,
-    mode: targetMode,
-    patrolIndex: reachedPatrolPoint
-      ? (current.patrolIndex + 1) % config.patrolPoints.length
-      : current.patrolIndex,
+    ...pacedEnemy,
+    state:
+      pacedEnemy.x === current.x && pacedEnemy.y === current.y
+        ? "idle"
+        : "patrol",
+    lastKnownPlayerTileKey: null,
   };
+}
+
+export function getVisibleNeighbors(origin: PlayerPosition) {
+  return getTileNeighbors(worldToTile(origin)).map(tileToWorld);
 }

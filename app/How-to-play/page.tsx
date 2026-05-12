@@ -30,17 +30,17 @@ const cards = [
   {
     icon: Eye,
     title: "Vision limitada",
-    text: "La cueva no se revela completa. Tu criatura ilumina una zona cercana, asi que explorar tambien significa recordar caminos.",
+    text: "Tu criatura solo percibe 8 casillas a su alrededor. Fuera de ese pulso visual, la cueva vuelve a cerrarse en oscuridad.",
   },
   {
     icon: Footprints,
-    title: "Movimiento tactico",
-    text: "Elige Mover y marca un destino. Si el trayecto choca con roca, el movimiento se bloquea.",
+    title: "Movimiento por ecos",
+    text: "Selecciona una celda dentro de tu zona visible. Speleum calcula el trayecto por tiles y la roca bloquea rutas imposibles.",
   },
   {
     icon: Timer,
-    title: "Turnos y cooldown",
-    text: "Cada accion necesita recuperacion. Mientras recuperas postura no puedes encadenar otra accion.",
+    title: "Pulso y cooldown",
+    text: "Cuanto mas lejos te desplazas, mas tarda tu pulso en estabilizarse. Atacar y defender tambien exigen recuperacion.",
   },
   {
     icon: Radio,
@@ -50,12 +50,12 @@ const cards = [
   {
     icon: Swords,
     title: "Ataque",
-    text: "Atacar crea una onda visible alrededor de la criatura y marca fuerte tu posicion en el radar.",
+    text: "Puedes golpear amenazas dentro de 3 casillas. El ataque emite un eco fuerte y revela tu presencia cercana.",
   },
   {
     icon: Shield,
     title: "Defensa",
-    text: "Defenderse activa un estado protegido, pero te obliga a esperar antes de moverte otra vez.",
+    text: "La defensa reduce dano durante una ventana corta y luego entra en recuperacion antes de poder activarse otra vez.",
   },
 ];
 
@@ -109,9 +109,9 @@ export default function ComoJugarPage() {
           </h1>
 
           <p className="mt-6 text-sm leading-7 text-zinc-400 sm:text-base">
-            Speleum se juega leyendo oscuridad, distancia y senales. No se trata
-            de correr: cada movimiento, ataque o defensa revela algo y te deja
-            esperando un breve momento antes de volver a actuar.
+            Speleum se juega leyendo oscuridad, distancia y senales. Controlas
+            una criatura subterranea, eliges celdas dentro de tu zona visible y
+            sobrevives gestionando movimiento, ataque, defensa y radar.
           </p>
         </motion.div>
       </section>
@@ -191,10 +191,10 @@ export default function ComoJugarPage() {
             </h3>
 
             <ul className="mt-5 space-y-3 text-zinc-400">
-              <li>Marca destinos cortos si necesitas recuperar rapido.</li>
-              <li>Ataca solo cuando revelar tu ubicacion valga la pena.</li>
-              <li>Usa defensa para ganar tiempo, no para avanzar.</li>
-              <li>Mira el radar despues de cada accion: cada blip importa.</li>
+              <li>Marca trayectos cortos si necesitas recuperar pulso rapido.</li>
+              <li>Ataca cuando una amenaza entre en tus 3 casillas de alcance.</li>
+              <li>Usa defensa para amortiguar dano antes de exponerte.</li>
+              <li>Mira el radar despues de cada accion: cada eco importa.</li>
             </ul>
           </div>
         </motion.div>

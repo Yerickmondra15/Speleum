@@ -1,11 +1,12 @@
 import { createServer } from "node:http";
-import { Server } from "socket.io";
+import { Server, type Socket } from "socket.io";
 import type { PlayerPosition } from "../app/play/gameConfig";
 import {
   ATTACK_COOLDOWN,
   ATTACK_RADIUS,
   CAVE_ATTACK_DAMAGE,
   DARKNESS_SANITY_DRAIN,
+  DEFEND_ACTIVE_DURATION,
   DEFEND_COOLDOWN,
   MAX_HEALTH,
   MAX_ROOM_PLAYERS,
@@ -14,6 +15,7 @@ import {
   MOVE_BURST_IDLE_MS,
   PLAYER_ATTACK_DAMAGE,
   PLAYER_SPEED,
+  RADAR_SIGNAL_PROFILES,
   THREAT_DEATH_MS,
   VISION_RADIUS,
   caveZones,
@@ -63,6 +65,7 @@ type ServerEnemyState = EnemyState & {
 };
 
 type ServerRoomState = {
+  matchId: string;
   code: string;
   status: MultiplayerRoomStatus;
   createdAt: number;
@@ -78,8 +81,6 @@ type ServerRoomState = {
 
 const PORT = Number(process.env.SOCKET_PORT ?? 4001);
 const MOVE_INTERVAL_MS = 80;
-const ATTACK_SIGNAL_DURATION = 1800;
-const DEFEND_SIGNAL_DURATION = 1000;
 const PLAYER_ATTACK_RANGE = ATTACK_RADIUS * 0.72;
 const ENEMY_ATTACK_RANGE = stalkerConfig.touchRange + 16;
 const rooms = new Map<string, ServerRoomState>();
@@ -147,6 +148,9 @@ function createInitialCombatState() {
     threatLevel: "calm" as ThreatLevel,
     idleMs: 0,
     moveCooldownRemaining: 0,
+    attackCooldownRemaining: 0,
+    defenseCooldownRemaining: 0,
+    defenseDurationRemaining: 0,
     kills: 0,
     damageDealt: 0,
     eliminatedAt: null,
@@ -210,6 +214,7 @@ function emitState(room: ServerRoomState, io: Server) {
     }
 
     const payload: MultiplayerStatePayload = {
+      matchId: room.matchId,
       roomCode: room.code,
       status: room.status,
       self: toPublicPlayer(player),
@@ -251,18 +256,17 @@ function addSignal(
   position: PlayerPosition,
   ownerId?: string,
 ) {
+  const profile = RADAR_SIGNAL_PROFILES[type];
+
   room.signals.push({
     id: Date.now() + room.signals.length,
     type,
+    strength: profile.strength,
     x: position.x,
     y: position.y,
     createdAt: Date.now(),
-    duration:
-      type === "defend"
-        ? DEFEND_SIGNAL_DURATION
-        : type === "danger"
-          ? 1400
-          : ATTACK_SIGNAL_DURATION,
+    duration: profile.duration,
+    radarJitter: profile.radarJitter,
     ownerId,
   });
 }
@@ -324,6 +328,9 @@ function evaluateRoom(room: ServerRoomState, io: Server) {
   for (const player of room.players.values()) {
     player.combat.isDefending = player.defendingUntil > now;
     player.combat.moveCooldownRemaining = Math.max(0, player.moveCooldownUntil - now);
+    player.combat.attackCooldownRemaining = Math.max(0, player.lastAttackAt + ATTACK_COOLDOWN - now);
+    player.combat.defenseCooldownRemaining = Math.max(0, player.lastDefendAt + DEFEND_COOLDOWN - now);
+    player.combat.defenseDurationRemaining = Math.max(0, player.defendingUntil - now);
   }
 
   const alivePlayers = getAlivePlayers(room);
@@ -387,7 +394,7 @@ function evaluateRoom(room: ServerRoomState, io: Server) {
       zone,
       now - player.lastMoveAt < MOVE_BURST_IDLE_MS,
       player.combat.threatLevel,
-      room.enemy.mode,
+      room.enemy.state,
       DARKNESS_SANITY_DRAIN,
     );
 
@@ -438,14 +445,16 @@ function evaluateRoom(room: ServerRoomState, io: Server) {
     return candidateDistance < closestDistance ? candidate : closest;
   });
 
+  const updatedEnemy: EnemyState = updateEnemyState(
+    room.enemy,
+    enemyTarget.position,
+    stalkerConfig,
+    MOVE_INTERVAL_MS / 1000,
+    "playing",
+  );
+
   room.enemy = {
-    ...updateEnemyState(
-      room.enemy,
-      enemyTarget.position,
-      stalkerConfig,
-      MOVE_INTERVAL_MS / 1000,
-      "playing",
-    ),
+    ...updatedEnemy,
     lastAttackAt: room.enemy.lastAttackAt,
   };
 
@@ -504,11 +513,12 @@ setInterval(() => {
   }
 }, MOVE_INTERVAL_MS);
 
-io.on("connection", (socket) => {
+io.on("connection", (socket: Socket) => {
   socket.on("create-room", ({ name, characterId }: { name?: string; characterId?: string }) => {
     const roomCode = generateRoomCode();
     const playerId = crypto.randomUUID();
     const room: ServerRoomState = {
+      matchId: crypto.randomUUID(),
       code: roomCode,
       status: "waiting",
       createdAt: Date.now(),
@@ -737,6 +747,7 @@ io.on("connection", (socket) => {
 
     attacker.lastAttackAt = now;
     attacker.lastAction = "attack";
+    attacker.combat.attackCooldownRemaining = ATTACK_COOLDOWN;
     addSignal(room, "attack", attacker.position, attacker.id);
 
     let inflictedDamage = 0;
@@ -812,8 +823,10 @@ io.on("connection", (socket) => {
 
     player.lastAction = "defend";
     player.lastDefendAt = now;
-    player.defendingUntil = now + DEFEND_COOLDOWN;
+    player.defendingUntil = now + DEFEND_ACTIVE_DURATION;
     player.combat.isDefending = true;
+    player.combat.defenseCooldownRemaining = DEFEND_COOLDOWN;
+    player.combat.defenseDurationRemaining = DEFEND_ACTIVE_DURATION;
     addSignal(room, "defend", player.position, player.id);
     room.message = `${player.name} endurece su caparazon por un instante.`;
     emitState(room, io);

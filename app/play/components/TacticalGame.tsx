@@ -2,179 +2,195 @@
 
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Shield } from "lucide-react";
-import type {
-  ActionKind,
-  CharacterOption,
-  GameStatus,
-  PlayerPosition,
-} from "../gameConfig";
+import type { CharacterOption, GameStatus, PlayerPosition } from "../gameConfig";
 import {
   ATTACK_COOLDOWN,
+  DEFEND_ACTIVE_DURATION,
   DEFEND_COOLDOWN,
-  DARKNESS_SANITY_DRAIN,
-  MAX_HEALTH,
-  MAX_SANITY,
-  PLAYER_SPEED,
+  ENEMY_CLOSE_DANGER_TILES,
+  ENEMY_MOVE_INTERVAL,
+  PLAYER_ATTACK_DAMAGE,
+  PLAYER_ATTACK_RANGE_TILES,
+  PLAYER_MAX_HEALTH,
+  PLAYER_MOVE_RANGE_TILES,
+  RADAR_SIGNAL_PROFILES,
+  RADAR_SIGNAL_RANGE_TILES,
+  SCORE_PER_KILL_FALLBACK,
+  SCORE_PER_LOCAL_VICTORY,
+  TILE_SIZE,
   caveZones,
-  goalArea,
-  hazardAreas,
-  pointsOfInterest,
-  stalkerConfig,
+  stalkerConfigs,
   startPosition,
 } from "../gameConfig";
 import {
-  clampToMap,
+  applyDamage,
   calculateMoveCooldown,
   createEnemyState,
   distanceBetween,
-  getThreatLevel,
   getZoneForPosition,
-  hitHazard,
-  limitMoveDistance,
-  moveTowardPosition,
-  moveWithCollisions,
-  reachedGoal,
-  sanityHealthPenalty,
-  shouldFinalizeMoveBurst,
   updateEnemyState,
-  updateSanity,
 } from "../gameLogic";
+import type { EnemyState } from "../gameLogic";
 import type { RadarSignal, SignalType } from "../types";
-import { ActionControls } from "./ActionControls";
 import { GameHud } from "./GameHud";
 import { GameMap } from "./GameMap";
-import { GameOverlay } from "./GameOverlay";
+import { ActionControls } from "./ActionControls";
 import { RadarPanel } from "./RadarPanel";
-
-type Outcome =
-  | {
-      status: Extract<GameStatus, "won" | "lost">;
-      message: string;
-    }
-  | null;
-
-type DirectionState = {
-  up: boolean;
-  down: boolean;
-  left: boolean;
-  right: boolean;
-};
-
-function actionLabel(action: ActionKind) {
-  if (action === "move") return "Mover";
-  if (action === "attack") return "Atacar";
-  return "Defender";
-}
-
-function emptyDirectionState(): DirectionState {
-  return {
-    up: false,
-    down: false,
-    left: false,
-    right: false,
-  };
-}
+import { GameOverlay } from "./GameOverlay";
+import { useAuth } from "../../auth/AuthProvider";
+import {
+  buildPathToTile,
+  findReachableTiles,
+  tileDistance,
+  tileToWorld,
+  worldToTile,
+} from "../tileMap";
 
 type TacticalGameProps = {
   selectedCharacter: CharacterOption;
   onExitToMenu: () => void;
 };
 
+function createMatchId() {
+  return globalThis.crypto.randomUUID();
+}
+
+function emptySignals() {
+  return [] as RadarSignal[];
+}
+
+function initialEnemies() {
+  return stalkerConfigs.map((config) => createEnemyState(config));
+}
+
+function dangerLabelFromDistance(distanceTiles: number | null, activeHostiles: number) {
+  if (activeHostiles > 1 || (distanceTiles !== null && distanceTiles <= 2)) {
+    return "alto";
+  }
+
+  if (activeHostiles === 1 || (distanceTiles !== null && distanceTiles <= ENEMY_CLOSE_DANGER_TILES)) {
+    return "medio";
+  }
+
+  return distanceTiles !== null ? "latente" : "bajo";
+}
+
 export function TacticalGame({
   selectedCharacter,
   onExitToMenu,
 }: TacticalGameProps) {
+  const { user } = useAuth();
+  const [matchId, setMatchId] = useState(() => createMatchId());
+  const [matchStartedAt, setMatchStartedAt] = useState(() => new Date().toISOString());
   const [player, setPlayer] = useState<PlayerPosition>(startPosition);
-  const [enemy, setEnemy] = useState(() => createEnemyState(stalkerConfig));
-  const [activeAction, setActiveAction] = useState<ActionKind>("move");
+  const [enemies, setEnemies] = useState<EnemyState[]>(() => initialEnemies());
+  const [activeAction, setActiveAction] = useState<"move" | "attack" | "defend">("move");
   const [gameStatus, setGameStatus] = useState<GameStatus>("playing");
-  const [cooldownEndsAt, setCooldownEndsAt] = useState(0);
+  const [health, setHealth] = useState(PLAYER_MAX_HEALTH);
+  const [moveCooldownEndsAt, setMoveCooldownEndsAt] = useState(0);
+  const [attackCooldownEndsAt, setAttackCooldownEndsAt] = useState(0);
   const [defendingUntil, setDefendingUntil] = useState(0);
+  const [defenseCooldownEndsAt, setDefenseCooldownEndsAt] = useState(0);
   const [now, setNow] = useState(() => Date.now());
-  const [health, setHealth] = useState(MAX_HEALTH);
-  const [sanity, setSanity] = useState(MAX_SANITY);
-  const [threatLevel, setThreatLevel] = useState<ReturnType<typeof getThreatLevel>>("calm");
-  const [signals, setSignals] = useState<RadarSignal[]>([]);
   const [message, setMessage] = useState(
-    "Sobrevive a la cueva y mantente fuera del alcance del acechante.",
+    "Marca una celda dentro de tu pulso visible y sobrevive a los ecos de la cueva.",
   );
   const [zoneMessage, setZoneMessage] = useState<string | null>(
-    caveZones[0]?.ambient ?? null,
+    "Solo ves 8 bloques alrededor. Todo lo demas es oscuridad.",
   );
+  const [score, setScore] = useState(0);
+  const [kills, setKills] = useState(0);
+  const [combatFlash, setCombatFlash] = useState<string | null>(null);
+  const [signals, setSignals] = useState<RadarSignal[]>(() => emptySignals());
+  const [pathPreview, setPathPreview] = useState<PlayerPosition[]>([]);
+  const [movementPath, setMovementPath] = useState<PlayerPosition[]>([]);
+  const [isTraversing, setIsTraversing] = useState(false);
 
-  const zoneMessageTimeoutRef = useRef<number | null>(null);
-  const previousTimeRef = useRef<number | null>(null);
   const playerRef = useRef(player);
-  const enemyRef = useRef(enemy);
+  const enemiesRef = useRef(enemies);
   const gameStatusRef = useRef(gameStatus);
+  const moveCooldownEndsAtRef = useRef(moveCooldownEndsAt);
+  const attackCooldownEndsAtRef = useRef(attackCooldownEndsAt);
   const defendingUntilRef = useRef(defendingUntil);
-  const healthRef = useRef(MAX_HEALTH);
-  const sanityRef = useRef(MAX_SANITY);
-  const pointerTargetRef = useRef<PlayerPosition | null>(null);
-  const keyStateRef = useRef<DirectionState>(emptyDirectionState());
-  const lastZoneIdRef = useRef(caveZones[0]?.id ?? "");
-  const lastMoveAtRef = useRef(0);
-  const movementBurstDistanceRef = useRef(0);
-  const lastThreatLevelRef = useRef(getThreatLevel(0));
-
-  const currentZone = useMemo(
-    () => getZoneForPosition(player, caveZones),
-    [player],
-  );
-
-  const playerSpeed = useMemo(() => {
-    return PLAYER_SPEED / selectedCharacter.moveCooldownMultiplier;
-  }, [selectedCharacter.moveCooldownMultiplier]);
+  const resultSavedRef = useRef(false);
+  const lastZoneIdRef = useRef(getZoneForPosition(startPosition, caveZones).id);
+  const combatFlashTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     playerRef.current = player;
   }, [player]);
 
   useEffect(() => {
-    if (lastMoveAtRef.current === 0) {
-      lastMoveAtRef.current = Date.now();
-    }
-  }, []);
-
-  useEffect(() => {
-    enemyRef.current = enemy;
-  }, [enemy]);
-
-  useEffect(() => {
-    healthRef.current = health;
-  }, [health]);
-
-  useEffect(() => {
-    sanityRef.current = sanity;
-  }, [sanity]);
+    enemiesRef.current = enemies;
+  }, [enemies]);
 
   useEffect(() => {
     gameStatusRef.current = gameStatus;
   }, [gameStatus]);
 
   useEffect(() => {
+    moveCooldownEndsAtRef.current = moveCooldownEndsAt;
+  }, [moveCooldownEndsAt]);
+
+  useEffect(() => {
+    attackCooldownEndsAtRef.current = attackCooldownEndsAt;
+  }, [attackCooldownEndsAt]);
+
+  useEffect(() => {
     defendingUntilRef.current = defendingUntil;
   }, [defendingUntil]);
 
   useEffect(() => {
-    return () => {
-      if (zoneMessageTimeoutRef.current !== null) {
-        window.clearTimeout(zoneMessageTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  const showZoneMessage = (nextMessage: string) => {
-    setZoneMessage(nextMessage);
-
-    if (zoneMessageTimeoutRef.current !== null) {
-      window.clearTimeout(zoneMessageTimeoutRef.current);
+    if ((gameStatus !== "won" && gameStatus !== "lost") || resultSavedRef.current) {
+      return;
     }
 
-    zoneMessageTimeoutRef.current = window.setTimeout(() => {
-      setZoneMessage(null);
-    }, 3200);
-  };
+    resultSavedRef.current = true;
+
+    void fetch("/api/matches/results", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        matchId,
+        mode: "local",
+        status: "finished",
+        winnerId: gameStatus === "won" ? user?.id ?? null : null,
+        startedAt: matchStartedAt,
+        endedAt: new Date().toISOString(),
+        creature: selectedCharacter.id,
+        result: gameStatus === "won" ? "win" : "loss",
+        scoreEarned: score,
+      }),
+    }).catch(() => {
+      resultSavedRef.current = false;
+    });
+  }, [gameStatus, matchId, matchStartedAt, score, selectedCharacter.id, user?.id]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      const tickNow = Date.now();
+      setNow(tickNow);
+      setSignals((current) =>
+        current.filter((signal) => tickNow - signal.createdAt < signal.duration),
+      );
+    }, 100);
+
+    return () => window.clearInterval(interval);
+  }, []);
+
+  const aliveEnemies = useMemo(
+    () => enemies.filter((enemy) => enemy.alive && enemy.state !== "dead"),
+    [enemies],
+  );
+  const currentZone = useMemo(() => getZoneForPosition(player, caveZones), [player]);
+  const isDefending = defendingUntil > now && gameStatus === "playing";
+  const moveCooldownRemaining = Math.max(0, moveCooldownEndsAt - now);
+  const attackCooldownRemaining = Math.max(0, attackCooldownEndsAt - now);
+  const defenseCooldownRemaining = Math.max(0, defenseCooldownEndsAt - now);
+  const reachableTiles = useMemo(
+    () => findReachableTiles(worldToTile(player), PLAYER_MOVE_RANGE_TILES),
+    [player],
+  );
 
   useEffect(() => {
     if (lastZoneIdRef.current === currentZone.id) {
@@ -182,466 +198,393 @@ export function TacticalGame({
     }
 
     lastZoneIdRef.current = currentZone.id;
-    showZoneMessage(currentZone.ambient);
+    setZoneMessage(currentZone.ambient);
   }, [currentZone]);
 
-  const addSignal = (type: SignalType, position: PlayerPosition) => {
-    const baseDuration =
-      type === "attack"
-        ? 1900
-        : type === "move"
-          ? 1300
-          : type === "danger"
-            ? 1200
-            : 950;
-    const duration =
-      type === "move"
-        ? Math.round(baseDuration * selectedCharacter.moveSignalMultiplier)
-        : baseDuration;
+  function addSignal(type: SignalType, position: PlayerPosition, ownerId?: string) {
+    const profile = RADAR_SIGNAL_PROFILES[type];
 
     setSignals((current) => [
-      ...current.slice(-8),
+      ...current.slice(-20),
       {
-        id: now + current.length,
+        id: Date.now() + current.length,
         type,
+        strength: profile.strength,
         x: position.x,
         y: position.y,
         createdAt: Date.now(),
-        duration,
+        duration: profile.duration,
+        radarJitter: profile.radarJitter,
+        ownerId,
       },
     ]);
-  };
+  }
 
-  const getOutcome = (
-    nextPlayer: PlayerPosition,
-    nextEnemy: PlayerPosition,
-  ): Outcome => {
-    if (distanceBetween(nextPlayer, nextEnemy) <= stalkerConfig.touchRange) {
-      return {
-        status: "lost",
-        message: "El acechante te alcanzo antes de consolidar tu dominio.",
-      };
+  function showCombatFlash(text: string) {
+    setCombatFlash(text);
+
+    if (combatFlashTimeoutRef.current !== null) {
+      window.clearTimeout(combatFlashTimeoutRef.current);
     }
 
-    if (hitHazard(nextPlayer, hazardAreas)) {
-      return {
-        status: "lost",
-        message: "Pisaste una grieta peligrosa y la cueva te devoro.",
-      };
-    }
+    combatFlashTimeoutRef.current = window.setTimeout(() => {
+      setCombatFlash(null);
+    }, 950);
+  }
 
-    if (reachedGoal(nextPlayer, goalArea)) {
-      return {
-        status: "won",
-        message: "Tomaste la camara umbral y saliste con ventaja.",
-      };
-    }
+  function endAsLoss(nextMessage: string) {
+    setMessage(nextMessage);
+    setGameStatus("lost");
+  }
 
-    return null;
-  };
+  function endAsWin(nextMessage: string) {
+    setMessage(nextMessage);
+    setGameStatus("won");
+  }
 
-  const applyOutcome = (outcome: Outcome) => {
-    if (!outcome) {
-      return;
-    }
-
-    pointerTargetRef.current = null;
-    keyStateRef.current = emptyDirectionState();
-    setHealth(outcome.status === "lost" ? 0 : MAX_HEALTH);
-    setMessage(outcome.message);
-    gameStatusRef.current = outcome.status;
-    setGameStatus(outcome.status);
-  };
-
-  const clearPointerTarget = () => {
-    pointerTargetRef.current = null;
-  };
-
-  const movePlayerTowardTarget = (
-    currentPlayer: PlayerPosition,
-    deltaSeconds: number,
-  ) => {
-    const keys = keyStateRef.current;
-    const vectorX = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
-    const vectorY = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
-    const stepDistance = playerSpeed * deltaSeconds;
-
-    if (vectorX !== 0 || vectorY !== 0) {
-      clearPointerTarget();
-
-      const magnitude = Math.hypot(vectorX, vectorY);
-      return moveWithCollisions(currentPlayer, {
-        x: (vectorX / magnitude) * stepDistance,
-        y: (vectorY / magnitude) * stepDistance,
-      });
-    }
-
-    if (!pointerTargetRef.current) {
-      return currentPlayer;
-    }
-
-    const nextPlayer = moveTowardPosition(
-      currentPlayer,
-      pointerTargetRef.current,
-      stepDistance,
-    );
-
-    if (
-      distanceBetween(nextPlayer, pointerTargetRef.current) < 8 ||
-      distanceBetween(nextPlayer, currentPlayer) < 0.5
-    ) {
-      clearPointerTarget();
-    }
-
-    return nextPlayer;
-  };
-
-  const onTick = useEffectEvent(() => {
-    const time = Date.now();
-    const previousTime = previousTimeRef.current ?? time;
-    const deltaSeconds = Math.min((time - previousTime) / 1000, 0.05);
-    previousTimeRef.current = time;
-
-    setNow(time);
-    setSignals((current) =>
-      current.filter((signal) => time - signal.createdAt < signal.duration),
-    );
-
-    let nextPlayer = playerRef.current;
-    let movedDistance = 0;
-
-    if (
-      gameStatusRef.current === "playing" &&
-      time >= defendingUntilRef.current &&
-      time >= cooldownEndsAt
-    ) {
-      nextPlayer = movePlayerTowardTarget(playerRef.current, deltaSeconds);
-      movedDistance = distanceBetween(nextPlayer, playerRef.current);
-
-      if (movedDistance > 0.1) {
-        playerRef.current = nextPlayer;
-        setPlayer(nextPlayer);
-        lastMoveAtRef.current = time;
-        movementBurstDistanceRef.current += movedDistance;
-      }
-    }
-
-    if (
-      movementBurstDistanceRef.current > 0 &&
-      shouldFinalizeMoveBurst(lastMoveAtRef.current, time) &&
-      time >= cooldownEndsAt
-    ) {
-      setCooldownEndsAt(
-        time +
-          calculateMoveCooldown(
-            movementBurstDistanceRef.current,
-            selectedCharacter.moveCooldownMultiplier,
-          ),
-      );
-      movementBurstDistanceRef.current = 0;
-    }
-
-    const idleMs = time - lastMoveAtRef.current;
-    const threatLevel = getThreatLevel(idleMs);
-    setThreatLevel(threatLevel);
-
-    if (
-      threatLevel !== lastThreatLevelRef.current &&
-      threatLevel !== "calm" &&
-      gameStatusRef.current === "playing"
-    ) {
-      addSignal("danger", playerRef.current);
-      setMessage(
-        threatLevel === "uneasy"
-          ? "La quietud se vuelve peligrosa. Muevete."
-          : "Algo responde a tu inmovilidad. Rompe el silencio.",
-      );
-      lastThreatLevelRef.current = threatLevel;
-    } else if (threatLevel === "calm") {
-      lastThreatLevelRef.current = "calm";
-    }
-
-    if (threatLevel === "doomed" && gameStatusRef.current === "playing") {
-      applyOutcome({
-        status: "lost",
-        message: "Te quedaste quieto demasiado tiempo y la cueva te encontro.",
-      });
-      return;
-    }
-
-    const nextEnemy = updateEnemyState(
-      enemyRef.current,
-      nextPlayer,
-      stalkerConfig,
-      deltaSeconds,
-      gameStatusRef.current,
-    );
-
-    enemyRef.current = nextEnemy;
-    setEnemy(nextEnemy);
-
-    const zone = getZoneForPosition(nextPlayer, caveZones);
-    const nextSanity = updateSanity(
-      sanityRef.current,
-      deltaSeconds,
-      zone,
-      movedDistance > 0.1,
-      threatLevel,
-      nextEnemy.mode,
-      DARKNESS_SANITY_DRAIN,
-    );
-    setSanity(nextSanity);
-
-    const sanityDamage = sanityHealthPenalty(nextSanity, deltaSeconds);
-
-    if (sanityDamage > 0 && gameStatusRef.current === "playing") {
-      const nextHealth = Math.max(0, healthRef.current - sanityDamage);
-      healthRef.current = nextHealth;
-      setHealth(nextHealth);
-    }
-
-    if (gameStatusRef.current === "playing") {
-      if (sanityDamage > 0 && healthRef.current <= 0) {
-        applyOutcome({
-          status: "lost",
-          message: "El miedo te vacio por completo. La cueva te reclamo.",
-        });
-        return;
-      }
-
-      applyOutcome(
-        getOutcome(nextPlayer, {
-          x: nextEnemy.x,
-          y: nextEnemy.y,
-        }),
-      );
-    }
-  });
-
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      onTick();
-    }, 16);
-
-    return () => window.clearInterval(interval);
-  }, [playerSpeed]);
-
-  const cooldownRemaining = Math.max(0, cooldownEndsAt - now);
-  const isRecovering = cooldownRemaining > 0;
-  const isDefending = defendingUntil > now && gameStatus === "playing";
-
-  const nearestPoint = useMemo(() => {
-    return pointsOfInterest
-      .map((point) => ({
-        ...point,
-        distance: Math.round(Math.hypot(player.x - point.x, player.y - point.y)),
-      }))
-      .sort((a, b) => a.distance - b.distance)[0];
-  }, [player]);
-
-  const objective =
-    gameStatus === "won"
-      ? "Camara dominante asegurada."
-      : gameStatus === "lost"
-        ? "Vuelve a intentarlo y adapta tu ruta en la oscuridad."
-        : "Avanza hacia la camara umbral sin caer ante la cueva.";
-
-  const enemyStateLabel = enemy.mode === "chase" ? "amenaza activa" : "patrulla";
-
-  const handleMoveIntent = (target: PlayerPosition) => {
-    if (gameStatus !== "playing") {
-      return;
-    }
-
-    if (cooldownRemaining > 0) {
-      setMessage("Tu criatura aun recupera el impulso anterior.");
-      return;
-    }
-
-    setActiveAction("move");
-    pointerTargetRef.current = limitMoveDistance(
-      playerRef.current,
-      clampToMap(target),
-      selectedCharacter.moveRange,
-    );
-    addSignal("move", playerRef.current);
-    setMessage("Te deslizas hacia la zona marcada. Mantente lejos del acechante.");
-  };
-
-  const handleAttack = () => {
-    if (gameStatus !== "playing") {
-      return;
-    }
-
-    if (isRecovering) {
-      setMessage("Aun no puedes atacar otra vez.");
-      return;
-    }
-
-    clearPointerTarget();
-    setActiveAction("attack");
-    setCooldownEndsAt(Date.now() + ATTACK_COOLDOWN);
-    addSignal("attack", playerRef.current);
-    setMessage("Ataque emitido. Tu posicion resuena en la cueva.");
-  };
-
-  const handleDefend = () => {
-    if (gameStatus !== "playing") {
-      return;
-    }
-
-    if (isRecovering) {
-      setMessage("Aun no puedes defenderte otra vez.");
-      return;
-    }
-
-    clearPointerTarget();
-    const endsAt = Date.now() + DEFEND_COOLDOWN;
-    setActiveAction("defend");
-    setDefendingUntil(endsAt);
-    setCooldownEndsAt(endsAt);
-    addSignal("defend", playerRef.current);
-    setMessage("Defensa activa. Te mantienes inmovil un instante.");
-  };
-
-  const handleSelectMove = () => {
-    if (gameStatus !== "playing") {
-      return;
-    }
-
-    if (cooldownRemaining > 0) {
-      setMessage("Aun no puedes volver a moverte.");
-      return;
-    }
-
-    setActiveAction("move");
-    setMessage("Usa clic o teclado para moverte con suavidad por la cueva.");
-  };
-
-  const togglePause = () => {
-    if (gameStatus === "playing") {
-      clearPointerTarget();
-      setGameStatus("paused");
-      setMessage("Partida en pausa. Reanuda cuando quieras seguir.");
-    } else if (gameStatus === "paused") {
-      setGameStatus("playing");
-      setMessage("La expedicion continua. Mantente vivo en la oscuridad.");
-    }
-  };
-
-  const setDirectionState = (
-    direction: keyof DirectionState,
-    value: boolean,
-  ) => {
-    keyStateRef.current = {
-      ...keyStateRef.current,
-      [direction]: value,
-    };
-  };
-
-  const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (event.repeat) {
-      return;
-    }
-
-    if (event.key.toLowerCase() === "p") {
-      togglePause();
-      return;
-    }
-
+  const enemyTurn = useEffectEvent(() => {
     if (gameStatusRef.current !== "playing") {
       return;
     }
 
-    if (cooldownEndsAt > Date.now()) {
+    let pendingDamage = 0;
+    let hostileCount = 0;
+    let lastEnemyMessage: string | null = null;
+
+    const updatedEnemies: EnemyState[] = enemiesRef.current.map((enemy): EnemyState => {
+      const config = stalkerConfigs.find((entry) => entry.id === enemy.id);
+
+      if (!config) {
+        return enemy;
+      }
+
+      const nextEnemy = updateEnemyState(
+        enemy,
+        playerRef.current,
+        config,
+        ENEMY_MOVE_INTERVAL / 1000,
+        gameStatusRef.current,
+      );
+
+      if (!nextEnemy.alive || nextEnemy.state === "dead") {
+        return nextEnemy;
+      }
+
+      if (nextEnemy.state === "alerted" || nextEnemy.state === "attacking") {
+        hostileCount += 1;
+      }
+
+      if (nextEnemy.state === "attacking") {
+        pendingDamage += nextEnemy.damage;
+        addSignal("attack", nextEnemy, nextEnemy.id);
+        lastEnemyMessage = `${nextEnemy.name} entra en rango y golpea.`;
+        return nextEnemy;
+      }
+
+      if (nextEnemy.state === "alerted") {
+        addSignal("danger", nextEnemy, nextEnemy.id);
+        lastEnemyMessage = `${nextEnemy.name} detecto tu rastro en la cueva.`;
+      } else if (tileDistance(worldToTile(playerRef.current), worldToTile(nextEnemy)) <= 5) {
+        addSignal("danger", nextEnemy, nextEnemy.id);
+      }
+
+      return nextEnemy;
+    });
+
+    if (pendingDamage > 0) {
+      const blocked = Date.now() < defendingUntilRef.current;
+      const nextHealth = applyDamage(health, pendingDamage, blocked);
+      setHealth(nextHealth);
+      showCombatFlash(blocked ? `Bloqueaste ${pendingDamage}` : `-${pendingDamage} HP`);
+
+      if (nextHealth <= 0) {
+        setEnemies(updatedEnemies);
+        endAsLoss("Tu vida llego a cero. La cueva cerro el combate a su favor.");
+        return;
+      }
+    }
+
+    if (updatedEnemies.every((enemy) => !enemy.alive || enemy.state === "dead")) {
+      setEnemies(updatedEnemies);
+      setScore((current) => current + SCORE_PER_LOCAL_VICTORY);
+      endAsWin("Limpiaste la cueva. Ninguna criatura hostil quedo con vida.");
       return;
     }
 
-    if (event.key === "ArrowUp" || event.key.toLowerCase() === "w") {
-      event.preventDefault();
-      setActiveAction("move");
-      setDirectionState("up", true);
-      addSignal("move", playerRef.current);
-      setMessage("Te desplazas por la cueva. Busca una ruta segura.");
-    } else if (event.key === "ArrowDown" || event.key.toLowerCase() === "s") {
-      event.preventDefault();
-      setActiveAction("move");
-      setDirectionState("down", true);
-      addSignal("move", playerRef.current);
-      setMessage("Te desplazas por la cueva. Busca una ruta segura.");
-    } else if (event.key === "ArrowLeft" || event.key.toLowerCase() === "a") {
-      event.preventDefault();
-      setActiveAction("move");
-      setDirectionState("left", true);
-      addSignal("move", playerRef.current);
-      setMessage("Te desplazas por la cueva. Busca una ruta segura.");
-    } else if (event.key === "ArrowRight" || event.key.toLowerCase() === "d") {
-      event.preventDefault();
-      setActiveAction("move");
-      setDirectionState("right", true);
-      addSignal("move", playerRef.current);
-      setMessage("Te desplazas por la cueva. Busca una ruta segura.");
+    if (lastEnemyMessage) {
+      setMessage(lastEnemyMessage);
+    } else if (hostileCount > 0) {
+      setMessage("Escuchas ecos agresivos. El radar sugiere peligro, no certezas.");
     }
+
+    setEnemies(updatedEnemies);
   });
 
-  const onKeyUp = useEffectEvent((event: KeyboardEvent) => {
-    if (event.key === "ArrowUp" || event.key.toLowerCase() === "w") {
-      setDirectionState("up", false);
-    } else if (event.key === "ArrowDown" || event.key.toLowerCase() === "s") {
-      setDirectionState("down", false);
-    } else if (event.key === "ArrowLeft" || event.key.toLowerCase() === "a") {
-      setDirectionState("left", false);
-    } else if (event.key === "ArrowRight" || event.key.toLowerCase() === "d") {
-      setDirectionState("right", false);
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      void enemyTurn();
+    }, ENEMY_MOVE_INTERVAL);
+
+    return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (movementPath.length === 0 || gameStatus !== "playing") {
+      return;
+    }
+
+    let stepIndex = 0;
+    const interval = window.setInterval(() => {
+      const nextStep = movementPath[stepIndex];
+
+      if (!nextStep) {
+        window.clearInterval(interval);
+        setMovementPath([]);
+        setPathPreview([]);
+        setIsTraversing(false);
+        return;
+      }
+
+      setPlayer(nextStep);
+      addSignal("move", nextStep, "player");
+      stepIndex += 1;
+
+      if (stepIndex >= movementPath.length) {
+        window.clearInterval(interval);
+        setMovementPath([]);
+        setPathPreview([]);
+        setIsTraversing(false);
+      }
+    }, 78);
+
+    return () => window.clearInterval(interval);
+  }, [gameStatus, movementPath]);
+
+  function queueMovementTo(target: PlayerPosition) {
+    if (gameStatus !== "playing") {
+      return;
+    }
+
+    if (moveCooldownEndsAtRef.current > Date.now() || isTraversing) {
+      setMessage("Tu pulso aun no se estabiliza para otro desplazamiento.");
+      return;
+    }
+
+    const originTile = worldToTile(playerRef.current);
+    const targetTile = worldToTile(target);
+    const reachable = reachableTiles.get(`${targetTile.col},${targetTile.row}`);
+
+    if (
+      !reachable ||
+      (targetTile.col === originTile.col && targetTile.row === originTile.row)
+    ) {
+      setMessage("Esa celda no esta disponible dentro de tu alcance.");
+      setPathPreview([]);
+      return;
+    }
+
+    const path = buildPathToTile(originTile, targetTile, PLAYER_MOVE_RANGE_TILES);
+
+    if (!path || path.length <= 1) {
+      setMessage("No hay una ruta caminable hacia esa celda.");
+      setPathPreview([]);
+      return;
+    }
+
+    const worldPath = path.slice(1).map(tileToWorld);
+    const travelDistanceTiles = path.length - 1;
+    const moveCooldown = calculateMoveCooldown(travelDistanceTiles);
+
+    setIsTraversing(true);
+    setMovementPath(worldPath);
+    setPathPreview(worldPath);
+    setMoveCooldownEndsAt(Date.now() + moveCooldown);
+    setActiveAction("move");
+    setMessage(
+      travelDistanceTiles === 1
+        ? "Avanzas con cuidado una casilla."
+        : `Te deslizas ${travelDistanceTiles} casillas por la cueva.`,
+    );
+  }
+
+  function handleMoveIntent(target: PlayerPosition) {
+    queueMovementTo(target);
+  }
+
+  function handleAttack() {
+    if (gameStatus !== "playing") {
+      return;
+    }
+
+    if (attackCooldownEndsAtRef.current > Date.now()) {
+      setMessage("Tu embestida aun no recupera alcance.");
+      return;
+    }
+
+    const playerTile = worldToTile(playerRef.current);
+    const target = enemiesRef.current
+      .filter((enemy) => enemy.alive && enemy.state !== "dead")
+      .sort(
+        (left, right) =>
+          tileDistance(playerTile, worldToTile(left)) -
+          tileDistance(playerTile, worldToTile(right)),
+      )
+      .find((enemy) => tileDistance(playerTile, worldToTile(enemy)) <= PLAYER_ATTACK_RANGE_TILES);
+
+    setAttackCooldownEndsAt(Date.now() + ATTACK_COOLDOWN);
+    setActiveAction("attack");
+    addSignal("attack", playerRef.current, "player");
+
+    if (!target) {
+      setMessage("Golpeas la oscuridad, pero no hay enemigos dentro del rango.");
+      showCombatFlash("Sin objetivo");
+      return;
+    }
+
+    const updatedEnemies = enemiesRef.current.map((enemy) => {
+      if (enemy.id !== target.id || !enemy.alive || enemy.state === "dead") {
+        return enemy;
+      }
+
+      const nextHp = Math.max(0, enemy.hp - PLAYER_ATTACK_DAMAGE);
+
+      if (nextHp <= 0) {
+        const config = stalkerConfigs.find((entry) => entry.id === enemy.id);
+        const earnedScore = config?.scoreValue ?? SCORE_PER_KILL_FALLBACK;
+
+        setScore((current) => current + earnedScore);
+        setKills((current) => current + 1);
+        setMessage(`${enemy.name} cae y desaparece entre los ecos de roca.`);
+        showCombatFlash(`-${PLAYER_ATTACK_DAMAGE} HP · baja`);
+
+        return {
+          ...enemy,
+          hp: 0,
+          alive: false,
+          state: "dead" as const,
+        };
+      }
+
+      setMessage(`Impacto confirmado sobre ${enemy.name}.`);
+      showCombatFlash(`-${PLAYER_ATTACK_DAMAGE} HP`);
+
+      return {
+        ...enemy,
+        hp: nextHp,
+        state: "alerted" as const,
+      };
+    });
+
+    setEnemies(updatedEnemies);
+
+    if (updatedEnemies.every((enemy) => !enemy.alive || enemy.state === "dead")) {
+      endAsWin("Silenciaste todos los ecos hostiles de la cueva.");
+    }
+  }
+
+  function handleDefend() {
+    if (gameStatus !== "playing") {
+      return;
+    }
+
+    if (defenseCooldownRemaining > 0) {
+      setMessage("Tu coraza aun no esta lista para otro bloqueo.");
+      return;
+    }
+
+    const activatedAt = Date.now();
+    setDefendingUntil(activatedAt + DEFEND_ACTIVE_DURATION);
+    setDefenseCooldownEndsAt(activatedAt + DEFEND_COOLDOWN);
+    setActiveAction("defend");
+    addSignal("defend", playerRef.current, "player");
+    setMessage("Endureces el cuerpo y amortiguas el siguiente intercambio.");
+    showCombatFlash("Defensa activa");
+  }
+
+  const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (event.repeat || gameStatusRef.current !== "playing") {
+      return;
+    }
+
+    const key = event.key.toLowerCase();
+
+    if (key === "arrowup" || key === "w") {
+      event.preventDefault();
+      queueMovementTo(tileToWorld({ ...worldToTile(playerRef.current), row: worldToTile(playerRef.current).row - 1 }));
+    } else if (key === "arrowdown" || key === "s") {
+      event.preventDefault();
+      queueMovementTo(tileToWorld({ ...worldToTile(playerRef.current), row: worldToTile(playerRef.current).row + 1 }));
+    } else if (key === "arrowleft" || key === "a") {
+      event.preventDefault();
+      queueMovementTo(tileToWorld({ ...worldToTile(playerRef.current), col: worldToTile(playerRef.current).col - 1 }));
+    } else if (key === "arrowright" || key === "d") {
+      event.preventDefault();
+      queueMovementTo(tileToWorld({ ...worldToTile(playerRef.current), col: worldToTile(playerRef.current).col + 1 }));
+    } else if (key === " ") {
+      event.preventDefault();
+      handleAttack();
+    } else if (key === "shift") {
+      event.preventDefault();
+      handleDefend();
     }
   });
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      onKeyDown(event);
-    };
-
-    const handleKeyUp = (event: KeyboardEvent) => {
-      onKeyUp(event);
-    };
+    const handleKeyDown = (event: KeyboardEvent) => onKeyDown(event);
 
     window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-    };
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  const restartGame = () => {
-    keyStateRef.current = emptyDirectionState();
-    clearPointerTarget();
+  function restartGame() {
+    resultSavedRef.current = false;
+    setMatchId(createMatchId());
+    setMatchStartedAt(new Date().toISOString());
     setPlayer(startPosition);
-    playerRef.current = startPosition;
-    const resetEnemy = createEnemyState(stalkerConfig);
-    enemyRef.current = resetEnemy;
-    setEnemy(resetEnemy);
+    setEnemies(initialEnemies());
     setActiveAction("move");
-    gameStatusRef.current = "playing";
     setGameStatus("playing");
-    setCooldownEndsAt(0);
+    setHealth(PLAYER_MAX_HEALTH);
+    setMoveCooldownEndsAt(0);
+    setAttackCooldownEndsAt(0);
     setDefendingUntil(0);
-    defendingUntilRef.current = 0;
-    setHealth(MAX_HEALTH);
-    healthRef.current = MAX_HEALTH;
-    setSanity(MAX_SANITY);
-    sanityRef.current = MAX_SANITY;
-    setSignals([]);
-    setMessage("Sobrevive a la cueva y mantente fuera del alcance del acechante.");
-    showZoneMessage(caveZones[0]?.ambient ?? "");
-    lastZoneIdRef.current = caveZones[0]?.id ?? "";
-    previousTimeRef.current = null;
-    lastMoveAtRef.current = Date.now();
-    movementBurstDistanceRef.current = 0;
-    lastThreatLevelRef.current = "calm";
-    setThreatLevel("calm");
-  };
+    setDefenseCooldownEndsAt(0);
+    setMessage("Marca una celda dentro de tu alcance y sobrevive a los ecos de la cueva.");
+    setZoneMessage("Solo ves 8 bloques alrededor. Todo lo demas es oscuridad.");
+    setScore(0);
+    setKills(0);
+    setCombatFlash(null);
+    setSignals(emptySignals());
+    setPathPreview([]);
+    setMovementPath([]);
+    setIsTraversing(false);
+    lastZoneIdRef.current = getZoneForPosition(startPosition, caveZones).id;
+  }
+
+  const closestThreat = useMemo(() => {
+    return aliveEnemies
+      .map((enemy) => ({
+        ...enemy,
+        distance: distanceBetween(player, enemy),
+      }))
+      .sort((left, right) => left.distance - right.distance)[0] ?? null;
+  }, [aliveEnemies, player]);
+
+  const nearestThreatTiles = closestThreat
+    ? Math.max(1, Math.round(closestThreat.distance / TILE_SIZE))
+    : null;
+  const detectedEnemies = aliveEnemies.filter(
+    (enemy) =>
+      tileDistance(worldToTile(player), worldToTile(enemy)) <= RADAR_SIGNAL_RANGE_TILES,
+  ).length;
+  const activeHostiles = aliveEnemies.filter(
+    (enemy) => enemy.state === "alerted" || enemy.state === "attacking",
+  ).length;
+  const nearbyDangerLabel = dangerLabelFromDistance(nearestThreatTiles, activeHostiles);
+  const threatSummary =
+    aliveEnemies.length === 0
+      ? "ninguna amenaza viva"
+      : `${aliveEnemies.length} eco${aliveEnemies.length === 1 ? "" : "s"} hostil${aliveEnemies.length === 1 ? "" : "es"} · ${activeHostiles} en alerta`;
 
   return (
     <section className="relative z-10 min-h-screen overflow-hidden">
@@ -656,12 +599,8 @@ export function TacticalGame({
         </button>
 
         <div className="rounded-full border border-white/10 bg-black/45 px-5 py-2 text-center backdrop-blur-md">
-          <p className="text-[0.65rem] tracking-[0.34em] text-zinc-500">
-            SPELEUM
-          </p>
-          <h1 className="text-sm font-semibold tracking-[0.28em] text-white">
-            {actionLabel(activeAction)}
-          </h1>
+          <p className="text-[0.65rem] tracking-[0.34em] text-zinc-500">SPELEUM</p>
+          <h1 className="text-sm font-semibold tracking-[0.28em] text-white">Supervivencia</h1>
         </div>
 
         <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-black/45 px-4 py-2 text-xs text-zinc-400 backdrop-blur-md sm:flex">
@@ -673,52 +612,73 @@ export function TacticalGame({
       <GameMap
         player={player}
         playerCharacterId={selectedCharacter.id}
-        enemy={enemy}
+        enemy={closestThreat}
+        enemies={enemies}
         signals={signals}
         activeAction={activeAction}
         isDefending={isDefending}
         currentZone={currentZone}
         gameStatus={gameStatus}
+        reachableTiles={reachableTiles}
+        selectedPath={pathPreview}
+        isMoveReady={!isTraversing && moveCooldownRemaining <= 0}
         onChooseDestination={handleMoveIntent}
       />
 
       <GameHud
         selectedCharacter={selectedCharacter}
         zone={currentZone}
-        objective={objective}
+        objective="Marca una celda dentro de tu pulso visible, gestiona el riesgo y conviertete en la ultima criatura viva."
         message={message}
         zoneMessage={zoneMessage}
         health={health}
-        maxHealth={MAX_HEALTH}
-        sanity={sanity}
-        maxSanity={MAX_SANITY}
-        enemyStateLabel={enemyStateLabel}
-        isPaused={gameStatus === "paused"}
-        onTogglePause={togglePause}
+        maxHealth={PLAYER_MAX_HEALTH}
+        aliveCount={aliveEnemies.length + (gameStatus === "lost" ? 0 : 1)}
+        enemyStateLabel={threatSummary}
+        isPaused={false}
+        score={score}
+        kills={kills}
+        defenseActive={isDefending}
+        moveCooldownRemaining={moveCooldownRemaining}
+        attackCooldownRemaining={attackCooldownRemaining}
+        defenseCooldownRemaining={defenseCooldownRemaining}
+        defenseDurationRemaining={Math.max(0, defendingUntil - now)}
+        nearestThreatTiles={nearestThreatTiles}
+        nearbyDangerLabel={nearbyDangerLabel}
+        detectedEnemies={detectedEnemies}
+        attackRangeLabel={`${PLAYER_ATTACK_RANGE_TILES} casillas`}
       />
 
-      <div className="absolute right-4 top-24 z-70 w-64 max-w-[calc(100vw-2rem)]">
+      <div className="absolute right-4 top-24 z-70 w-52 max-w-[calc(100vw-2rem)]">
         <RadarPanel
           player={player}
-          enemy={enemy}
+          enemy={closestThreat}
+          enemies={enemies}
           signals={signals}
-          cooldownRemaining={cooldownRemaining}
+          moveCooldownRemaining={moveCooldownRemaining}
         />
       </div>
 
-      <div className="pointer-events-none absolute right-4 top-88 z-70 hidden max-w-xs rounded-[1.25rem] border border-white/10 bg-black/45 p-4 text-sm text-zinc-300 backdrop-blur-md lg:block">
-        <p className="text-xs tracking-[0.25em] text-zinc-500">REFERENCIA</p>
-        <p className="mt-2">Objetivo: {objective}</p>
-        <p className="mt-2">Zona cercana: {nearestPoint?.label ?? currentZone.name}</p>
-        <p className="mt-2">Quietud: {threatLevel}</p>
-      </div>
+      {combatFlash && (
+        <div className="pointer-events-none absolute left-1/2 top-24 z-[85] -translate-x-1/2 rounded-full border border-rose-200/15 bg-black/70 px-5 py-2 text-sm tracking-[0.18em] text-rose-100 shadow-[0_0_28px_rgba(251,113,133,0.18)]">
+          {combatFlash}
+        </div>
+      )}
 
       <ActionControls
         activeAction={activeAction}
-        cooldownRemaining={cooldownRemaining}
-        isRecovering={isRecovering}
+        cooldownRemaining={attackCooldownRemaining}
+        moveCooldownRemaining={moveCooldownRemaining}
+        defenseCooldownRemaining={defenseCooldownRemaining}
+        isRecovering={attackCooldownRemaining > 0}
         isDefending={isDefending}
-        onMove={handleSelectMove}
+        onMove={() =>
+          setMessage(
+            moveCooldownRemaining > 0
+              ? "Tu pulso de desplazamiento aun se recupera."
+              : "Selecciona una celda dentro de tu rango visible para desplazarte.",
+          )
+        }
         onAttack={handleAttack}
         onDefend={handleDefend}
       />
@@ -727,6 +687,12 @@ export function TacticalGame({
         status={gameStatus}
         onRestart={restartGame}
         onExitToMenu={onExitToMenu}
+        titleOverride={gameStatus === "won" ? "Dominaste la Cueva" : "Criatura Eliminada"}
+        messageOverride={
+          gameStatus === "won"
+            ? "El mapa quedo limpio y Speleum te reconoce como la ultima presencia dominante."
+            : "Tu HP llego a cero. La cueva se cerro sobre ti."
+        }
       />
     </section>
   );

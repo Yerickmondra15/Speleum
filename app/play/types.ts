@@ -1,4 +1,9 @@
-import type { ActionKind, CharacterOption, PlayerPosition } from "./gameConfig";
+import type {
+  ActionKind,
+  CharacterOption,
+  PlayerPosition,
+  RadarSignalStrength,
+} from "./gameConfig";
 import type { EnemyState, ThreatLevel } from "./gameLogic";
 
 export type SignalType = "move" | "attack" | "defend" | "danger";
@@ -6,10 +11,12 @@ export type SignalType = "move" | "attack" | "defend" | "danger";
 export type RadarSignal = {
   id: number;
   type: SignalType;
+  strength: RadarSignalStrength;
   x: number;
   y: number;
   createdAt: number;
   duration: number;
+  radarJitter: number;
   ownerId?: string;
 };
 
@@ -32,6 +39,9 @@ export type PlayerCombatState = {
   threatLevel: ThreatLevel;
   idleMs: number;
   moveCooldownRemaining: number;
+  attackCooldownRemaining: number;
+  defenseCooldownRemaining: number;
+  defenseDurationRemaining: number;
   kills: number;
   damageDealt: number;
   eliminatedAt: number | null;
@@ -61,6 +71,7 @@ export type MatchResultEntry = {
 };
 
 export type MultiplayerStatePayload = {
+  matchId: string;
   roomCode: string;
   status: MultiplayerRoomStatus;
   self: MultiplayerPlayerState;
@@ -89,6 +100,7 @@ export type LocalRankingEntry = {
 };
 
 export type MultiplayerSession = {
+  matchId: string;
   roomCode: string;
   playerId: string;
   playerName: string;

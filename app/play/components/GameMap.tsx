@@ -7,9 +7,7 @@ import { getCreatureById } from "@/lib/creatures";
 import type {
   ActionKind,
   GameStatus,
-  HazardArea,
   PlayerPosition,
-  Rect,
   Zone,
 } from "../gameConfig";
 import {
@@ -18,20 +16,20 @@ import {
   CAVE_WIDTH,
   ENEMY_RADIUS,
   PLAYER_RADIUS,
+  TILE_SIZE,
   VISION_RADIUS,
-  caveWalls,
-  caveZones,
-  goalArea,
-  hazardAreas,
-  pointsOfInterest,
 } from "../gameConfig";
 import type { EnemyState } from "../gameLogic";
 import type { MultiplayerPlayerState, RadarSignal } from "../types";
+import { isWithinVision } from "../gameLogic";
+import type { TileCoordinate } from "../gameConfig";
+import { isTileVisible, tileMap, worldToTile } from "../tileMap";
 
 type GameMapProps = {
   player: PlayerPosition;
   playerCharacterId: string;
   enemy: EnemyState | null;
+  enemies?: EnemyState[];
   signals: RadarSignal[];
   activeAction: ActionKind;
   isDefending: boolean;
@@ -39,15 +37,18 @@ type GameMapProps = {
   gameStatus: GameStatus;
   otherPlayers?: MultiplayerPlayerState[];
   visionRadius?: number;
+  reachableTiles?: Map<string, { tile: TileCoordinate; distance: number }>;
+  selectedPath?: PlayerPosition[];
+  isMoveReady?: boolean;
   onChooseDestination: (position: PlayerPosition) => void;
 };
 
-function rectStyle(rect: Rect): CSSProperties {
+function tileStyle(x: number, y: number): CSSProperties {
   return {
-    left: rect.x,
-    top: rect.y,
-    width: rect.width,
-    height: rect.height,
+    left: x,
+    top: y,
+    width: TILE_SIZE,
+    height: TILE_SIZE,
   };
 }
 
@@ -58,72 +59,70 @@ function pointStyle(point: PlayerPosition): CSSProperties {
   };
 }
 
+function tileClass(type: string, visible: boolean) {
+  if (!visible) {
+    return "border-black/10 bg-black";
+  }
+
+  if (type === "wall") {
+    return "border-white/5 bg-[linear-gradient(135deg,rgba(36,10,18,0.95),rgba(14,5,10,1))]";
+  }
+
+  if (type === "obstacle") {
+    return "border-rose-200/5 bg-[linear-gradient(135deg,rgba(69,16,27,0.92),rgba(21,8,14,0.98))]";
+  }
+
+  if (type === "hazard") {
+    return "border-rose-300/10 bg-[radial-gradient(circle,rgba(120,21,47,0.35),rgba(18,4,10,0.96))]";
+  }
+
+  if (type === "spawn") {
+    return "border-cyan-200/8 bg-[radial-gradient(circle,rgba(103,232,249,0.12),rgba(12,16,20,0.94))]";
+  }
+
+  if (type === "goal") {
+    return "border-zinc-100/15 bg-[radial-gradient(circle,rgba(244,244,245,0.18),rgba(20,20,24,0.95))]";
+  }
+
+  return "border-white/[0.03] bg-[linear-gradient(180deg,rgba(16,16,18,0.95),rgba(6,4,7,1))]";
+}
+
 function signalClass(type: RadarSignal["type"]) {
   if (type === "danger") {
-    return "border-rose-200/70 bg-rose-300/12 shadow-[0_0_28px_rgba(251,113,133,0.3)]";
+    return "border-rose-200/70 bg-rose-300/12 shadow-[0_0_24px_rgba(251,113,133,0.3)]";
   }
 
   if (type === "attack") {
-    return "border-red-300/80 bg-red-400/10 shadow-[0_0_34px_rgba(127,29,29,0.45)]";
+    return "border-red-300/80 bg-red-400/10 shadow-[0_0_24px_rgba(127,29,29,0.45)]";
   }
 
   if (type === "defend") {
-    return "border-zinc-200/70 bg-zinc-200/10 shadow-[0_0_24px_rgba(212,212,216,0.2)]";
+    return "border-zinc-200/70 bg-zinc-200/10 shadow-[0_0_22px_rgba(212,212,216,0.2)]";
   }
 
-  return "border-zinc-200/60 bg-white/5 shadow-[0_0_20px_rgba(255,255,255,0.18)]";
-}
-
-function zoneClass(tone: Zone["tone"]) {
-  if (tone === "safe") {
-    return "bg-[radial-gradient(circle_at_30%_45%,rgba(212,212,216,0.12),transparent_32%),linear-gradient(140deg,rgba(16,16,20,0.9),rgba(28,28,34,0.75))]";
-  }
-
-  if (tone === "tunnels") {
-    return "bg-[linear-gradient(90deg,rgba(20,20,24,0.92),rgba(45,45,52,0.66)_48%,rgba(20,20,24,0.92))]";
-  }
-
-  if (tone === "open") {
-    return "bg-[radial-gradient(circle_at_52%_48%,rgba(255,255,255,0.05),transparent_22%),radial-gradient(circle_at_70%_72%,rgba(91,33,54,0.16),transparent_28%),linear-gradient(180deg,rgba(16,16,18,0.85),rgba(34,10,18,0.58))]";
-  }
-
-  if (tone === "danger") {
-    return "bg-[radial-gradient(circle_at_62%_28%,rgba(76,5,25,0.2),transparent_18%),linear-gradient(145deg,rgba(18,5,10,0.94),rgba(65,10,28,0.72))]";
-  }
-
-  if (tone === "trap") {
-    return "bg-[radial-gradient(circle_at_50%_52%,rgba(125,48,63,0.12),transparent_28%),linear-gradient(180deg,rgba(19,12,18,0.92),rgba(42,16,24,0.76))]";
-  }
-
-  if (tone === "goal") {
-    return "bg-[radial-gradient(circle_at_50%_45%,rgba(244,244,245,0.2),transparent_24%),linear-gradient(180deg,rgba(40,40,48,0.85),rgba(16,16,20,0.9))]";
-  }
-
-  return "bg-[linear-gradient(180deg,rgba(24,18,24,0.84),rgba(18,10,16,0.88))]";
-}
-
-function hazardClass(hazard: HazardArea) {
-  return hazard.id === "abyss-pool"
-    ? "bg-[radial-gradient(circle,rgba(68,13,31,0.44),rgba(15,4,12,0.9))]"
-    : "bg-[radial-gradient(circle,rgba(79,10,25,0.34),rgba(5,2,6,0.95))]";
+  return "border-zinc-200/60 bg-white/5 shadow-[0_0_16px_rgba(255,255,255,0.18)]";
 }
 
 export function GameMap({
   player,
   playerCharacterId,
   enemy,
+  enemies = [],
   signals,
   activeAction,
   isDefending,
-  currentZone,
   gameStatus,
   otherPlayers = [],
   visionRadius = VISION_RADIUS,
+  reachableTiles = new Map(),
+  selectedPath = [],
+  isMoveReady = false,
   onChooseDestination,
 }: GameMapProps) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const [viewportSize, setViewportSize] = useState({ width: 1200, height: 760 });
   const playerCreature = getCreatureById(playerCharacterId);
+  const playerTile = useMemo(() => worldToTile(player), [player]);
 
   useEffect(() => {
     const node = viewportRef.current;
@@ -138,16 +137,16 @@ export function GameMap({
         height: node.clientHeight,
       });
     };
-    const observer = new ResizeObserver(updateSize);
 
+    const observer = new ResizeObserver(updateSize);
     updateSize();
     observer.observe(node);
 
     return () => observer.disconnect();
   }, []);
 
-  const camera = useMemo(() => {
-    return {
+  const camera = useMemo(
+    () => ({
       x: Math.min(
         Math.max(player.x - viewportSize.width / 2, 0),
         Math.max(CAVE_WIDTH - viewportSize.width, 0),
@@ -156,8 +155,9 @@ export function GameMap({
         Math.max(player.y - viewportSize.height / 2, 0),
         Math.max(CAVE_HEIGHT - viewportSize.height, 0),
       ),
-    };
-  }, [player, viewportSize]);
+    }),
+    [player, viewportSize],
+  );
 
   const handleMapClick = (event: MouseEvent<HTMLDivElement>) => {
     if (gameStatus !== "playing") {
@@ -180,6 +180,28 @@ export function GameMap({
     top: `${playerViewportPosition.y}px`,
   };
 
+  const visibleTiles = useMemo(
+    () =>
+      tileMap.filter((tile) =>
+        tile.x + TILE_SIZE >= camera.x &&
+        tile.x <= camera.x + viewportSize.width &&
+        tile.y + TILE_SIZE >= camera.y &&
+        tile.y <= camera.y + viewportSize.height,
+      ),
+    [camera, viewportSize],
+  );
+
+  const threatEntries = enemies.length > 0 ? enemies : enemy ? [enemy] : [];
+  const visibleEnemies = threatEntries.filter(
+    (entry) => entry.alive !== false && isTileVisible(playerTile, worldToTile(entry)),
+  );
+  const selectedPathKeys = new Set(
+    selectedPath.map((step) => {
+      const tile = worldToTile(step);
+      return `${tile.col},${tile.row}`;
+    }),
+  );
+
   return (
     <div className="relative h-full min-h-screen w-full">
       <div
@@ -194,82 +216,57 @@ export function GameMap({
       >
         <div className="absolute inset-0 bg-[#050202]" />
         <div
-          className="absolute left-0 top-0 transition-transform duration-500 ease-out"
+          className="absolute left-0 top-0"
           style={{
             width: CAVE_WIDTH,
             height: CAVE_HEIGHT,
             transform: `translate3d(${-camera.x}px, ${-camera.y}px, 0)`,
           }}
         >
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_16%_86%,rgba(72,13,24,0.24),transparent_16%),radial-gradient(circle_at_78%_18%,rgba(56,16,36,0.19),transparent_20%),radial-gradient(circle_at_56%_52%,rgba(255,255,255,0.032),transparent_22%),linear-gradient(135deg,#050202,#110509_50%,#030101)]" />
-          <div className="absolute inset-0 opacity-25 [background-image:linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.015)_1px,transparent_1px)] [background-size:88px_88px]" />
-          <div className="absolute inset-0 opacity-20 [background-image:radial-gradient(rgba(255,255,255,0.03)_1px,transparent_1px)] [background-size:42px_42px]" />
+          {visibleTiles.map((tile) => {
+            const visible = isTileVisible(playerTile, { col: tile.col, row: tile.row });
+            const tileKey = `${tile.col},${tile.row}`;
+            const reachable = isMoveReady && reachableTiles.has(tileKey) && visible;
+            const inPath = selectedPathKeys.has(tileKey);
 
-          {caveZones.map((zone) => (
-            <div
-              key={zone.id}
-              className={`absolute rounded-[2rem] border ${
-                zone.id === currentZone.id
-                  ? "border-zinc-200/15"
-                  : "border-white/5"
-              } ${zoneClass(zone.tone)}`}
-              style={rectStyle(zone)}
-            >
-              <div className="absolute left-6 top-5 text-[0.68rem] tracking-[0.26em] text-zinc-500">
-                {zone.subtitle}
-              </div>
-              <div className="pointer-events-none absolute inset-0 opacity-35 [mask-image:radial-gradient(circle_at_center,black,transparent_72%)] [background-image:radial-gradient(rgba(255,255,255,0.07)_1px,transparent_1px)] [background-size:28px_28px]" />
-            </div>
-          ))}
-
-          {hazardAreas.map((hazard) => (
-            <div
-              key={hazard.id}
-              className={`absolute rounded-[999px] border border-rose-300/10 shadow-[inset_0_0_28px_rgba(0,0,0,0.6)] ${hazardClass(
-                hazard,
-              )}`}
-              style={rectStyle(hazard)}
-            />
-          ))}
-
-          <div
-            className="absolute rounded-[2rem] border border-zinc-100/20 bg-[radial-gradient(circle,rgba(255,255,255,0.22),rgba(255,255,255,0.05)_40%,rgba(20,20,24,0.2)_75%)] shadow-[0_0_58px_rgba(255,255,255,0.16)]"
-            style={rectStyle(goalArea)}
-          >
-            <div className="absolute inset-0 animate-pulse rounded-[2rem] bg-white/5" />
-          </div>
-
-          {pointsOfInterest.map((point) => (
-            <div
-              key={point.id}
-              className="absolute z-10 -translate-x-1/2 -translate-y-1/2"
-              style={pointStyle(point)}
-            >
-              <div className="h-2.5 w-2.5 rounded-full border border-zinc-300/40 bg-white/20 shadow-[0_0_18px_rgba(255,255,255,0.18)]" />
-            </div>
-          ))}
-
-          {caveWalls.map((wall) => (
-            <div
-              key={wall.id}
-              className="absolute z-10 rounded-[1.25rem] border border-white/5 bg-[linear-gradient(135deg,rgba(64,14,24,0.9),rgba(33,8,18,0.95)_58%,rgba(6,4,7,0.98))] shadow-[inset_0_0_28px_rgba(0,0,0,0.72),0_16px_38px_rgba(0,0,0,0.48)]"
-              style={rectStyle(wall)}
-            />
-          ))}
-
-          {signals.map((signal) => (
-            <div
-              key={signal.id}
-              className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-1/2"
-              style={pointStyle(signal)}
-            >
+            return (
               <div
-                className={`h-14 w-14 animate-ping rounded-full border ${signalClass(
-                  signal.type,
-                )}`}
-              />
-            </div>
-          ))}
+                key={`${tile.col}-${tile.row}`}
+                className={`absolute border ${tileClass(tile.type, visible)}`}
+                style={tileStyle(tile.x, tile.y)}
+              >
+                {visible && tile.type === "floor" && (
+                  <div className="absolute inset-0 opacity-14 [background-image:radial-gradient(rgba(255,255,255,0.09)_1px,transparent_1px)] [background-size:18px_18px]" />
+                )}
+                {reachable && tile.type !== "wall" && tile.type !== "obstacle" && (
+                  <div className="absolute inset-[6px] rounded-[0.9rem] border border-zinc-100/8 shadow-[0_0_12px_rgba(255,255,255,0.06)] transition hover:border-rose-200/18 hover:bg-white/[0.03]" />
+                )}
+                {inPath && (
+                  <div className="absolute inset-[8px] rounded-[0.8rem] border border-rose-200/18 bg-rose-200/[0.03] shadow-[0_0_16px_rgba(251,113,133,0.08)]" />
+                )}
+              </div>
+            );
+          })}
+
+          {signals
+            .filter((signal) => isWithinVision(player, signal, visionRadius * 1.15))
+            .map((signal) => (
+              <div
+                key={signal.id}
+                className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-1/2"
+                style={pointStyle(signal)}
+              >
+                <div
+                  className={`rounded-full border ${signalClass(signal.type)} ${
+                    signal.strength === "high"
+                      ? "h-14 w-14 animate-ping"
+                      : signal.strength === "medium"
+                        ? "h-11 w-11 animate-ping"
+                        : "h-9 w-9 animate-ping"
+                  }`}
+                />
+              </div>
+            ))}
 
           {activeAction === "attack" && gameStatus === "playing" && (
             <div
@@ -282,62 +279,73 @@ export function GameMap({
             />
           )}
 
-          {enemy && (
+          {visibleEnemies.map((entry) => (
             <div
+              key={entry.id}
               className="absolute z-30 -translate-x-1/2 -translate-y-1/2"
-              style={pointStyle({
-                x: enemy.x,
-                y: enemy.y,
-              })}
+              style={pointStyle(entry)}
             >
               <div
                 className={`relative rounded-full border ${
-                  enemy.mode === "chase"
-                    ? "border-rose-200/80 bg-rose-300/30 shadow-[0_0_32px_rgba(127,29,29,0.55)]"
-                    : "border-violet-200/40 bg-violet-300/10 shadow-[0_0_20px_rgba(91,33,182,0.25)]"
+                  entry.state === "attacking" || entry.state === "alerted"
+                    ? "border-rose-200/80 bg-rose-300/30 shadow-[0_0_30px_rgba(127,29,29,0.55)]"
+                    : entry.state === "dead"
+                      ? "border-zinc-500/40 bg-zinc-900/40"
+                      : "border-violet-200/40 bg-violet-300/10 shadow-[0_0_18px_rgba(91,33,182,0.25)]"
                 }`}
                 style={{ width: ENEMY_RADIUS * 2, height: ENEMY_RADIUS * 2 }}
               >
                 <div className="absolute inset-1 flex items-center justify-center overflow-hidden rounded-full bg-zinc-950/75">
                   <Image
-                    src={getCreatureById("cave-spider").imagenJuego}
-                    alt="Amenaza"
-                    width={36}
-                    height={36}
-                    className={`h-9 w-9 object-contain ${
-                      enemy.mode === "chase" ? "animate-pulse" : ""
+                    src={getCreatureById(entry.spriteCharacterId).imagenJuego}
+                    alt={entry.name}
+                    width={34}
+                    height={34}
+                    className={`h-8.5 w-8.5 object-contain ${
+                      entry.state === "attacking" || entry.state === "alerted"
+                        ? "animate-pulse"
+                        : ""
                     }`}
                   />
                 </div>
               </div>
-            </div>
-          )}
-
-          {otherPlayers.map((otherPlayer) => (
-            <div
-              key={otherPlayer.id}
-              className="absolute z-30 -translate-x-1/2 -translate-y-1/2"
-              style={pointStyle(otherPlayer.position)}
-            >
-              <div
-                className="relative rounded-full border border-cyan-200/70 bg-cyan-300/25 shadow-[0_0_22px_rgba(103,232,249,0.35)]"
-                style={{ width: PLAYER_RADIUS * 2, height: PLAYER_RADIUS * 2 }}
-              >
-                <div className="absolute inset-1 flex items-center justify-center overflow-hidden rounded-full bg-cyan-950/70">
-                  <Image
-                    src={getCreatureById(otherPlayer.characterId).imagenJuego}
-                    alt={otherPlayer.name}
-                    width={34}
-                    height={34}
-                    className="h-8.5 w-8.5 object-contain"
+              <div className="absolute left-1/2 top-full mt-2 min-w-24 -translate-x-1/2 rounded-2xl border border-white/10 bg-black/85 px-2 py-1.5 text-center text-[0.58rem] tracking-[0.14em] text-rose-100">
+                <p>{entry.name}</p>
+                <div className="mt-1 h-1 overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className="h-full rounded-full bg-[linear-gradient(90deg,rgba(251,113,133,0.85),rgba(255,255,255,0.95))]"
+                    style={{ width: `${Math.max(0, (entry.hp / entry.maxHp) * 100)}%` }}
                   />
                 </div>
-              </div>
-              <div className="absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/75 px-2 py-1 text-[0.65rem] tracking-[0.18em] text-cyan-100">
-                {otherPlayer.name}
+                <p className="mt-1 text-zinc-300">{entry.state}</p>
               </div>
             </div>
           ))}
+
+          {otherPlayers
+            .filter((otherPlayer) => isTileVisible(playerTile, worldToTile(otherPlayer.position)))
+            .map((otherPlayer) => (
+              <div
+                key={otherPlayer.id}
+                className="absolute z-30 -translate-x-1/2 -translate-y-1/2"
+                style={pointStyle(otherPlayer.position)}
+              >
+                <div
+                  className="relative rounded-full border border-cyan-200/70 bg-cyan-300/25 shadow-[0_0_22px_rgba(103,232,249,0.35)]"
+                  style={{ width: PLAYER_RADIUS * 2, height: PLAYER_RADIUS * 2 }}
+                >
+                  <div className="absolute inset-1 flex items-center justify-center overflow-hidden rounded-full bg-cyan-950/70">
+                    <Image
+                      src={getCreatureById(otherPlayer.characterId).imagenJuego}
+                      alt={otherPlayer.name}
+                      width={34}
+                      height={34}
+                      className="h-8.5 w-8.5 object-contain"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
 
           <div
             className="absolute z-30 -translate-x-1/2 -translate-y-1/2"
@@ -353,7 +361,7 @@ export function GameMap({
                   alt={playerCreature.nombre}
                   width={40}
                   height={40}
-                  className="h-10 w-10 animate-[pulse_3s_ease-in-out_infinite] object-contain"
+                  className="h-10 w-10 object-contain"
                 />
               </div>
               {isDefending && (
@@ -367,14 +375,14 @@ export function GameMap({
           className="pointer-events-none absolute inset-0 z-40"
           style={{
             background: `radial-gradient(circle at ${lightPosition.left} ${lightPosition.top}, rgba(255,255,255,0.02) 0 ${Math.round(
-              visionRadius * 0.18,
-            )}px, rgba(255,255,255,0.03) ${Math.round(
+              visionRadius * 0.16,
+            )}px, rgba(255,255,255,0.02) ${Math.round(
               visionRadius * 0.28,
-            )}px, rgba(0,0,0,0.48) ${Math.round(
-              visionRadius * 0.48,
-            )}px, rgba(0,0,0,0.9) ${Math.round(
-              visionRadius * 0.76,
-            )}px, rgba(0,0,0,0.985) ${visionRadius}px)`,
+            )}px, rgba(0,0,0,0.4) ${Math.round(
+              visionRadius * 0.44,
+            )}px, rgba(0,0,0,0.92) ${Math.round(
+              visionRadius * 0.82,
+            )}px, rgba(0,0,0,0.995) ${visionRadius}px)`,
           }}
         />
         <div className="pointer-events-none absolute inset-0 z-50 shadow-[inset_0_0_140px_rgba(0,0,0,0.96)]" />

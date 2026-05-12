@@ -12,6 +12,7 @@ type MultiplayerMenuProps = {
   defaultPlayerName: string;
   onBack: () => void;
   onGameStart: (session: {
+    matchId: string;
     roomCode: string;
     playerId: string;
     playerName: string;
@@ -47,6 +48,7 @@ export function MultiplayerMenu({
 
       if (state.status === "playing") {
         onGameStart({
+          matchId: state.matchId,
           roomCode: state.roomCode,
           playerId: state.self.id,
           playerName: state.self.name,

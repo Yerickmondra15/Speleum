@@ -1,0 +1,62 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id             String        @id @default(cuid())
+  username       String        @unique
+  email          String        @unique
+  passwordHash   String
+  activeCreature String        @default("cave-axolotl")
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  stats          UserStats?
+  matchResults   MatchResult[]
+  matchesWon     Match[]       @relation("MatchWinner")
+}
+
+model UserStats {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  matchesPlayed Int      @default(0)
+  wins          Int      @default(0)
+  losses        Int      @default(0)
+  score         Int      @default(0)
+  lastMatchAt   DateTime?
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Match {
+  id        String        @id
+  mode      String
+  status    String
+  winnerId  String?
+  startedAt DateTime      @default(now())
+  endedAt   DateTime?
+  winner    User?         @relation("MatchWinner", fields: [winnerId], references: [id], onDelete: SetNull)
+  results   MatchResult[]
+
+  @@index([winnerId])
+  @@index([startedAt])
+}
+
+model MatchResult {
+  id          String   @id @default(cuid())
+  matchId     String
+  userId      String
+  creature    String
+  result      String
+  scoreEarned Int
+  createdAt   DateTime @default(now())
+  match       Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, userId])
+  @@index([userId, createdAt])
+}

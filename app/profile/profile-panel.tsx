@@ -5,33 +5,66 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, LogOut, Play, UserRound } from "lucide-react";
-import { getCreatureById, SELECTED_CREATURE_KEY } from "@/lib/creatures";
-import { clearSession, readSession, type SpeleumSession } from "@/lib/session";
+import { getCreatureById } from "@/lib/creatures";
+import { useAuth } from "../auth/AuthProvider";
+
+type ProfileData = {
+  username: string;
+  email: string;
+  activeCreature: string;
+  matchesPlayed: number;
+  wins: number;
+  losses: number;
+  score: number;
+  lastMatchAt: string | null;
+};
 
 export function ProfilePanel() {
   const router = useRouter();
-  const [session] = useState<SpeleumSession | null>(() => readSession());
-  const [activeCreatureId] = useState(() => {
-    if (typeof window === "undefined") {
-      return "cave-axolotl";
-    }
-
-    return window.localStorage.getItem(SELECTED_CREATURE_KEY) ?? "cave-axolotl";
-  });
-  const activeCreature = getCreatureById(activeCreatureId);
+  const { user, status, logout } = useAuth();
+  const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const activeCreature = getCreatureById(
+    profile?.activeCreature ?? user?.activeCreature ?? "cave-axolotl",
+  );
 
   useEffect(() => {
-    if (!session) {
+    if (status === "signed-out") {
       router.replace("/login");
+      return;
     }
-  }, [router, session]);
 
-  const handleLogout = () => {
-    clearSession();
+    if (status !== "signed-in") {
+      return;
+    }
+
+    async function loadProfile() {
+      try {
+        const response = await fetch("/api/profile", {
+          cache: "no-store",
+        });
+
+        if (response.status === 401) {
+          router.replace("/login");
+          return;
+        }
+
+        const data = (await response.json()) as ProfileData;
+        setProfile(data);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    void loadProfile();
+  }, [router, status]);
+
+  const handleLogout = async () => {
+    await logout();
     router.replace("/");
   };
 
-  if (!session) {
+  if (status === "loading" || isLoading || !profile) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-black text-zinc-400">
         Cargando perfil...
@@ -61,11 +94,10 @@ export function ProfilePanel() {
         <div>
           <p className="text-xs tracking-[0.35em] text-zinc-500">SPELEUM ID</p>
           <h1 className="mt-4 text-4xl font-semibold tracking-[0.18em] text-white sm:text-5xl">
-            {session.username}
+            {profile.username}
           </h1>
           <p className="mt-5 max-w-xl text-sm leading-7 text-zinc-400">
-            Tu sesion local mantiene tu identidad base para entrar a Speleum
-            sin depender aun de backend.
+            Tu perfil conserva la identidad de tu criatura y tus estadisticas reales de Speleum.
           </p>
         </div>
 
@@ -85,7 +117,7 @@ export function ProfilePanel() {
                 SESION ACTIVA
               </p>
               <h2 className="mt-1 text-2xl font-semibold text-white">
-                {session.username}
+                {profile.username}
               </h2>
             </div>
           </div>
@@ -93,15 +125,15 @@ export function ProfilePanel() {
           <div className="mt-7 grid gap-3 text-sm">
             <div className="flex justify-between rounded-2xl border border-white/10 bg-black/35 px-4 py-3">
               <span className="text-zinc-500">Nombre de usuario</span>
-              <span className="text-zinc-200">{session.username}</span>
+              <span className="text-zinc-200">{profile.username}</span>
             </div>
             <div className="flex justify-between rounded-2xl border border-white/10 bg-black/35 px-4 py-3">
               <span className="text-zinc-500">Correo</span>
-              <span className="text-zinc-200">{session.email}</span>
+              <span className="text-zinc-200">{profile.email}</span>
             </div>
             <div className="flex justify-between rounded-2xl border border-white/10 bg-black/35 px-4 py-3">
               <span className="text-zinc-500">Estado</span>
-              <span className="text-zinc-200">sesion guardada</span>
+              <span className="text-zinc-200">sesion en servidor</span>
             </div>
             <div className="flex justify-between rounded-2xl border border-white/10 bg-black/35 px-4 py-3">
               <span className="text-zinc-500">Criatura activa</span>
@@ -110,6 +142,30 @@ export function ProfilePanel() {
             <div className="flex justify-between rounded-2xl border border-white/10 bg-black/35 px-4 py-3">
               <span className="text-zinc-500">Habilidad</span>
               <span className="max-w-52 text-right text-zinc-200">{activeCreature.habilidad}</span>
+            </div>
+            <div className="flex justify-between rounded-2xl border border-white/10 bg-black/35 px-4 py-3">
+              <span className="text-zinc-500">Partidas jugadas</span>
+              <span className="text-zinc-200">{profile.matchesPlayed}</span>
+            </div>
+            <div className="flex justify-between rounded-2xl border border-white/10 bg-black/35 px-4 py-3">
+              <span className="text-zinc-500">Victorias</span>
+              <span className="text-zinc-200">{profile.wins}</span>
+            </div>
+            <div className="flex justify-between rounded-2xl border border-white/10 bg-black/35 px-4 py-3">
+              <span className="text-zinc-500">Derrotas</span>
+              <span className="text-zinc-200">{profile.losses}</span>
+            </div>
+            <div className="flex justify-between rounded-2xl border border-white/10 bg-black/35 px-4 py-3">
+              <span className="text-zinc-500">Score</span>
+              <span className="text-zinc-200">{profile.score}</span>
+            </div>
+            <div className="flex justify-between rounded-2xl border border-white/10 bg-black/35 px-4 py-3">
+              <span className="text-zinc-500">Ultima partida</span>
+              <span className="text-zinc-200">
+                {profile.lastMatchAt
+                  ? new Date(profile.lastMatchAt).toLocaleString("es-CR")
+                  : "Sin partidas"}
+              </span>
             </div>
           </div>
 

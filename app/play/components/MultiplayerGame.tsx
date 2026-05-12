@@ -8,6 +8,7 @@ import {
   DEFEND_COOLDOWN,
   MAX_HEALTH,
   MAX_SANITY,
+  TILE_SIZE,
   VISION_RADIUS,
   caveZones,
   characterOptions,
@@ -18,6 +19,7 @@ import type { MatchResultEntry, MultiplayerStatePayload } from "../types";
 import { getCharacterName } from "../types";
 import { ensureSocketConnection, getSocket } from "@/lib/socket";
 import { appendLocalRanking } from "@/lib/ranking";
+import { useAuth } from "../../auth/AuthProvider";
 import { ActionControls } from "./ActionControls";
 import { GameHud } from "./GameHud";
 import { GameMap } from "./GameMap";
@@ -25,6 +27,7 @@ import { GameOverlay } from "./GameOverlay";
 import { RadarPanel } from "./RadarPanel";
 
 type MultiplayerGameProps = {
+  matchId: string;
   roomCode: string;
   selectedCharacter: CharacterOption;
   onExitToMenu: () => void;
@@ -73,10 +76,12 @@ function ResultsTable({ results }: { results: MatchResultEntry[] }) {
 }
 
 export function MultiplayerGame({
+  matchId,
   roomCode,
   selectedCharacter,
   onExitToMenu,
 }: MultiplayerGameProps) {
+  const { user } = useAuth();
   const [gameState, setGameState] = useState<MultiplayerStatePayload | null>(null);
   const [message, setMessage] = useState("Conectando con la sala...");
   const [activeAction, setActiveAction] = useState<"move" | "attack" | "defend">("move");
@@ -86,6 +91,7 @@ export function MultiplayerGame({
   const pointerTargetRef = useRef<PlayerPosition | null>(null);
   const keyStateRef = useRef<DirectionState>(emptyDirectionState());
   const rankingStoredRef = useRef(false);
+  const resultSavedRef = useRef(false);
 
   useEffect(() => {
     const socket = ensureSocketConnection();
@@ -149,6 +155,47 @@ export function MultiplayerGame({
     rankingStoredRef.current = true;
   }, [gameState]);
 
+  useEffect(() => {
+    if (!gameState || gameState.status !== "finished" || resultSavedRef.current) {
+      return;
+    }
+
+    const selfResult = gameState.results.find((entry) => entry.playerId === gameState.self.id);
+
+    if (!selfResult) {
+      return;
+    }
+
+    resultSavedRef.current = true;
+
+    const didWin = gameState.winnerId === gameState.self.id;
+    const scoreEarned = Math.max(
+      didWin ? 120 : 35,
+      didWin ? 120 + selfResult.kills * 20 : 20 + selfResult.kills * 10,
+    );
+
+    void fetch("/api/matches/results", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        matchId,
+        mode: "multiplayer",
+        status: gameState.status,
+        winnerId: didWin ? user?.id ?? null : null,
+        startedAt: new Date(
+          Date.now() -
+            Math.max(...gameState.results.map((entry) => entry.survivedMs)),
+        ).toISOString(),
+        endedAt: new Date().toISOString(),
+        creature: selectedCharacter.id,
+        result: didWin ? "win" : "loss",
+        scoreEarned,
+      }),
+    }).catch(() => {
+      resultSavedRef.current = false;
+    });
+  }, [gameState, matchId, selectedCharacter.id, user?.id]);
+
   const self = gameState?.self ?? null;
   const player = useMemo(() => self?.position ?? { x: 0, y: 0 }, [self?.position]);
   const enemy = gameState?.enemy ?? null;
@@ -177,19 +224,24 @@ export function MultiplayerGame({
         : "Sobrevive, conserva la cordura y conviertete en la ultima criatura viva.";
 
   const enemyStateLabel = enemy
-    ? enemy.mode === "chase"
+    ? enemy.state === "attacking" || enemy.state === "alerted"
       ? "la cueva acecha"
       : "eco hostil"
     : "sin rastro";
 
   const health = self?.combat.health ?? MAX_HEALTH;
   const sanity = self?.combat.sanity ?? MAX_SANITY;
-  const cooldownRemaining = Math.max(
+  const moveCooldownRemaining = Math.max(
     self?.combat.moveCooldownRemaining ?? 0,
     Math.max(0, cooldownEndsAt - now),
   );
+  const attackCooldownRemaining = self?.combat.attackCooldownRemaining ?? 0;
+  const defenseCooldownRemaining = self?.combat.defenseCooldownRemaining ?? 0;
   const isDefending = Boolean(self?.combat.isDefending);
   const threatLevel = self?.combat.threatLevel ?? "calm";
+  const nearestThreatTiles = enemy
+    ? Math.max(1, Math.round(distanceBetween(player, enemy) / TILE_SIZE))
+    : null;
 
   const emitMovement = useEffectEvent(() => {
     if (!self || !gameState || gameState.status !== "playing" || gameStatus !== "playing") {
@@ -240,7 +292,7 @@ export function MultiplayerGame({
   };
 
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (event.repeat || gameStatus !== "playing" || cooldownRemaining > 0) {
+    if (event.repeat || gameStatus !== "playing" || moveCooldownRemaining > 0) {
       return;
     }
 
@@ -292,7 +344,7 @@ export function MultiplayerGame({
   }, []);
 
   const handleMoveIntent = (target: PlayerPosition) => {
-    if (cooldownRemaining > 0) {
+    if (moveCooldownRemaining > 0) {
       setMessage("Tu criatura aun recupera el impulso.");
       return;
     }
@@ -303,7 +355,7 @@ export function MultiplayerGame({
   };
 
   function handleAttack() {
-    if (gameStatus !== "playing" || cooldownRemaining > 0) {
+    if (gameStatus !== "playing" || attackCooldownRemaining > 0) {
       return;
     }
 
@@ -314,7 +366,7 @@ export function MultiplayerGame({
   }
 
   const handleDefend = () => {
-    if (gameStatus !== "playing" || cooldownRemaining > 0) {
+    if (gameStatus !== "playing" || defenseCooldownRemaining > 0) {
       return;
     }
 
@@ -403,6 +455,16 @@ export function MultiplayerGame({
         aliveCount={gameState.aliveCount}
         enemyStateLabel={enemyStateLabel}
         isPaused={false}
+        defenseActive={isDefending}
+        moveCooldownRemaining={moveCooldownRemaining}
+        attackCooldownRemaining={attackCooldownRemaining}
+        defenseCooldownRemaining={defenseCooldownRemaining}
+        defenseDurationRemaining={self.combat.defenseDurationRemaining}
+        nearestThreatTiles={nearestThreatTiles}
+        nearbyDangerLabel={
+          enemy?.state === "attacking" ? "alto" : enemy?.state === "alerted" ? "medio" : "bajo"
+        }
+        detectedEnemies={enemy ? 1 : 0}
       />
 
       <div className="absolute right-4 top-24 z-70 w-64 max-w-[calc(100vw-2rem)]">
@@ -410,7 +472,7 @@ export function MultiplayerGame({
           player={player}
           enemy={enemy}
           signals={gameState.signals}
-          cooldownRemaining={cooldownRemaining}
+          moveCooldownRemaining={moveCooldownRemaining}
         />
       </div>
 
@@ -458,8 +520,10 @@ export function MultiplayerGame({
 
       <ActionControls
         activeAction={activeAction}
-        cooldownRemaining={cooldownRemaining}
-        isRecovering={cooldownRemaining > 0}
+        cooldownRemaining={attackCooldownRemaining}
+        moveCooldownRemaining={moveCooldownRemaining}
+        defenseCooldownRemaining={defenseCooldownRemaining}
+        isRecovering={attackCooldownRemaining > 0}
         isDefending={isDefending}
         onMove={() => setActiveAction("move")}
         onAttack={handleAttack}

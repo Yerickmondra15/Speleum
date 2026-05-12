@@ -42,6 +42,11 @@ export type PlayerPosition = {
   y: number;
 };
 
+export type TileCoordinate = {
+  col: number;
+  row: number;
+};
+
 export type Zone = Rect & {
   name: string;
   tone: "safe" | "tunnels" | "open" | "danger" | "trap" | "goal";
@@ -58,9 +63,14 @@ export type GoalArea = Rect & {
   label: string;
 };
 
+export type EnemyBehaviorType = "stalker" | "territorial" | "wanderer";
+export type RadarSignalStrength = "low" | "medium" | "high";
+
 export type EnemyConfig = {
   id: string;
   name: string;
+  behavior: EnemyBehaviorType;
+  spriteCharacterId: CreatureId;
   start: PlayerPosition;
   patrolPoints: PlayerPosition[];
   speed: number;
@@ -68,29 +78,47 @@ export type EnemyConfig = {
   detectionRange: number;
   giveUpRange: number;
   touchRange: number;
+  tetherRange: number;
+  hp: number;
+  damage: number;
+  scoreValue: number;
+};
+
+export type SignalProfile = {
+  strength: RadarSignalStrength;
+  duration: number;
+  radarJitter: number;
 };
 
 export const CAVE_WIDTH = 5200;
 export const CAVE_HEIGHT = 3200;
+export const TILE_SIZE = 80;
+export const MAP_COLS = CAVE_WIDTH / TILE_SIZE;
+export const MAP_ROWS = CAVE_HEIGHT / TILE_SIZE;
 export const PLAYER_RADIUS = 24;
 export const ENEMY_RADIUS = 26;
-export const MAX_HEALTH = 100;
+export const PLAYER_MAX_HEALTH = 100;
+export const MAX_HEALTH = PLAYER_MAX_HEALTH;
 export const MAX_SANITY = 100;
 export const FEAR_WARNING_THRESHOLD = 45;
 export const FEAR_CRITICAL_THRESHOLD = 18;
 export const KEYBOARD_STEP = 110;
 export const PLAYER_SPEED = 240;
-export const VISION_TILE_SIZE = 80;
-export const VISION_RADIUS = VISION_TILE_SIZE * 8;
-export const MOVE_BASE_COOLDOWN = 180;
-export const MOVE_DISTANCE_COOLDOWN = 2.1;
+export const VISION_TILE_SIZE = TILE_SIZE;
+export const TILE_VISION_RADIUS = 8;
+export const VISION_RADIUS = VISION_TILE_SIZE * TILE_VISION_RADIUS;
+export const MOVE_BASE_COOLDOWN = 1000;
+export const MOVE_DISTANCE_COOLDOWN = 850;
+export const MOVE_MAX_COOLDOWN = 7000;
 export const MOVE_BURST_IDLE_MS = 220;
-export const ATTACK_COOLDOWN = 2600;
-export const DEFEND_COOLDOWN = 1900;
-export const ATTACK_RADIUS = 210;
-export const PLAYER_ATTACK_DAMAGE = 28;
-export const CAVE_ATTACK_DAMAGE = 20;
-export const DEFEND_DAMAGE_REDUCTION = 0.55;
+export const ATTACK_COOLDOWN = 950;
+export const DEFEND_ACTIVE_DURATION = 2200;
+export const DEFEND_COOLDOWN = 4200;
+export const DEFEND_RECOVERY_DURATION = DEFEND_COOLDOWN;
+export const ATTACK_RADIUS = TILE_SIZE * 1.45;
+export const PLAYER_ATTACK_DAMAGE = 30;
+export const CAVE_ATTACK_DAMAGE = 18;
+export const DEFEND_DAMAGE_REDUCTION = 0.5;
 export const DARKNESS_SANITY_DRAIN = 7;
 export const MOVING_SANITY_RECOVERY = 4.5;
 export const IDLE_SANITY_DRAIN = 6.5;
@@ -103,10 +131,41 @@ export const SANITY_DAMAGE_THRESHOLD = 12;
 export const SANITY_DAMAGE_PER_TICK = 8;
 export const MAX_ROOM_PLAYERS = 4;
 export const MIN_ROOM_PLAYERS = 2;
+export const ENEMY_MOVE_INTERVAL = 420;
+export const PLAYER_MOVE_RANGE_TILES = 8;
+export const PLAYER_ATTACK_RANGE_TILES = 3;
+export const ENEMY_ATTACK_RANGE_TILES = 1;
+export const RADAR_SIGNAL_RANGE_TILES = 12;
+export const SCORE_PER_KILL_FALLBACK = 80;
+export const SCORE_PER_LOCAL_VICTORY = 180;
+export const ENEMY_CLOSE_DANGER_TILES = 4;
+
+export const RADAR_SIGNAL_PROFILES: Record<"move" | "attack" | "defend" | "danger", SignalProfile> = {
+  move: {
+    strength: "low",
+    duration: 900,
+    radarJitter: 3.5,
+  },
+  attack: {
+    strength: "high",
+    duration: 1600,
+    radarJitter: 1.25,
+  },
+  defend: {
+    strength: "medium",
+    duration: 1150,
+    radarJitter: 2.5,
+  },
+  danger: {
+    strength: "medium",
+    duration: 1450,
+    radarJitter: 2,
+  },
+};
 
 export const startPosition: PlayerPosition = {
-  x: 500,
-  y: 2860,
+  x: 520,
+  y: 2840,
 };
 
 export const multiplayerSpawnPositions: PlayerPosition[] = [
@@ -405,7 +464,9 @@ export const goalArea: GoalArea = {
 
 export const stalkerConfig: EnemyConfig = {
   id: "stalker",
-  name: "Acechante ciego",
+  name: "Acechadora ciega",
+  behavior: "stalker",
+  spriteCharacterId: "cave-spider",
   start: { x: 3440, y: 1120 },
   patrolPoints: [
     { x: 3320, y: 1240 },
@@ -418,7 +479,59 @@ export const stalkerConfig: EnemyConfig = {
   detectionRange: 420,
   giveUpRange: 640,
   touchRange: 44,
+  tetherRange: 960,
+  hp: 64,
+  damage: 18,
+  scoreValue: 120,
 };
+
+export const stalkerConfigs: EnemyConfig[] = [
+  stalkerConfig,
+  {
+    id: "territorial",
+    name: "Centinela territorial",
+    behavior: "territorial",
+    spriteCharacterId: "cave-crab",
+    start: { x: 3000, y: 2120 },
+    patrolPoints: [
+      { x: 2880, y: 2200 },
+      { x: 3360, y: 2200 },
+      { x: 3520, y: 1800 },
+      { x: 2960, y: 1760 },
+    ],
+    speed: 118,
+    chaseSpeed: 158,
+    detectionRange: 360,
+    giveUpRange: 560,
+    touchRange: 44,
+    tetherRange: 400,
+    hp: 78,
+    damage: 15,
+    scoreValue: 105,
+  },
+  {
+    id: "wanderer",
+    name: "Errante cavernicola",
+    behavior: "wanderer",
+    spriteCharacterId: "blind-fish",
+    start: { x: 4320, y: 520 },
+    patrolPoints: [
+      { x: 4400, y: 440 },
+      { x: 4680, y: 440 },
+      { x: 4680, y: 680 },
+      { x: 4400, y: 680 },
+    ],
+    speed: 102,
+    chaseSpeed: 146,
+    detectionRange: 320,
+    giveUpRange: 520,
+    touchRange: 44,
+    tetherRange: 540,
+    hp: 48,
+    damage: 22,
+    scoreValue: 140,
+  },
+];
 
 export const pointsOfInterest: PointOfInterest[] = [
   { id: "nest", label: "nido", x: 360, y: 2720 },

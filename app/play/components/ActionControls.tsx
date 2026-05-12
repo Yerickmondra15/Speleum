@@ -6,6 +6,8 @@ import type { ActionKind } from "../gameConfig";
 type ActionControlsProps = {
   activeAction: ActionKind;
   cooldownRemaining: number;
+  moveCooldownRemaining: number;
+  defenseCooldownRemaining: number;
   isRecovering: boolean;
   isDefending: boolean;
   onMove: () => void;
@@ -13,15 +15,15 @@ type ActionControlsProps = {
   onDefend: () => void;
 };
 
-function cooldownLabel(cooldownRemaining: number) {
-  if (cooldownRemaining <= 0) return "listo";
-
-  return `${(cooldownRemaining / 1000).toFixed(1)}s`;
+function label(value: number) {
+  return value > 0 ? `${(value / 1000).toFixed(1)}s` : "listo";
 }
 
 export function ActionControls({
   activeAction,
   cooldownRemaining,
+  moveCooldownRemaining,
+  defenseCooldownRemaining,
   isRecovering,
   isDefending,
   onMove,
@@ -29,65 +31,68 @@ export function ActionControls({
   onDefend,
 }: ActionControlsProps) {
   return (
-    <div className="absolute inset-x-0 bottom-0 z-[60] border-t border-white/10 bg-black/75 px-3 py-3 backdrop-blur-md">
-      <div className="mx-auto flex max-w-2xl items-center justify-center gap-3">
-        <button
-          type="button"
-          onClick={onAttack}
-          disabled={isRecovering}
-          className={`flex h-16 w-24 flex-col items-center justify-center gap-1 rounded-[1rem] border text-xs font-semibold uppercase tracking-[0.16em] transition ${
-            activeAction === "attack"
-              ? "border-red-200/70 bg-red-800 text-white"
-              : "border-red-200/20 bg-red-950/75 text-red-100 hover:bg-red-900/80"
-          } disabled:cursor-not-allowed disabled:opacity-45`}
-        >
-          <Swords className="h-5 w-5" />
-          Atacar
-        </button>
+    <div className="absolute inset-x-0 bottom-0 z-[60] px-4 pb-4">
+      <div className="mx-auto max-w-3xl rounded-[1.4rem] border border-white/10 bg-black/60 p-3 backdrop-blur-xl">
+        <div className="grid grid-cols-3 gap-3">
+          <button
+            type="button"
+            onClick={onMove}
+            className={`rounded-[1rem] border px-4 py-3 text-left transition ${
+              activeAction === "move"
+                ? "border-zinc-100/28 bg-zinc-100/10"
+                : "border-white/8 bg-black/35 hover:bg-white/[0.04]"
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <Footprints className="h-4 w-4 text-zinc-100" />
+              <div>
+                <p className="text-[0.7rem] uppercase tracking-[0.22em] text-zinc-500">Pulso</p>
+                <p className="mt-1 text-sm text-zinc-100">{label(moveCooldownRemaining)}</p>
+              </div>
+            </div>
+          </button>
 
-        <button
-          type="button"
-          onClick={onMove}
-          disabled={isRecovering}
-          className={`flex h-16 w-24 flex-col items-center justify-center gap-1 rounded-[1rem] border text-xs font-semibold uppercase tracking-[0.16em] transition ${
-            activeAction === "move"
-              ? "border-white/50 bg-zinc-100 text-black"
-              : "border-white/15 bg-black text-zinc-200 hover:bg-zinc-900"
-          } disabled:cursor-not-allowed disabled:opacity-45`}
-        >
-          <Footprints className="h-5 w-5" />
-          Mover
-        </button>
+          <button
+            type="button"
+            onClick={onAttack}
+            disabled={isRecovering}
+            className={`rounded-[1rem] border px-4 py-3 text-left transition ${
+              activeAction === "attack"
+                ? "border-rose-200/25 bg-rose-900/20"
+                : "border-white/8 bg-black/35 hover:bg-white/[0.04]"
+            } disabled:opacity-45`}
+          >
+            <div className="flex items-center gap-3">
+                <Swords className="h-4 w-4 text-rose-100" />
+              <div>
+                <p className="text-[0.7rem] uppercase tracking-[0.22em] text-zinc-500">Ataque</p>
+                <p className="mt-1 text-sm text-zinc-100">{label(cooldownRemaining)}</p>
+              </div>
+            </div>
+          </button>
 
-        <button
-          type="button"
-          onClick={onDefend}
-          disabled={isRecovering}
-          className={`flex h-16 w-24 flex-col items-center justify-center gap-1 rounded-[1rem] border text-xs font-semibold uppercase tracking-[0.16em] transition ${
-            activeAction === "defend" || isDefending
-              ? "border-amber-100/80 bg-amber-300 text-black"
-              : "border-amber-100/25 bg-amber-950/80 text-amber-100 hover:bg-amber-900/80"
-          } disabled:cursor-not-allowed disabled:opacity-45`}
-        >
-          <Shield className="h-5 w-5" />
-          Defender
-        </button>
+          <button
+            type="button"
+            onClick={onDefend}
+            disabled={defenseCooldownRemaining > 0}
+            className={`rounded-[1rem] border px-4 py-3 text-left transition ${
+              activeAction === "defend" || isDefending
+                ? "border-amber-100/30 bg-amber-950/25"
+                : "border-white/8 bg-black/35 hover:bg-white/[0.04]"
+            } disabled:opacity-45`}
+          >
+            <div className="flex items-center gap-3">
+              <Shield className="h-4 w-4 text-amber-100" />
+              <div>
+                <p className="text-[0.7rem] uppercase tracking-[0.22em] text-zinc-500">Coraza</p>
+                <p className="mt-1 text-sm text-zinc-100">
+                  {isDefending ? "activa" : label(defenseCooldownRemaining)}
+                </p>
+              </div>
+            </div>
+          </button>
+        </div>
       </div>
-
-      <div className="mx-auto mt-3 h-1.5 max-w-2xl overflow-hidden rounded-full bg-white/10">
-        <div
-          className="h-full rounded-full bg-white transition-all duration-100"
-          style={{
-            width: isRecovering
-              ? `${Math.max(0, Math.min(100, cooldownRemaining / 26))}%`
-              : "0%",
-            opacity: isRecovering ? 0.8 : 0,
-          }}
-        />
-      </div>
-      <p className="mt-2 text-center text-xs tracking-[0.2em] text-zinc-500">
-        cooldown {cooldownLabel(cooldownRemaining)}
-      </p>
     </div>
   );
 }

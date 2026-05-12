@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { CharacterOption } from "../gameConfig";
 import { characterOptions } from "../gameConfig";
 import { CharacterSelect } from "./CharacterSelect";
@@ -24,10 +25,12 @@ type PlayMode = "local" | "multiplayer";
 const SELECTED_CREATURE_KEY = "speleum.selectedCreature.v1";
 
 export function PlayScene() {
-  const { user, updateActiveCreature } = useAuth();
+  const router = useRouter();
+  const { user, status, updateActiveCreature } = useAuth();
   const [screen, setScreen] = useState<Screen>("menu");
   const [playMode, setPlayMode] = useState<PlayMode>("local");
   const [multiplayerSession, setMultiplayerSession] = useState<{
+    matchId: string;
     roomCode: string;
     playerId: string;
     playerName: string;
@@ -40,7 +43,7 @@ export function PlayScene() {
       window.localStorage.getItem(SELECTED_CREATURE_KEY) ?? "cave-axolotl"
     );
   });
-  const selectedCharacterId = user?.activeCreatureId ?? storedCharacterId;
+  const selectedCharacterId = user?.activeCreature ?? storedCharacterId;
 
   const selectedCharacter = useMemo<CharacterOption>(() => {
     return (
@@ -52,8 +55,14 @@ export function PlayScene() {
   const selectCharacter = (character: CharacterOption) => {
     setStoredCharacterId(character.id);
     window.localStorage.setItem(SELECTED_CREATURE_KEY, character.id);
-    updateActiveCreature(character.id);
+    void updateActiveCreature(character.id);
   };
+
+  useEffect(() => {
+    if (status === "signed-out") {
+      router.replace("/login");
+    }
+  }, [router, status]);
 
   useEffect(() => {
     if (screen !== "searching") {
@@ -74,6 +83,14 @@ export function PlayScene() {
 
     return () => window.clearTimeout(timer);
   }, [screen]);
+
+  if (status === "loading") {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-black text-zinc-400">
+        Cargando expedicion...
+      </main>
+    );
+  }
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-black text-white">
@@ -122,7 +139,7 @@ export function PlayScene() {
       {screen === "multiplayer-menu" && (
         <MultiplayerMenu
           selectedCharacter={selectedCharacter}
-          defaultPlayerName={user?.name ?? "Explorador"}
+          defaultPlayerName={user?.username ?? "Explorador"}
           onBack={() => setScreen("menu")}
           onGameStart={(session) => {
             setMultiplayerSession(session);
@@ -140,6 +157,7 @@ export function PlayScene() {
 
       {screen === "multiplayer-game" && multiplayerSession && (
         <MultiplayerGame
+          matchId={multiplayerSession.matchId}
           roomCode={multiplayerSession.roomCode}
           selectedCharacter={selectedCharacter}
           onExitToMenu={() => {

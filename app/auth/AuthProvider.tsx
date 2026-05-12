@@ -2,7 +2,6 @@
 
 import {
   createContext,
-  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -10,169 +9,116 @@ import {
   type ReactNode,
 } from "react";
 
-const USERS_KEY = "speleum.users.v1";
-const SESSION_KEY = "speleum.session.v1";
-
-export type SpeleumUser = {
+type AuthUser = {
   id: string;
-  name: string;
-  passwordHash: string;
-  activeCreatureId: string;
+  username: string;
+  email: string;
+  activeCreature: string;
   createdAt: string;
-  profile: {
-    runs: number;
-    deepestSignal: string;
-  };
 };
 
-type PublicUser = Omit<SpeleumUser, "passwordHash">;
-
 type AuthContextValue = {
-  user: PublicUser | null;
+  user: AuthUser | null;
   status: "loading" | "signed-in" | "signed-out";
-  register: (name: string, password: string) => Promise<void>;
-  login: (name: string, password: string) => Promise<void>;
-  logout: () => void;
-  updateActiveCreature: (creatureId: string) => void;
+  register: (username: string, email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
+  refreshSession: () => Promise<void>;
+  updateActiveCreature: (creatureId: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-function readUsers(): SpeleumUser[] {
-  if (typeof window === "undefined") return [];
+async function parseResponse(response: Response) {
+  const payload = (await response.json().catch(() => null)) as
+    | { error?: string; user?: AuthUser | null }
+    | null;
 
-  try {
-    const raw = window.localStorage.getItem(USERS_KEY);
-    return raw ? (JSON.parse(raw) as SpeleumUser[]) : [];
-  } catch {
-    return [];
+  if (!response.ok) {
+    throw new Error(payload?.error ?? "No se pudo completar la solicitud.");
   }
-}
 
-function writeUsers(users: SpeleumUser[]) {
-  window.localStorage.setItem(USERS_KEY, JSON.stringify(users));
-}
-
-function publicUser(user: SpeleumUser): PublicUser {
-  return {
-    id: user.id,
-    name: user.name,
-    activeCreatureId: user.activeCreatureId,
-    createdAt: user.createdAt,
-    profile: user.profile,
-  };
-}
-
-async function hashPassword(password: string) {
-  const encoded = new TextEncoder().encode(password);
-  const digest = await window.crypto.subtle.digest("SHA-256", encoded);
-  const bytes = Array.from(new Uint8Array(digest));
-
-  return bytes.map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return payload;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<PublicUser | null>(() => {
-    if (typeof window === "undefined") return null;
-
-    const sessionId = window.localStorage.getItem(SESSION_KEY);
-    const matchedUser = readUsers().find((item) => item.id === sessionId);
-
-    return matchedUser ? publicUser(matchedUser) : null;
-  });
-  const [status, setStatus] = useState<AuthContextValue["status"]>(() => {
-    if (typeof window === "undefined") return "loading";
-
-    return window.localStorage.getItem(SESSION_KEY) ? "signed-in" : "signed-out";
-  });
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [status, setStatus] = useState<AuthContextValue["status"]>("loading");
 
   useEffect(() => {
-    if (status === "loading") {
-      window.setTimeout(() => {
-        setStatus(user ? "signed-in" : "signed-out");
-      }, 0);
-    }
-  }, [status, user]);
-
-  const register = useCallback(async (name: string, password: string) => {
-    const normalizedName = name.trim();
-
-    if (normalizedName.length < 3) {
-      throw new Error("El nombre debe tener al menos 3 caracteres.");
-    }
-
-    if (password.length < 6) {
-      throw new Error("La contrasena debe tener al menos 6 caracteres.");
-    }
-
-    const users = readUsers();
-    const exists = users.some(
-      (item) => item.name.toLowerCase() === normalizedName.toLowerCase(),
-    );
-
-    if (exists) {
-      throw new Error("Ese nombre ya existe.");
-    }
-
-    const createdUser: SpeleumUser = {
-      id: crypto.randomUUID(),
-      name: normalizedName,
-      passwordHash: await hashPassword(password),
-      activeCreatureId: "cave-axolotl",
-      createdAt: new Date().toISOString(),
-      profile: {
-        runs: 0,
-        deepestSignal: "nido",
-      },
-    };
-
-    writeUsers([...users, createdUser]);
-    window.localStorage.setItem(SESSION_KEY, createdUser.id);
-    setUser(publicUser(createdUser));
-    setStatus("signed-in");
+    fetch("/api/auth/session", {
+      method: "GET",
+      cache: "no-store",
+    })
+      .then((response) => parseResponse(response))
+      .then((payload) => {
+        const sessionPayload = payload as { user?: AuthUser | null } | null;
+        setUser(sessionPayload?.user ?? null);
+        setStatus(sessionPayload?.user ? "signed-in" : "signed-out");
+      })
+      .catch(() => {
+        setUser(null);
+        setStatus("signed-out");
+      });
   }, []);
 
-  const login = useCallback(async (name: string, password: string) => {
-    const normalizedName = name.trim().toLowerCase();
-    const users = readUsers();
-    const matchedUser = users.find(
-      (item) => item.name.toLowerCase() === normalizedName,
-    );
+  async function refreshSession() {
+    const response = await fetch("/api/auth/session", {
+      method: "GET",
+      cache: "no-store",
+    });
+    const payload = (await parseResponse(response)) as { user?: AuthUser | null } | null;
+    setUser(payload?.user ?? null);
+    setStatus(payload?.user ? "signed-in" : "signed-out");
+  }
 
-    if (!matchedUser || matchedUser.passwordHash !== (await hashPassword(password))) {
-      throw new Error("Credenciales invalidas.");
-    }
+  async function register(username: string, email: string, password: string) {
+    const response = await fetch("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, email, password }),
+    });
+    const payload = (await parseResponse(response)) as { user?: AuthUser | null } | null;
+    setUser(payload?.user ?? null);
+    setStatus(payload?.user ? "signed-in" : "signed-out");
+  }
 
-    window.localStorage.setItem(SESSION_KEY, matchedUser.id);
-    setUser(publicUser(matchedUser));
-    setStatus("signed-in");
-  }, []);
+  async function login(email: string, password: string) {
+    const response = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const payload = (await parseResponse(response)) as { user?: AuthUser | null } | null;
+    setUser(payload?.user ?? null);
+    setStatus(payload?.user ? "signed-in" : "signed-out");
+  }
 
-  const logout = useCallback(() => {
-    window.localStorage.removeItem(SESSION_KEY);
+  async function logout() {
+    await fetch("/api/auth/session", {
+      method: "DELETE",
+    });
     setUser(null);
     setStatus("signed-out");
-  }, []);
+  }
 
-  const updateActiveCreature = useCallback((creatureId: string) => {
-    const sessionId = window.localStorage.getItem(SESSION_KEY);
+  async function updateActiveCreature(creatureId: string) {
+    const response = await fetch("/api/users/me/active-creature", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ activeCreature: creatureId }),
+    });
 
-    if (!sessionId) {
-      return;
-    }
-
-    const users = readUsers();
-    const updatedUsers = users.map((item) =>
-      item.id === sessionId ? { ...item, activeCreatureId: creatureId } : item,
+    await parseResponse(response);
+    setUser((current) =>
+      current
+        ? {
+            ...current,
+            activeCreature: creatureId,
+          }
+        : current,
     );
-    const updatedUser = updatedUsers.find((item) => item.id === sessionId);
-
-    writeUsers(updatedUsers);
-
-    if (updatedUser) {
-      setUser(publicUser(updatedUser));
-    }
-  }, []);
+  }
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -181,9 +127,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       register,
       login,
       logout,
+      refreshSession,
       updateActiveCreature,
     }),
-    [login, logout, register, status, updateActiveCreature, user],
+    [status, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

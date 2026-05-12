@@ -12,7 +12,7 @@ const sections = [
   {
     icon: Radio,
     title: "Senales",
-    text: "Speleum convierte esa biologia en radar: moverse, atacar o defenderse no solo cambia tu posicion, tambien produce rastros que otros podrian interpretar.",
+    text: "Speleum convierte esa biologia en ecos: moverse, atacar o defenderse no solo cambia tu posicion, tambien produce rastros que otras criaturas pueden interpretar.",
   },
   {
     icon: Waves,
@@ -52,7 +52,7 @@ export default function WorldPage() {
         <p className="mx-auto mt-6 max-w-3xl text-sm leading-7 text-zinc-400 sm:text-base">
           Speleum no copia biologia real de forma literal: la traduce en
           sensaciones jugables. La oscuridad limita informacion, las criaturas
-          leen vibraciones y cada accion deja una huella.
+          leen vibraciones y cada accion deja una huella competitiva en la cueva.
         </p>
       </section>
 
