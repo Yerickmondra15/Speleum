@@ -38,7 +38,7 @@ npm install
 - `DATABASE_URL`
 - `DIRECT_URL`
 
-3. Genera Prisma y aplica migraciones:
+3. Genera Prisma y aplica migraciones en desarrollo:
 
 ```bash
 npx prisma generate
@@ -63,4 +63,20 @@ npm run dev:all
 npm run lint
 npx tsc --noEmit
 npm run build
+```
+
+## Deploy y migraciones
+
+- El build de produccion ejecuta `prisma generate` y `next build`.
+- El deploy normal no ejecuta `prisma migrate deploy`.
+- Corre las migraciones manualmente solo cuando cambie la base de datos:
+
+```bash
+npx prisma migrate deploy
+```
+
+- Si prefieres usar el script del proyecto:
+
+```bash
+npm run db:migrate:deploy
 ```
