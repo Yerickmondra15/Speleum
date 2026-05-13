@@ -41,7 +41,12 @@ export type MultiplayerPlayerStatus =
   | "spectating"
   | "left";
 
-export type MultiplayerRoomStatus = "waiting" | "playing" | "finished";
+export type MultiplayerRoomStatus =
+  | "waiting"
+  | "ready-check"
+  | "starting"
+  | "playing"
+  | "finished";
 
 export type PlayerCombatState = {
   health: number;
@@ -87,6 +92,8 @@ export type MultiplayerStatePayload = {
   matchId: string;
   roomCode: string;
   status: MultiplayerRoomStatus;
+  readyDeadline: number | null;
+  startAt: number | null;
   cave: CaveLayout;
   self: MultiplayerPlayerState;
   otherPlayers: MultiplayerPlayerState[];
@@ -100,6 +107,7 @@ export type MultiplayerStatePayload = {
   minPlayers: number;
   maxPlayers: number;
   requiredPlayers: number;
+  readyCount: number;
   results: MatchResultEntry[];
   message: string | null;
 };

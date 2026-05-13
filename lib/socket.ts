@@ -33,7 +33,12 @@ export function getSocket() {
 
   socket = io(socketUrl, {
     autoConnect: false,
-    transports: ["websocket"],
+    transports: ["websocket", "polling"],
+    timeout: 20000,
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
   });
 
   return socket;

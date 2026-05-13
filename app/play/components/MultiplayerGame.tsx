@@ -82,6 +82,7 @@ export function MultiplayerGame({
 }: MultiplayerGameProps) {
   const { user } = useAuth();
   const [gameState, setGameState] = useState<MultiplayerStatePayload | null>(null);
+  const [socketConnected, setSocketConnected] = useState(() => getSocket()?.connected ?? false);
   const [message, setMessage] = useState(() =>
     isSocketMultiplayerAvailable()
       ? "Conectando con la sala..."
@@ -103,11 +104,21 @@ export function MultiplayerGame({
       return;
     }
 
+    const handleConnect = () => {
+      setSocketConnected(true);
+      setMessage("Conexion restablecida. Reanudando sincronizacion...");
+    };
+    const handleDisconnect = () => {
+      setSocketConnected(false);
+      setDisconnectedMessage("Reconectando con el servidor...");
+      setMessage("Reconectando con el servidor...");
+    };
     const handleGameState = (state: MultiplayerStatePayload) => {
       if (state.roomCode !== roomCode) {
         return;
       }
 
+      setSocketConnected(true);
       setGameState(state);
       setMessage(state.message ?? "La cueva escucha todos tus movimientos.");
       console.log("CAVE SOURCE:", state.cave.source);
@@ -135,13 +146,31 @@ export function MultiplayerGame({
     const handleError = (nextMessage: string) => {
       setMessage(nextMessage);
     };
+    const handleConnectError = () => {
+      setSocketConnected(false);
+      setDisconnectedMessage("El servidor puede tardar unos segundos en despertar.");
+      setMessage("El servidor puede tardar unos segundos en despertar.");
+    };
+    const handleReconnectAttempt = () => {
+      setSocketConnected(false);
+      setDisconnectedMessage("Reconectando con el servidor...");
+      setMessage("Reconectando con el servidor...");
+    };
 
+    socket.on("connect", handleConnect);
+    socket.on("disconnect", handleDisconnect);
+    socket.on("connect_error", handleConnectError);
+    socket.io.on("reconnect_attempt", handleReconnectAttempt);
     socket.on("game-state", handleGameState);
     socket.on("player-left", handlePlayerLeft);
     socket.on("game-over", handleGameOver);
     socket.on("error-message", handleError);
 
     return () => {
+      socket.off("connect", handleConnect);
+      socket.off("disconnect", handleDisconnect);
+      socket.off("connect_error", handleConnectError);
+      socket.io.off("reconnect_attempt", handleReconnectAttempt);
       socket.off("game-state", handleGameState);
       socket.off("player-left", handlePlayerLeft);
       socket.off("game-over", handleGameOver);
@@ -537,7 +566,7 @@ export function MultiplayerGame({
 
       <div className="pointer-events-none absolute right-4 top-88 z-70 hidden max-w-xs rounded-[1.25rem] border border-white/10 bg-black/45 p-4 text-sm text-zinc-300 backdrop-blur-md lg:block">
         <p className="text-xs tracking-[0.25em] text-zinc-500">CADENA DE VIDA</p>
-        <p className="mt-2">Conexion: {getSocket()?.connected ? "estable" : "experimental / sin servidor"}</p>
+        <p className="mt-2">Conexion: {socketConnected ? "estable" : "reconectando"}</p>
         <p className="mt-2">Criaturas en sala: {gameState.playerCount}/{gameState.maxPlayers}</p>
         <p className="mt-2">Ultimos vivos: {gameState.aliveCount}</p>
         <p className="mt-2">Punto cercano: {nearestPoint?.label ?? currentZone.name}</p>

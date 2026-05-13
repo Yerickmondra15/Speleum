@@ -34,6 +34,7 @@ export function MultiplayerMenu({
   const [playerName, setPlayerName] = useState(defaultPlayerName);
   const [roomCodeInput, setRoomCodeInput] = useState("");
   const [roomState, setRoomState] = useState<MultiplayerStatePayload | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const [errorMessage, setErrorMessage] = useState<string | null>(() =>
     multiplayerAvailable
       ? null
@@ -41,6 +42,15 @@ export function MultiplayerMenu({
   );
   const [socketConnected, setSocketConnected] = useState(() => getSocket()?.connected ?? false);
   const [copied, setCopied] = useState(false);
+  const [isCreatingRoom, setIsCreatingRoom] = useState(false);
+  const [isJoiningRoom, setIsJoiningRoom] = useState(false);
+  const [isSendingReady, setIsSendingReady] = useState(false);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 500);
+
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const socket = getSocket();
@@ -49,12 +59,26 @@ export function MultiplayerMenu({
       return;
     }
 
-    const handleConnect = () => setSocketConnected(true);
-    const handleDisconnect = () => setSocketConnected(false);
-    const handleError = (message: string) => setErrorMessage(message);
+    const handleConnect = () => {
+      setSocketConnected(true);
+      setErrorMessage(null);
+    };
+    const handleDisconnect = () => {
+      setSocketConnected(false);
+      setErrorMessage("Reconectando con el servidor...");
+    };
+    const handleError = (message: string) => {
+      setIsCreatingRoom(false);
+      setIsJoiningRoom(false);
+      setIsSendingReady(false);
+      setErrorMessage(message);
+    };
     const handleGameState = (state: MultiplayerStatePayload) => {
       setRoomState(state);
-      setErrorMessage(state.message);
+      setIsCreatingRoom(false);
+      setIsJoiningRoom(false);
+      setIsSendingReady(false);
+      setErrorMessage(null);
 
       if (state.status === "playing") {
         onGameStart({
@@ -67,11 +91,22 @@ export function MultiplayerMenu({
       }
     };
     const handlePlayerLeft = ({ message }: { message?: string }) => {
-      setErrorMessage(message ?? "El otro jugador abandono la sala.");
+      setIsSendingReady(false);
+      setErrorMessage(message ?? "Una criatura abandono la sala.");
+    };
+    const handleConnectError = () => {
+      setSocketConnected(false);
+      setErrorMessage("El servidor puede tardar unos segundos en despertar.");
+    };
+    const handleReconnectAttempt = () => {
+      setSocketConnected(false);
+      setErrorMessage("Reconectando con el servidor...");
     };
 
     socket.on("connect", handleConnect);
     socket.on("disconnect", handleDisconnect);
+    socket.on("connect_error", handleConnectError);
+    socket.io.on("reconnect_attempt", handleReconnectAttempt);
     socket.on("error-message", handleError);
     socket.on("game-state", handleGameState);
     socket.on("player-left", handlePlayerLeft);
@@ -79,6 +114,8 @@ export function MultiplayerMenu({
     return () => {
       socket.off("connect", handleConnect);
       socket.off("disconnect", handleDisconnect);
+      socket.off("connect_error", handleConnectError);
+      socket.io.off("reconnect_attempt", handleReconnectAttempt);
       socket.off("error-message", handleError);
       socket.off("game-state", handleGameState);
       socket.off("player-left", handlePlayerLeft);
@@ -89,27 +126,55 @@ export function MultiplayerMenu({
   const isInRoom = Boolean(roomState);
 
   const statusLabel = useMemo(() => {
+    if (!socketConnected) {
+      return "Reconectando con el servidor...";
+    }
+
     if (!roomState) {
-      return socketConnected ? "Conectado al servidor" : "Sin conexion";
+      return "El servidor puede tardar unos segundos en despertar";
     }
 
-    if (roomState.playerCount < roomState.requiredPlayers) {
-      return "Esperando a otro jugador";
+    if (roomState.status === "starting") {
+      return "Iniciando partida...";
     }
 
-    if (!roomState.self.isReady) {
-      return "Sala completa, falta que te marques listo";
+    if (roomState.playerCount < roomState.requiredPlayers || roomState.status === "waiting") {
+      return `Esperando minimo ${roomState.requiredPlayers} jugadores`;
     }
 
-    return "Esperando confirmacion del otro jugador";
+    if (roomState.status === "ready-check") {
+      return roomState.self.isReady
+        ? "Esperando confirmacion de todos"
+        : "Esperando confirmacion de todos";
+    }
+
+    if (roomState.status === "playing") {
+      return "Partida en curso";
+    }
+
+    return "Sala sincronizada";
   }, [roomState, socketConnected]);
 
+  const readyCountdownSeconds =
+    roomState?.readyDeadline && roomState.status === "ready-check"
+      ? Math.max(0, Math.ceil((roomState.readyDeadline - now) / 1000))
+      : null;
+  const startCountdownSeconds =
+    roomState?.startAt && roomState.status === "starting"
+      ? Math.max(0, Math.ceil((roomState.startAt - now) / 1000))
+      : null;
+
   const submitCreate = () => {
+    if (isCreatingRoom || isJoiningRoom || isSendingReady) {
+      return;
+    }
+
     const socket = ensureSocketConnection();
     if (!socket) {
       setErrorMessage("No hay servidor Socket.IO disponible para crear una sala.");
       return;
     }
+    setIsCreatingRoom(true);
     setErrorMessage(null);
     socket.emit("create-room", {
       name: playerName,
@@ -118,6 +183,10 @@ export function MultiplayerMenu({
   };
 
   const submitJoin = () => {
+    if (isCreatingRoom || isJoiningRoom || isSendingReady) {
+      return;
+    }
+
     const normalizedCode = normalizeRoomCode(roomCodeInput);
 
     if (normalizedCode.length !== 6) {
@@ -130,6 +199,7 @@ export function MultiplayerMenu({
       setErrorMessage("No hay servidor Socket.IO disponible para unirse a una sala.");
       return;
     }
+    setIsJoiningRoom(true);
     setErrorMessage(null);
     socket.emit("join-room", {
       roomCode: normalizedCode,
@@ -139,7 +209,7 @@ export function MultiplayerMenu({
   };
 
   const markReady = () => {
-    if (!roomState) {
+    if (!roomState || isSendingReady || roomState.self.isReady) {
       return;
     }
 
@@ -150,6 +220,7 @@ export function MultiplayerMenu({
       return;
     }
 
+    setIsSendingReady(true);
     socket.emit("player-ready", {
       roomCode: roomState.roomCode,
     });
@@ -163,6 +234,9 @@ export function MultiplayerMenu({
     setRoomState(null);
     setErrorMessage(null);
     setCopied(false);
+    setIsCreatingRoom(false);
+    setIsJoiningRoom(false);
+    setIsSendingReady(false);
   };
 
   const copyRoomCode = async () => {
@@ -200,7 +274,7 @@ export function MultiplayerMenu({
               SALA PRIVADA
             </h1>
             <p className="mt-4 max-w-xl text-sm leading-7 text-zinc-400">
-              Crea una sala por codigo para 2 a 4 criaturas. El servidor valida
+              Crea una sala por codigo para 3 a 4 criaturas. El servidor valida
               movimiento, combate y solo envia el estado que entra en tu vision.
             </p>
 
@@ -241,11 +315,13 @@ export function MultiplayerMenu({
                 <button
                   type="button"
                   onClick={submitCreate}
-                  disabled={!multiplayerAvailable}
-                  className="min-h-32 rounded-3xl bg-white px-6 py-4 text-left text-black transition hover:bg-zinc-200"
+                  disabled={!multiplayerAvailable || isCreatingRoom || isJoiningRoom}
+                  className="min-h-32 rounded-3xl bg-white px-6 py-4 text-left text-black transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <p className="text-xs tracking-[0.24em] text-zinc-500">CREAR</p>
-                  <p className="mt-2 text-lg font-semibold">Abrir sala privada</p>
+                  <p className="mt-2 text-lg font-semibold">
+                    {isCreatingRoom ? "Creando sala..." : "Abrir sala privada"}
+                  </p>
                 </button>
 
                 <div className="rounded-3xl border border-white/10 bg-black/35 p-4">
@@ -260,10 +336,10 @@ export function MultiplayerMenu({
                     <button
                       type="button"
                       onClick={submitJoin}
-                      disabled={!multiplayerAvailable}
-                      className="min-h-12 rounded-full border border-cyan-200/20 bg-cyan-950/50 px-5 py-3 text-sm text-cyan-100 transition hover:bg-cyan-900/60"
+                      disabled={!multiplayerAvailable || isCreatingRoom || isJoiningRoom}
+                      className="min-h-12 rounded-full border border-cyan-200/20 bg-cyan-950/50 px-5 py-3 text-sm text-cyan-100 transition hover:bg-cyan-900/60 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      Entrar
+                      {isJoiningRoom ? "Entrando..." : "Entrar"}
                     </button>
                   </div>
                 </div>
@@ -293,11 +369,24 @@ export function MultiplayerMenu({
                   <div className="rounded-[1.2rem] border border-white/10 bg-black/35 p-4">
                     <p className="text-xs tracking-[0.22em] text-zinc-500">ESTADO</p>
                     <p className="mt-2 text-sm text-zinc-200">{statusLabel}</p>
+                    {readyCountdownSeconds !== null && (
+                      <p className="mt-2 text-xs text-zinc-500">
+                        Ventana de confirmacion: {readyCountdownSeconds}s
+                      </p>
+                    )}
+                    {startCountdownSeconds !== null && (
+                      <p className="mt-2 text-xs text-zinc-500">
+                        Inicio en: {startCountdownSeconds}s
+                      </p>
+                    )}
                   </div>
                   <div className="rounded-[1.2rem] border border-white/10 bg-black/35 p-4">
                     <p className="text-xs tracking-[0.22em] text-zinc-500">JUGADORES</p>
                     <p className="mt-2 text-sm text-zinc-200">
-                      {roomState.playerCount}/{roomState.requiredPlayers} conectados
+                      {roomState.playerCount}/{roomState.maxPlayers} conectados
+                    </p>
+                    <p className="mt-2 text-xs text-zinc-500">
+                      Confirmados: {roomState.readyCount}/{roomState.playerCount}
                     </p>
                   </div>
                 </div>
@@ -305,11 +394,21 @@ export function MultiplayerMenu({
                 <button
                   type="button"
                   onClick={markReady}
-                  disabled={roomState.self.isReady || roomState.playerCount < roomState.requiredPlayers}
+                  disabled={
+                    roomState.self.isReady ||
+                    roomState.playerCount < roomState.requiredPlayers ||
+                    isSendingReady ||
+                    roomState.status === "starting" ||
+                    roomState.status === "playing"
+                  }
                   className="mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                 >
                   <Users className="h-4 w-4" />
-                  {roomState.self.isReady ? "Listo" : "Marcarme listo"}
+                  {roomState.self.isReady
+                    ? "Listo"
+                    : isSendingReady
+                      ? "Confirmando..."
+                      : "Marcarme listo"}
                 </button>
               </div>
             )}
@@ -323,6 +422,7 @@ export function MultiplayerMenu({
               <p>La sala vive en memoria y se pierde al reiniciar el servidor.</p>
               <p>La partida inicia con minimo 3 jugadores y soporta hasta 4.</p>
               <p>El multiplayer sigue siendo experimental.</p>
+              <p>El servidor puede tardar unos segundos en despertar.</p>
               <p>Si NEXT_PUBLIC_SOCKET_URL no esta configurado, el multiplayer queda deshabilitado sin afectar /play local.</p>
             </div>
 

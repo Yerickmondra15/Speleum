@@ -69,6 +69,8 @@ type ServerRoomState = {
   cave: CaveLayout;
   tileLookup: ReturnType<typeof createTileLookup>;
   status: MultiplayerRoomStatus;
+  readyDeadline: number | null;
+  startAt: number | null;
   createdAt: number;
   startedAt: number | null;
   finishedAt: number | null;
@@ -84,6 +86,9 @@ type ServerRoomState = {
 const PORT = Number(process.env.PORT) || 4001;
 const HOST = "0.0.0.0";
 const MOVE_INTERVAL_MS = 80;
+const READY_CONFIRMATION_WINDOW_MS = 30000;
+const START_COUNTDOWN_MS = 5000;
+const LOBBY_TICK_MS = 1000;
 const PLAYER_ATTACK_RANGE = ATTACK_RADIUS * 0.72;
 const rooms = new Map<string, ServerRoomState>();
 
@@ -170,6 +175,14 @@ function getAlivePlayers(room: ServerRoomState) {
   );
 }
 
+function getConnectedPlayers(room: ServerRoomState) {
+  return [...room.players.values()].filter((player) => player.connected);
+}
+
+function getReadyConnectedPlayers(room: ServerRoomState) {
+  return getConnectedPlayers(room).filter((player) => player.isReady);
+}
+
 function cleanupSignals(room: ServerRoomState) {
   const now = Date.now();
   room.signals = room.signals.filter(
@@ -195,6 +208,117 @@ function createInitialCombatState() {
     damageDealt: 0,
     eliminatedAt: null,
   };
+}
+
+function createLobbyMessage(room: ServerRoomState) {
+  const connectedPlayers = getConnectedPlayers(room);
+  const readyPlayers = getReadyConnectedPlayers(room);
+
+  if (room.status === "starting") {
+    return "Iniciando partida...";
+  }
+
+  if (connectedPlayers.length < MIN_ROOM_PLAYERS) {
+    return `Esperando minimo ${MIN_ROOM_PLAYERS} jugadores.`;
+  }
+
+  if (readyPlayers.length < connectedPlayers.length) {
+    return "Esperando confirmacion de todos.";
+  }
+
+  return "La sala puede iniciar. Esperando la confirmacion final del servidor.";
+}
+
+function syncLobbyState(room: ServerRoomState) {
+  if (room.status === "playing" || room.status === "finished") {
+    return false;
+  }
+
+  const now = Date.now();
+  const connectedPlayers = getConnectedPlayers(room);
+  const readyPlayers = connectedPlayers.filter((player) => player.isReady);
+  let changed = false;
+
+  if (connectedPlayers.length < MIN_ROOM_PLAYERS) {
+    if (room.status !== "waiting") {
+      room.status = "waiting";
+      changed = true;
+    }
+
+    if (room.readyDeadline !== null) {
+      room.readyDeadline = null;
+      changed = true;
+    }
+
+    if (room.startAt !== null) {
+      room.startAt = null;
+      changed = true;
+    }
+  } else if (readyPlayers.length === connectedPlayers.length) {
+    if (room.status !== "starting") {
+      room.status = "starting";
+      room.startAt = now + START_COUNTDOWN_MS;
+      room.readyDeadline = null;
+      changed = true;
+    }
+  } else {
+    if (room.status !== "ready-check") {
+      room.status = "ready-check";
+      changed = true;
+    }
+
+    if (room.startAt !== null) {
+      room.startAt = null;
+      changed = true;
+    }
+
+    if (room.readyDeadline === null || room.readyDeadline <= now) {
+      room.readyDeadline = now + READY_CONFIRMATION_WINDOW_MS;
+      changed = true;
+    }
+  }
+
+  const nextMessage = createLobbyMessage(room);
+
+  if (room.message !== nextMessage) {
+    room.message = nextMessage;
+    changed = true;
+  }
+
+  return changed;
+}
+
+function startRoom(room: ServerRoomState) {
+  room.status = "playing";
+  room.readyDeadline = null;
+  room.startedAt = Date.now();
+  room.startAt = null;
+  room.finishedAt = null;
+  room.winnerId = null;
+  room.message = "La cueva se cierra. Sobrevive la ultima criatura.";
+
+  for (const entry of room.players.values()) {
+    entry.status = entry.connected ? "playing" : "left";
+    entry.position = roomSpawnAt(
+      room,
+      [...room.players.values()].findIndex((playerItem) => playerItem.id === entry.id),
+    );
+    entry.combat = createInitialCombatState();
+    entry.lastAction = "move";
+    entry.lastAttackAt = 0;
+    entry.lastMoveAt = room.startedAt ?? Date.now();
+    entry.lastDefendAt = 0;
+    entry.moveCooldownUntil = 0;
+    entry.movementBurstDistance = 0;
+    entry.defendingUntil = 0;
+  }
+
+  room.noises = [];
+  room.signals = [];
+  room.enemies = room.cave.enemyConfigs.map((config) => ({
+    ...createEnemyState(config),
+    lastAttackAt: 0,
+  }));
 }
 
 function toPublicPlayer(player: ServerPlayerState): MultiplayerPlayerState {
@@ -248,6 +372,8 @@ function emitState(room: ServerRoomState, io: Server) {
   room.results = buildResults(room);
   const alivePlayers = getAlivePlayers(room);
   const aliveEnemies = room.enemies.filter((enemy) => enemy.alive && enemy.state !== "dead");
+  const connectedPlayers = getConnectedPlayers(room);
+  const readyPlayers = connectedPlayers.filter((player) => player.isReady);
 
   for (const player of room.players.values()) {
     if (!player.connected) {
@@ -262,6 +388,8 @@ function emitState(room: ServerRoomState, io: Server) {
       matchId: room.matchId,
       roomCode: room.code,
       status: room.status,
+      readyDeadline: room.readyDeadline,
+      startAt: room.startAt,
       cave: room.cave,
       self: toPublicPlayer(player),
       otherPlayers: [...room.players.values()]
@@ -281,11 +409,12 @@ function emitState(room: ServerRoomState, io: Server) {
         isWithinVision(player.position, noise.position, VISION_RADIUS * 1.25),
       ),
       winnerId: room.winnerId,
-      playerCount: [...room.players.values()].filter((entry) => entry.connected).length,
+      playerCount: connectedPlayers.length,
       aliveCount: alivePlayers.length,
       minPlayers: MIN_ROOM_PLAYERS,
       maxPlayers: MAX_ROOM_PLAYERS,
       requiredPlayers: MIN_ROOM_PLAYERS,
+      readyCount: readyPlayers.length,
       results: room.results,
       message: room.message,
     };
@@ -643,6 +772,30 @@ setInterval(() => {
   }
 }, MOVE_INTERVAL_MS);
 
+setInterval(() => {
+  for (const room of rooms.values()) {
+    if (room.status === "finished" || room.status === "playing") {
+      continue;
+    }
+
+    const hadChanges = syncLobbyState(room);
+
+    if (
+      room.status === "starting" &&
+      room.startAt !== null &&
+      room.startAt <= Date.now()
+    ) {
+      startRoom(room);
+      emitState(room, io);
+      continue;
+    }
+
+    if (hadChanges) {
+      emitState(room, io);
+    }
+  }
+}, LOBBY_TICK_MS);
+
 io.on("connection", (socket: Socket) => {
   socket.on("create-room", ({ name, characterId }: { name?: string; characterId?: string }) => {
     const roomCode = generateRoomCode();
@@ -654,6 +807,8 @@ io.on("connection", (socket: Socket) => {
       cave,
       tileLookup: createTileLookup(buildTileMap(cave)),
       status: "waiting",
+      readyDeadline: null,
+      startAt: null,
       createdAt: Date.now(),
       startedAt: null,
       finishedAt: null,
@@ -665,7 +820,7 @@ io.on("connection", (socket: Socket) => {
       signals: [],
       noises: [],
       winnerId: null,
-      message: "Sala creada. Reune al menos tres criaturas para iniciar.",
+      message: `Esperando minimo ${MIN_ROOM_PLAYERS} jugadores.`,
       results: [],
     };
 
@@ -692,6 +847,7 @@ io.on("connection", (socket: Socket) => {
     room.players.set(player.id, player);
     rooms.set(roomCode, room);
     socket.join(roomCode);
+    syncLobbyState(room);
     emitState(room, io);
   });
 
@@ -706,7 +862,7 @@ io.on("connection", (socket: Socket) => {
         return;
       }
 
-      if (room.status !== "waiting") {
+      if (room.status === "starting" || room.status === "playing" || room.status === "finished") {
         socket.emit("error-message", "La sala ya comenzo o termino.");
         return;
       }
@@ -738,11 +894,8 @@ io.on("connection", (socket: Socket) => {
       };
 
       room.players.set(player.id, player);
-      room.message =
-        room.players.size >= MIN_ROOM_PLAYERS
-          ? "La sala puede iniciar. Todas las criaturas deben marcarse como listas."
-          : "Esperando mas criaturas para abrir la caceria.";
       socket.join(code);
+      syncLobbyState(room);
       emitState(room, io);
     },
   );
@@ -756,45 +909,18 @@ io.on("connection", (socket: Socket) => {
     }
 
     const player = match.player;
-    player.isReady = true;
-    room.message = `${player.name} esta listo para la caceria.`;
 
-    const connectedPlayers = [...room.players.values()].filter((entry) => entry.connected);
-    const everyoneReady =
-      connectedPlayers.length >= MIN_ROOM_PLAYERS &&
-      connectedPlayers.every((entry) => entry.isReady);
-
-    if (everyoneReady) {
-      room.status = "playing";
-      room.startedAt = Date.now();
-      room.finishedAt = null;
-      room.winnerId = null;
-      room.message = "La cueva se cierra. Sobrevive la ultima criatura.";
-
-      for (const entry of room.players.values()) {
-        entry.status = entry.connected ? "playing" : "left";
-        entry.position = roomSpawnAt(
-          room,
-          [...room.players.values()].findIndex((playerItem) => playerItem.id === entry.id),
-        );
-        entry.combat = createInitialCombatState();
-        entry.lastAction = "move";
-        entry.lastAttackAt = 0;
-        entry.lastMoveAt = room.startedAt ?? Date.now();
-        entry.lastDefendAt = 0;
-        entry.moveCooldownUntil = 0;
-        entry.movementBurstDistance = 0;
-        entry.defendingUntil = 0;
-      }
-
-      room.noises = [];
-      room.signals = [];
-      room.enemies = room.cave.enemyConfigs.map((config) => ({
-        ...createEnemyState(config),
-        lastAttackAt: 0,
-      }));
+    if (room.status === "starting" || room.status === "playing" || room.status === "finished") {
+      return;
     }
 
+    if (player.isReady) {
+      emitState(room, io);
+      return;
+    }
+
+    player.isReady = true;
+    syncLobbyState(room);
     emitState(room, io);
   });
 
@@ -1030,7 +1156,8 @@ io.on("connection", (socket: Socket) => {
       return;
     }
 
-    room.message = `${player.name} abandono la sala.`;
+    syncLobbyState(room);
+    room.message = `${player.name} abandono la sala. ${createLobbyMessage(room)}`;
     io.to(room.code).emit("player-left", {
       roomCode: room.code,
       playerId: player.id,
@@ -1060,7 +1187,8 @@ io.on("connection", (socket: Socket) => {
       return;
     }
 
-    room.message = `${player.name} se desconecto.`;
+    syncLobbyState(room);
+    room.message = `${player.name} se desconecto. ${createLobbyMessage(room)}`;
     io.to(room.code).emit("player-left", {
       roomCode: room.code,
       playerId: player.id,
