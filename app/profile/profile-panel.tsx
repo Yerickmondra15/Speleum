@@ -79,10 +79,10 @@ export function ProfilePanel() {
         <div className="absolute inset-x-0 bottom-0 h-64 bg-[linear-gradient(to_top,rgba(82,9,20,0.22),transparent)]" />
       </div>
 
-      <header className="relative z-10 mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+      <header className="relative z-10 mx-auto flex min-h-16 max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
         <Link
           href="/"
-          className="inline-flex items-center gap-2 text-sm text-zinc-300 transition hover:text-white"
+          className="inline-flex min-h-11 items-center gap-2 text-sm text-zinc-300 transition hover:text-white"
         >
           <ArrowLeft className="h-4 w-4" />
           Inicio
@@ -90,10 +90,10 @@ export function ProfilePanel() {
         <p className="text-xs tracking-[0.34em] text-zinc-500">PERFIL</p>
       </header>
 
-      <section className="relative z-10 mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl content-center gap-8 px-6 py-12 lg:grid-cols-[0.9fr_1.1fr]">
+      <section className="relative z-10 mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl content-center gap-8 px-4 py-10 sm:px-6 sm:py-12 lg:grid-cols-[0.9fr_1.1fr]">
         <div>
           <p className="text-xs tracking-[0.35em] text-zinc-500">SPELEUM ID</p>
-          <h1 className="mt-4 text-4xl font-semibold tracking-[0.18em] text-white sm:text-5xl">
+          <h1 className="mt-4 break-words text-3xl font-semibold tracking-[0.12em] text-white sm:text-5xl sm:tracking-[0.18em]">
             {profile.username}
           </h1>
           <p className="mt-5 max-w-xl text-sm leading-7 text-zinc-400">
@@ -123,45 +123,45 @@ export function ProfilePanel() {
           </div>
 
           <div className="mt-7 grid gap-3 text-sm">
-            <div className="flex justify-between rounded-2xl border border-white/10 bg-black/35 px-4 py-3">
+            <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-zinc-500">Nombre de usuario</span>
-              <span className="text-zinc-200">{profile.username}</span>
+              <span className="break-words text-zinc-200 sm:text-right">{profile.username}</span>
             </div>
-            <div className="flex justify-between rounded-2xl border border-white/10 bg-black/35 px-4 py-3">
+            <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-zinc-500">Correo</span>
-              <span className="text-zinc-200">{profile.email}</span>
+              <span className="break-all text-zinc-200 sm:text-right">{profile.email}</span>
             </div>
-            <div className="flex justify-between rounded-2xl border border-white/10 bg-black/35 px-4 py-3">
+            <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-zinc-500">Estado</span>
               <span className="text-zinc-200">sesion en servidor</span>
             </div>
-            <div className="flex justify-between rounded-2xl border border-white/10 bg-black/35 px-4 py-3">
+            <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-zinc-500">Criatura activa</span>
-              <span className="text-zinc-200">{activeCreature.nombre}</span>
+              <span className="text-zinc-200 sm:text-right">{activeCreature.nombre}</span>
             </div>
-            <div className="flex justify-between rounded-2xl border border-white/10 bg-black/35 px-4 py-3">
+            <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-zinc-500">Habilidad</span>
-              <span className="max-w-52 text-right text-zinc-200">{activeCreature.habilidad}</span>
+              <span className="max-w-full break-words text-zinc-200 sm:max-w-52 sm:text-right">{activeCreature.habilidad}</span>
             </div>
-            <div className="flex justify-between rounded-2xl border border-white/10 bg-black/35 px-4 py-3">
+            <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-zinc-500">Partidas jugadas</span>
               <span className="text-zinc-200">{profile.matchesPlayed}</span>
             </div>
-            <div className="flex justify-between rounded-2xl border border-white/10 bg-black/35 px-4 py-3">
+            <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-zinc-500">Victorias</span>
               <span className="text-zinc-200">{profile.wins}</span>
             </div>
-            <div className="flex justify-between rounded-2xl border border-white/10 bg-black/35 px-4 py-3">
+            <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-zinc-500">Derrotas</span>
               <span className="text-zinc-200">{profile.losses}</span>
             </div>
-            <div className="flex justify-between rounded-2xl border border-white/10 bg-black/35 px-4 py-3">
+            <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-zinc-500">Score</span>
               <span className="text-zinc-200">{profile.score}</span>
             </div>
-            <div className="flex justify-between rounded-2xl border border-white/10 bg-black/35 px-4 py-3">
+            <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-zinc-500">Ultima partida</span>
-              <span className="text-zinc-200">
+              <span className="break-words text-zinc-200 sm:max-w-56 sm:text-right">
                 {profile.lastMatchAt
                   ? new Date(profile.lastMatchAt).toLocaleString("es-CR")
                   : "Sin partidas"}
@@ -169,17 +169,17 @@ export function ProfilePanel() {
             </div>
           </div>
 
-          <div className="mt-7 flex flex-wrap gap-3">
+          <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <Link
               href="/play"
-              className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200"
             >
               <Play className="h-4 w-4 fill-black" />
               Ir a jugar
             </Link>
             <Link
               href="/play"
-              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/40 px-6 py-3 text-sm text-zinc-300 transition hover:text-white"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-white/10 bg-black/40 px-6 py-3 text-sm text-zinc-300 transition hover:text-white"
             >
               <UserRound className="h-4 w-4" />
               Cambiar criatura
@@ -187,7 +187,7 @@ export function ProfilePanel() {
             <button
               type="button"
               onClick={handleLogout}
-              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/40 px-6 py-3 text-sm text-zinc-300 transition hover:text-white"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-white/10 bg-black/40 px-6 py-3 text-sm text-zinc-300 transition hover:text-white"
             >
               <LogOut className="h-4 w-4" />
               Cerrar sesion

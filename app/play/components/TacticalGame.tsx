@@ -703,19 +703,19 @@ export function TacticalGame({
 
   return (
     <section className="relative z-10 min-h-screen overflow-hidden">
-      <header className="pointer-events-none absolute inset-x-0 top-0 z-70 flex items-center justify-between px-4 py-4">
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-70 flex items-start justify-between gap-2 px-3 py-3 sm:px-4 sm:py-4">
         <button
           type="button"
           onClick={onExitToMenu}
-          className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/55 px-4 py-2 text-sm text-zinc-300 backdrop-blur-md transition hover:text-white"
+          className="pointer-events-auto inline-flex min-h-11 items-center gap-2 rounded-full border border-white/10 bg-black/55 px-4 py-2 text-sm text-zinc-300 backdrop-blur-md transition hover:text-white"
         >
           <ArrowLeft className="h-4 w-4" />
           Menu
         </button>
 
-        <div className="rounded-full border border-white/10 bg-black/45 px-5 py-2 text-center backdrop-blur-md">
+        <div className="rounded-full border border-white/10 bg-black/45 px-3 py-2 text-center backdrop-blur-md sm:px-5">
           <p className="text-[0.65rem] tracking-[0.34em] text-zinc-500">SPELEUM</p>
-          <h1 className="text-sm font-semibold tracking-[0.28em] text-white">Supervivencia</h1>
+          <h1 className="text-[0.8rem] font-semibold tracking-[0.16em] text-white sm:text-sm sm:tracking-[0.28em]">Supervivencia</h1>
         </div>
 
         <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-black/45 px-4 py-2 text-xs text-zinc-400 backdrop-blur-md sm:flex">
@@ -765,7 +765,7 @@ export function TacticalGame({
         attackRangeLabel={`${PLAYER_ATTACK_RANGE_TILES} casillas`}
       />
 
-      <div className="absolute right-4 top-24 z-70 w-52 max-w-[calc(100vw-2rem)]">
+      <div className="absolute bottom-28 right-3 z-70 w-36 max-w-[calc(100vw-1.5rem)] sm:right-4 sm:top-24 sm:bottom-auto sm:w-52 sm:max-w-[calc(100vw-2rem)]">
         <RadarPanel
           player={player}
           signals={signals}
@@ -774,7 +774,7 @@ export function TacticalGame({
       </div>
 
       {combatFlash && (
-        <div className="pointer-events-none absolute left-1/2 top-24 z-[85] -translate-x-1/2 rounded-full border border-rose-200/15 bg-black/70 px-5 py-2 text-sm tracking-[0.18em] text-rose-100 shadow-[0_0_28px_rgba(251,113,133,0.18)]">
+        <div className="pointer-events-none absolute left-1/2 top-[12.75rem] z-[85] w-max max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-full border border-rose-200/15 bg-black/70 px-4 py-2 text-center text-xs tracking-[0.12em] text-rose-100 shadow-[0_0_28px_rgba(251,113,133,0.18)] sm:top-24 sm:px-5 sm:text-sm sm:tracking-[0.18em]">
           {combatFlash}
         </div>
       )}

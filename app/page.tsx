@@ -76,8 +76,8 @@ export default function Home() {
         </div>
 
         <header className="sticky top-0 z-40 border-b border-white/5 bg-black/40 backdrop-blur-md">
-          <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
-            <div className="flex items-center gap-3">
+          <nav className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
+            <div className="flex min-w-0 items-center gap-3">
               <Image
                 src="/Grafico/Logo blanco.svg"
                 alt="Speleum logo"
@@ -90,13 +90,13 @@ export default function Home() {
                 alt="Speleum"
                 width={140}
                 height={32}
-                className="h-7 w-auto"
+                className="h-6 w-auto sm:h-7"
               />
             </div>
 
             <Link
               href={primaryHref}
-              className={`flex items-center gap-2 rounded-full border px-5 py-2 text-sm font-medium tracking-wide transition ${
+              className={`order-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-full border px-5 py-3 text-sm font-medium tracking-wide transition sm:order-2 sm:min-h-0 sm:w-auto sm:py-2 ${
                 hasSession
                   ? "border-rose-200/30 bg-rose-300/90 text-black shadow-[0_0_24px_rgba(251,113,133,0.28)] hover:bg-rose-200"
                   : "border-white/10 bg-white/5 text-white hover:bg-white/10"
@@ -106,31 +106,31 @@ export default function Home() {
               {primaryLabel}
             </Link>
 
-            <div className="flex items-center gap-3">
-              <Link href="/ranking" className="rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10">
+            <div className="order-2 flex items-center gap-2 sm:order-3 sm:gap-3">
+              <Link href="/ranking" className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10">
                 <Trophy className="h-5 w-5 text-zinc-200" />
               </Link>
-              <Link href="/How-to-play" className="rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10">
+              <Link href="/How-to-play" className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10">
                 <CircleHelp className="h-5 w-5 text-zinc-200" />
               </Link>
-              <Link href="/login" className="rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10">
+              <Link href="/login" className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10">
                 <LogIn className="h-5 w-5 text-zinc-200" />
               </Link>
-              <Link href="/profile" className="rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10">
+              <Link href="/profile" className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10">
                 <User className="h-5 w-5 text-zinc-200" />
               </Link>
             </div>
           </nav>
         </header>
 
-        <section className="relative mx-auto flex min-h-[88vh] max-w-7xl flex-col items-center justify-center px-6 pt-10 text-center">
+        <section className="relative mx-auto flex min-h-[88vh] max-w-7xl flex-col items-center justify-center px-4 pt-10 text-center sm:px-6">
           <div className="absolute inset-x-0 top-16 -z-10 h-80 bg-[radial-gradient(circle,rgba(255,255,255,0.06),transparent_60%)] blur-3xl" />
 
-          <div className="mb-4 inline-flex items-center rounded-full border border-white/10 bg-white/5 px-4 py-1 text-xs tracking-[0.3em] text-zinc-300">
+          <div className="mb-4 inline-flex max-w-full items-center rounded-full border border-white/10 bg-white/5 px-4 py-1 text-center text-[0.65rem] tracking-[0.24em] text-zinc-300 sm:text-xs sm:tracking-[0.3em]">
             Oscuridad · Ecos · Supervivencia
           </div>
 
-          <h1 className="text-5xl font-serif font-semibold tracking-[0.35em] text-white sm:text-7xl">
+          <h1 className="text-4xl font-serif font-semibold tracking-[0.22em] text-white sm:text-7xl sm:tracking-[0.35em]">
             SPELEUM
           </h1>
 
@@ -140,11 +140,11 @@ export default function Home() {
           </p>
 
           <div className="mt-14 flex w-full justify-center">
-            <div className="relative flex h-90 w-full max-w-4xl items-center justify-center overflow-hidden rounded-4xl shadow-[0_0_120px_rgba(255,255,255,0.05)]">
+            <div className="relative flex min-h-[20rem] w-full max-w-4xl items-center justify-center overflow-hidden rounded-4xl shadow-[0_0_120px_rgba(255,255,255,0.05)] sm:h-90">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.07),transparent_85%)]" />
               <div className="absolute bottom-0 left-0 right-0 h-32 bg-linear-to-t from-black via-black/70 to-transparent" />
-              <div className="relative px-6">
-                <pre className="overflow-x-auto text-center text-[8px] leading-2 text-zinc-300 sm:text-[11px] sm:leading-2.75">
+              <div className="relative w-full overflow-hidden px-4 sm:px-6">
+                <pre className="overflow-x-auto pb-2 text-center text-[5px] leading-[0.42rem] text-zinc-300 sm:text-[11px] sm:leading-2.75">
 {String.raw`                                                                                                                                
                                                                                                                                 
                                                                                                                                 
@@ -207,7 +207,7 @@ export default function Home() {
           <div className="mt-10 flex flex-col items-center gap-4">
             <Link
               href={primaryHref}
-              className={`rounded-full border px-7 py-3 text-sm font-semibold transition hover:scale-[1.02] ${
+              className={`min-h-11 rounded-full border px-7 py-3 text-sm font-semibold transition hover:scale-[1.02] ${
                 hasSession
                   ? "border-rose-200/30 bg-rose-300 text-black shadow-[0_0_28px_rgba(251,113,133,0.28)] hover:bg-rose-200"
                   : "border-white/10 bg-white text-black hover:bg-zinc-200"
@@ -223,7 +223,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="mx-auto max-w-6xl px-6 py-24">
+        <section className="mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-24">
           <div className="grid gap-8 md:grid-cols-2">
             <motion.div variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }} className="rounded-4xl border border-white/10 bg-white/3 p-8">
               <p className="mb-3 text-xs tracking-[0.25em] text-zinc-500">QUE ES SPELEUM</p>
@@ -245,7 +245,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="mx-auto max-w-6xl px-6 pb-24">
+        <section className="mx-auto max-w-6xl px-4 pb-20 sm:px-6 sm:pb-24">
           <div className="mb-10 max-w-2xl">
             <p className="text-xs tracking-[0.25em] text-zinc-500">CRIATURAS</p>
             <h2 className="mt-3 text-3xl font-semibold text-white">Formas de sobrevivir</h2>
@@ -267,7 +267,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="mx-auto max-w-6xl px-6 pb-24">
+        <section className="mx-auto max-w-6xl px-4 pb-20 sm:px-6 sm:pb-24">
           <motion.div variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.2 }} className="relative overflow-hidden rounded-4xl border border-white/10 bg-white/3 p-8">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_right,rgba(255,255,255,0.08),transparent_55%)]" />
             <div className="relative grid gap-8 md:grid-cols-[1.2fr_0.8fr]">
@@ -281,7 +281,7 @@ export default function Home() {
                 </p>
               </div>
               <div className="flex items-end md:justify-end">
-                <Link href="/world" className="rounded-full border border-white/10 bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200">
+                <Link href="/world" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200">
                   Explorar mundo
                 </Link>
               </div>
@@ -289,7 +289,7 @@ export default function Home() {
           </motion.div>
         </section>
 
-        <motion.footer initial={{ opacity: 0, y: 25 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.15 }} transition={{ duration: 0.7, ease: "easeOut" }} className="relative border-t border-white/5 px-6 py-16">
+        <motion.footer initial={{ opacity: 0, y: 25 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.15 }} transition={{ duration: 0.7, ease: "easeOut" }} className="relative border-t border-white/5 px-4 py-16 sm:px-6">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.06),transparent_55%)]" />
           <div className="relative mx-auto grid max-w-7xl gap-10 md:grid-cols-[1.2fr_1fr_1fr]">
             <div>
@@ -298,14 +298,14 @@ export default function Home() {
               <p className="mt-4 max-w-md leading-7 text-zinc-400">
                 Explora la oscuridad, detecta ecos hostiles y sobrevive con vision limitada dentro de la cueva.
               </p>
-              <div className="mt-6 flex gap-3">
-                <Link href={primaryHref} className="rounded-full bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200">
+              <div className="mt-6 flex flex-wrap gap-3">
+                <Link href={primaryHref} className="inline-flex min-h-11 items-center justify-center rounded-full bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200">
                   {primaryLabel}
                 </Link>
-                <Link href="/login" className="rounded-full border border-white/10 bg-white/5 px-6 py-3 text-sm text-white transition hover:bg-white/10">
+                <Link href="/login" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-white/5 px-6 py-3 text-sm text-white transition hover:bg-white/10">
                   Login
                 </Link>
-                <Link href="/How-to-play" className="rounded-full border border-white/10 bg-white/5 px-6 py-3 text-sm text-white transition hover:bg-white/10">
+                <Link href="/How-to-play" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-white/5 px-6 py-3 text-sm text-white transition hover:bg-white/10">
                   Como jugar
                 </Link>
               </div>
@@ -333,7 +333,7 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="relative mx-auto mt-12 flex max-w-7xl flex-col items-center justify-between gap-3 border-t border-white/5 pt-6 text-sm text-zinc-500 sm:flex-row">
+          <div className="relative mx-auto mt-12 flex max-w-7xl flex-col items-center justify-between gap-3 border-t border-white/5 pt-6 text-center text-sm text-zinc-500 sm:flex-row sm:text-left">
             <p>Speleum · supervivencia en cuevas</p>
             <p>Oscuridad, ecos y competencia subterranea</p>
           </div>

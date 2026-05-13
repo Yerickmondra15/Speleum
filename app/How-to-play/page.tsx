@@ -79,20 +79,20 @@ export default function ComoJugarPage() {
       </div>
 
       <header className="sticky top-0 z-40 border-b border-white/5 bg-black/50 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+        <div className="mx-auto flex min-h-16 max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
           <Link
             href="/"
-            className="flex items-center gap-2 text-sm text-zinc-300 transition hover:text-white"
+            className="flex min-h-11 items-center gap-2 text-sm text-zinc-300 transition hover:text-white"
           >
             <ArrowLeft className="h-4 w-4" />
             Volver
           </Link>
 
-          <p className="text-sm tracking-[0.3em] text-zinc-400">COMO JUGAR</p>
+          <p className="text-xs tracking-[0.24em] text-zinc-400 sm:text-sm sm:tracking-[0.3em]">COMO JUGAR</p>
         </div>
       </header>
 
-      <section className="mx-auto max-w-6xl px-6 pb-16 pt-20">
+      <section className="mx-auto max-w-6xl px-4 pb-16 pt-16 sm:px-6 sm:pt-20">
         <motion.div
           variants={fadeUp}
           initial="hidden"
@@ -104,7 +104,7 @@ export default function ComoJugarPage() {
             GUIA DEL JUGADOR
           </div>
 
-          <h1 className="text-4xl font-semibold tracking-[0.2em] text-white sm:text-6xl">
+          <h1 className="text-3xl font-semibold tracking-[0.12em] text-white sm:text-6xl sm:tracking-[0.2em]">
             Como jugar Speleum
           </h1>
 
@@ -116,7 +116,7 @@ export default function ComoJugarPage() {
         </motion.div>
       </section>
 
-      <section className="mx-auto max-w-6xl px-6 pb-20">
+      <section className="mx-auto max-w-6xl px-4 pb-20 sm:px-6">
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {cards.map((item, index) => {
             const Icon = item.icon;
@@ -146,7 +146,7 @@ export default function ComoJugarPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-6xl px-6 pb-24">
+      <section className="mx-auto max-w-6xl px-4 pb-24 sm:px-6">
         <motion.div
           variants={fadeUp}
           initial="hidden"

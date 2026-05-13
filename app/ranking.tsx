@@ -38,25 +38,25 @@ export default function RankingView() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-black px-5 py-10 text-white">
+    <main className="min-h-screen overflow-x-hidden bg-black px-4 py-8 text-white sm:px-5 sm:py-10">
       <div className="mx-auto max-w-5xl">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
           <div>
             <p className="text-xs tracking-[0.35em] text-zinc-500">SPELEUM</p>
-            <h1 className="mt-3 text-4xl font-semibold tracking-[0.12em] text-white">
+            <h1 className="mt-3 text-3xl font-semibold tracking-[0.12em] text-white sm:text-4xl">
               RANKING
             </h1>
           </div>
           <Link
             href="/play"
-            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/40 px-4 py-2 text-sm text-zinc-300 transition hover:text-white"
+            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/10 bg-black/40 px-4 py-2 text-sm text-zinc-300 transition hover:text-white"
           >
             <ArrowLeft className="h-4 w-4" />
             Volver a Speleum
           </Link>
         </div>
 
-        <div className="mt-8 rounded-4xl border border-white/10 bg-black/35 p-6 backdrop-blur-md">
+        <div className="mt-8 rounded-4xl border border-white/10 bg-black/35 p-4 backdrop-blur-md sm:p-6">
           {isLoading ? (
             <div className="rounded-[1.4rem] border border-white/10 bg-black/30 p-6 text-zinc-400">
               Cargando ranking...
@@ -75,7 +75,7 @@ export default function RankingView() {
                     key={entry.userId}
                     className="rounded-[1.4rem] border border-white/10 bg-black/30 p-5"
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <p className="text-xs tracking-[0.24em] text-zinc-500">JUGADOR</p>
                         <h2 className="mt-2 text-xl font-semibold text-white">
@@ -83,7 +83,7 @@ export default function RankingView() {
                         </h2>
                         <p className="mt-1 text-sm text-zinc-500">{creature.nombre}</p>
                       </div>
-                      <div className="text-right text-sm text-zinc-400">
+                      <div className="text-left text-sm text-zinc-400 sm:text-right">
                         <p>Score {entry.score}</p>
                         <p>{entry.wins} victorias</p>
                         <p>{entry.matchesPlayed} partidas</p>
@@ -91,22 +91,22 @@ export default function RankingView() {
                     </div>
 
                     <div className="mt-5 overflow-hidden rounded-[1.1rem] border border-white/10">
-                      <div className="grid grid-cols-[4rem_1fr_5rem_5rem_6rem] gap-3 border-b border-white/10 px-4 py-3 text-[0.65rem] tracking-[0.24em] text-zinc-500">
+                      <div className="hidden grid-cols-[4rem_1fr_5rem_5rem_6rem] gap-3 border-b border-white/10 px-4 py-3 text-[0.65rem] tracking-[0.24em] text-zinc-500 sm:grid">
                         <span>PUESTO</span>
                         <span>CRIATURA</span>
                         <span>WINS</span>
                         <span>LOSS</span>
                         <span>JUGADAS</span>
                       </div>
-                      <div className="grid grid-cols-[4rem_1fr_5rem_5rem_6rem] gap-3 px-4 py-3 text-sm text-zinc-200">
+                      <div className="grid gap-3 px-4 py-4 text-sm text-zinc-200 sm:grid-cols-[4rem_1fr_5rem_5rem_6rem] sm:items-center sm:gap-3 sm:py-3">
                         <span className="inline-flex items-center gap-2">
                           {entry.rank === 1 && <Trophy className="h-4 w-4 text-amber-200" />}
                           #{entry.rank}
                         </span>
                         <span>{creature.nombre}</span>
-                        <span>{entry.wins}</span>
-                        <span>{entry.losses}</span>
-                        <span>{entry.matchesPlayed}</span>
+                        <span className="sm:text-center">Wins: {entry.wins}</span>
+                        <span className="sm:text-center">Loss: {entry.losses}</span>
+                        <span className="sm:text-center">Jugadas: {entry.matchesPlayed}</span>
                       </div>
                     </div>
 

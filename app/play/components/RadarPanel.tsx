@@ -49,7 +49,7 @@ export function RadarPanel({
         <Radio className="h-4 w-4 text-zinc-500" />
       </div>
 
-      <div className="relative mt-4 aspect-square overflow-hidden rounded-full border border-white/10 bg-[radial-gradient(circle,rgba(255,255,255,0.04),transparent_28%),#050505]">
+      <div className="relative mt-3 aspect-square overflow-hidden rounded-full border border-white/10 bg-[radial-gradient(circle,rgba(255,255,255,0.04),transparent_28%),#050505] sm:mt-4">
         <div className="absolute inset-1/2 h-px w-full -translate-x-1/2 bg-white/10" />
         <div className="absolute left-1/2 top-0 h-full w-px bg-white/10" />
         <div className="absolute inset-[18%] rounded-full border border-white/10" />
@@ -79,7 +79,7 @@ export function RadarPanel({
         </div>
       </div>
 
-      <div className="mt-4 grid gap-2 text-xs text-zinc-500">
+      <div className="mt-3 grid gap-1.5 text-[0.7rem] text-zinc-500 sm:mt-4 sm:gap-2 sm:text-xs">
         <div className="flex justify-between">
           <span>Ultima senal</span>
           <span className="text-zinc-300">

@@ -29,10 +29,10 @@ export default function WorldPage() {
         <div className="absolute inset-x-0 bottom-0 h-72 bg-[linear-gradient(to_top,rgba(82,9,20,0.24),transparent)]" />
       </div>
 
-      <header className="relative z-10 mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+      <header className="relative z-10 mx-auto flex min-h-16 max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
         <Link
           href="/"
-          className="inline-flex items-center gap-2 text-sm text-zinc-300 transition hover:text-white"
+          className="inline-flex min-h-11 items-center gap-2 text-sm text-zinc-300 transition hover:text-white"
         >
           <ArrowLeft className="h-4 w-4" />
           Inicio
@@ -42,11 +42,11 @@ export default function WorldPage() {
         </p>
       </header>
 
-      <section className="relative z-10 mx-auto max-w-6xl px-6 pb-16 pt-20 text-center">
+      <section className="relative z-10 mx-auto max-w-6xl px-4 pb-16 pt-16 text-center sm:px-6 sm:pt-20">
         <p className="text-xs tracking-[0.35em] text-zinc-500">
           CUEVAS / BIOLOGIA / JUEGO
         </p>
-        <h1 className="mx-auto mt-5 max-w-4xl text-4xl font-semibold tracking-[0.16em] text-white sm:text-6xl">
+        <h1 className="mx-auto mt-5 max-w-4xl text-3xl font-semibold tracking-[0.12em] text-white sm:text-6xl sm:tracking-[0.16em]">
           Criaturas que aprendieron a vivir sin luz
         </h1>
         <p className="mx-auto mt-6 max-w-3xl text-sm leading-7 text-zinc-400 sm:text-base">
@@ -56,7 +56,7 @@ export default function WorldPage() {
         </p>
       </section>
 
-      <section className="relative z-10 mx-auto grid max-w-6xl gap-6 px-6 pb-20 md:grid-cols-3">
+      <section className="relative z-10 mx-auto grid max-w-6xl gap-6 px-4 pb-20 sm:px-6 md:grid-cols-3">
         {sections.map((section) => {
           const Icon = section.icon;
 
@@ -77,7 +77,7 @@ export default function WorldPage() {
         })}
       </section>
 
-      <section className="relative z-10 mx-auto max-w-6xl px-6 pb-24">
+      <section className="relative z-10 mx-auto max-w-6xl px-4 pb-24 sm:px-6">
         <div className="mb-8">
           <p className="text-xs tracking-[0.25em] text-zinc-500">
             BESTIARIO
@@ -103,11 +103,11 @@ export default function WorldPage() {
                     className="object-contain p-2"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <h3 className="text-xl font-semibold text-white">
                     {creature.nombre}
                   </h3>
-                  <p className="mt-1 text-sm text-zinc-500">{creature.rol}</p>
+                  <p className="mt-1 break-words text-sm text-zinc-500">{creature.rol}</p>
                 </div>
               </div>
               <p className="mt-4 text-sm leading-7 text-zinc-400">

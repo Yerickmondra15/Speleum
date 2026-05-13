@@ -69,7 +69,79 @@ export function GameHud({
   return (
     <>
       <div
-        className={`pointer-events-none absolute left-4 top-24 z-70 max-w-sm rounded-[1.35rem] border bg-[linear-gradient(180deg,rgba(9,9,11,0.8),rgba(22,10,15,0.72))] p-4 backdrop-blur-md ${
+        className={`pointer-events-none absolute inset-x-3 top-18 z-70 rounded-[1.35rem] border bg-[linear-gradient(180deg,rgba(9,9,11,0.88),rgba(22,10,15,0.8))] p-3 backdrop-blur-md sm:hidden ${
+          sanityLabel === "critico"
+            ? "border-rose-200/35 shadow-[0_0_34px_rgba(251,113,133,0.14)]"
+            : "border-white/10"
+        }`}
+      >
+        <div className="flex items-start gap-3">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-zinc-100/90">
+            <Image
+              src={selectedCharacter.imageGame}
+              alt={selectedCharacter.name}
+              width={34}
+              height={34}
+              className="h-8.5 w-8.5 object-contain"
+            />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-[0.6rem] tracking-[0.18em] text-zinc-500">{zone.subtitle}</p>
+                <h2 className="truncate text-base font-semibold text-white">{zone.name}</h2>
+                <p className="truncate text-xs text-zinc-500">{selectedCharacter.name}</p>
+              </div>
+              <div className="text-right text-xs text-zinc-300">
+                <p>
+                  {health}/{maxHealth} HP
+                </p>
+                <p className="text-zinc-500">{nearbyDangerLabel}</p>
+              </div>
+            </div>
+
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/8">
+              <div
+                className="h-full rounded-full bg-[linear-gradient(90deg,rgba(244,114,182,0.7),rgba(255,255,255,0.9))]"
+                style={{ width: `${hpPercent}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-2 text-[0.65rem] tracking-[0.12em] text-zinc-400">
+          <div className="rounded-xl border border-white/8 bg-black/35 px-3 py-2">
+            <p className="text-zinc-500">Pulso</p>
+            <p className="mt-1 text-zinc-100">{formatCooldown(moveCooldownRemaining)}</p>
+          </div>
+          <div className="rounded-xl border border-white/8 bg-black/35 px-3 py-2">
+            <p className="text-zinc-500">Ataque</p>
+            <p className="mt-1 text-zinc-100">{formatCooldown(attackCooldownRemaining)}</p>
+          </div>
+          <div className="rounded-xl border border-white/8 bg-black/35 px-3 py-2">
+            <p className="text-zinc-500">Coraza</p>
+            <p className="mt-1 text-zinc-100">
+              {defenseActive
+                ? `activa · ${(defenseDurationRemaining / 1000).toFixed(1)}s`
+                : formatCooldown(defenseCooldownRemaining)}
+            </p>
+          </div>
+          <div className="rounded-xl border border-white/8 bg-black/35 px-3 py-2">
+            <p className="text-zinc-500">Score</p>
+            <p className="mt-1 text-zinc-100">{score}</p>
+          </div>
+        </div>
+
+        <p className="mt-3 text-xs leading-5 text-zinc-300">{message}</p>
+        {zoneMessage && (
+          <p className="mt-3 rounded-xl border border-rose-200/10 bg-rose-200/5 px-3 py-2 text-[0.68rem] leading-4 text-rose-100/85">
+            {zoneMessage}
+          </p>
+        )}
+      </div>
+
+      <div
+        className={`pointer-events-none absolute left-4 top-24 z-70 hidden max-w-sm rounded-[1.35rem] border bg-[linear-gradient(180deg,rgba(9,9,11,0.8),rgba(22,10,15,0.72))] p-4 backdrop-blur-md sm:block ${
           sanityLabel === "critico"
             ? "border-rose-200/35 shadow-[0_0_40px_rgba(251,113,133,0.14)]"
             : "border-white/10"
@@ -138,7 +210,7 @@ export function GameHud({
         )}
       </div>
 
-      <div className="pointer-events-none absolute left-4 top-[18.8rem] z-70 hidden w-76 rounded-[1.25rem] border border-white/10 bg-[linear-gradient(180deg,rgba(6,6,8,0.72),rgba(20,10,14,0.62))] p-4 backdrop-blur-md sm:block">
+      <div className="pointer-events-none absolute left-4 top-[18.8rem] z-70 hidden w-76 rounded-[1.25rem] border border-white/10 bg-[linear-gradient(180deg,rgba(6,6,8,0.72),rgba(20,10,14,0.62))] p-4 backdrop-blur-md lg:block">
         <div className="flex items-center justify-between text-xs tracking-[0.2em] text-zinc-500">
           <span className="inline-flex items-center gap-2">
             <Target className="h-4 w-4" />
@@ -214,7 +286,7 @@ export function GameHud({
         <button
           type="button"
           onClick={onTogglePause}
-          className="absolute right-4 top-4 z-72 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/55 px-4 py-2 text-sm text-zinc-300 backdrop-blur-md transition hover:text-white"
+          className="absolute right-3 top-3 z-72 inline-flex min-h-11 items-center gap-2 rounded-full border border-white/10 bg-black/55 px-4 py-2 text-sm text-zinc-300 backdrop-blur-md transition hover:text-white sm:right-4 sm:top-4"
         >
           {isPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
           {isPaused ? "Reanudar" : "Pausa"}

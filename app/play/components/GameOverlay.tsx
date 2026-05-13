@@ -50,7 +50,7 @@ export function GameOverlay({
 
   return (
     <div className="absolute inset-0 z-90 flex items-center justify-center bg-black/72 px-4 backdrop-blur-md">
-      <div className="w-full max-w-md rounded-4xl border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.96),rgba(10,10,12,0.96))] p-8 text-center shadow-[0_30px_80px_rgba(0,0,0,0.65)]">
+      <div className="w-full max-w-md rounded-4xl border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.96),rgba(10,10,12,0.96))] p-6 text-center shadow-[0_30px_80px_rgba(0,0,0,0.65)] sm:p-8">
         <div className="flex justify-center">
           <Image
             src="/Grafico/Logo blanco.svg"
@@ -61,7 +61,7 @@ export function GameOverlay({
           />
         </div>
         <p className="mt-3 text-xs tracking-[0.36em] text-zinc-500">SPELEUM</p>
-        <h2 className="mt-4 text-4xl font-semibold tracking-[0.12em] text-white">
+        <h2 className="mt-4 text-3xl font-semibold tracking-[0.08em] text-white sm:text-4xl sm:tracking-[0.12em]">
           {title}
         </h2>
         <p className="mt-4 text-sm leading-7 text-zinc-300">{message}</p>

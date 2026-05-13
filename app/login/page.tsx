@@ -624,17 +624,17 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-black px-4 py-12">
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-black px-4 py-20 sm:py-12">
       <CaveParticles />
       <StalactiteBackground />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_20%,rgba(0,0,0,0.8)_80%)]" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(30,30,30,0.4),transparent_60%)]" />
       <div className="pointer-events-none absolute bottom-0 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-rose-500/5 blur-3xl" />
 
-      <div className="absolute left-6 top-6 z-20">
+      <div className="absolute left-4 top-4 z-20 sm:left-6 sm:top-6">
         <Link
           href="/"
-          className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/40 px-4 py-2 text-sm text-zinc-300 transition hover:text-white"
+          className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/10 bg-black/40 px-4 py-2 text-sm text-zinc-300 transition hover:text-white"
         >
           <ArrowLeft className="h-4 w-4" />
           Volver al inicio
@@ -645,15 +645,15 @@ export default function LoginPage() {
         initial={{ opacity: 0, y: 30, filter: "blur(10px)" }}
         animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
         transition={{ duration: 0.8, ease: "easeOut" }}
-        className="relative z-10 w-full max-w-md"
+        className="relative z-10 w-full max-w-md pt-10 sm:pt-0"
       >
-        <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-zinc-900/70 p-8 shadow-2xl shadow-black/50 backdrop-blur-xl">
+        <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-zinc-900/70 p-5 shadow-2xl shadow-black/50 backdrop-blur-xl sm:p-8">
           <AnimatePresence>
             {success && <SuccessMessage message={success} />}
           </AnimatePresence>
 
           <div className="mb-8 text-center">
-            <h1 className="text-3xl font-semibold tracking-wide text-white">
+            <h1 className="text-2xl font-semibold tracking-wide text-white sm:text-3xl">
               Entrar a Speleum
             </h1>
             <p className="mt-2 text-sm text-zinc-400">
@@ -733,7 +733,7 @@ export default function LoginPage() {
                         }
                         onFocus={() => setFocusedField("username")}
                         onBlur={() => handleBlur("username")}
-                        className="w-full rounded-xl border border-white/10 bg-black/40 py-3 pl-11 pr-4 text-white placeholder-zinc-500 outline-none transition-all focus:border-rose-400/50 focus:bg-black/50"
+                        className="min-h-12 w-full rounded-xl border border-white/10 bg-black/40 py-3 pl-11 pr-4 text-white placeholder-zinc-500 outline-none transition-all focus:border-rose-400/50 focus:bg-black/50"
                       />
                     </div>
                     {currentErrors.username && (
@@ -753,7 +753,7 @@ export default function LoginPage() {
                       onChange={(event) => handleInputChange("email", event.target.value)}
                       onFocus={() => setFocusedField("email")}
                       onBlur={() => handleBlur("email")}
-                      className="w-full rounded-xl border border-white/10 bg-black/40 py-3 pl-11 pr-4 text-white placeholder-zinc-500 outline-none transition-all focus:border-rose-400/50 focus:bg-black/50"
+                      className="min-h-12 w-full rounded-xl border border-white/10 bg-black/40 py-3 pl-11 pr-4 text-white placeholder-zinc-500 outline-none transition-all focus:border-rose-400/50 focus:bg-black/50"
                     />
                   </div>
                   {currentErrors.email && (
@@ -775,7 +775,7 @@ export default function LoginPage() {
                       }
                       onFocus={() => setFocusedField("password")}
                       onBlur={() => handleBlur("password")}
-                      className="w-full rounded-xl border border-white/10 bg-black/40 py-3 pl-11 pr-11 text-white placeholder-zinc-500 outline-none transition-all focus:border-rose-400/50 focus:bg-black/50"
+                      className="min-h-12 w-full rounded-xl border border-white/10 bg-black/40 py-3 pl-11 pr-11 text-white placeholder-zinc-500 outline-none transition-all focus:border-rose-400/50 focus:bg-black/50"
                     />
                     <button
                       type="button"
@@ -810,7 +810,7 @@ export default function LoginPage() {
                         }
                         onFocus={() => setFocusedField("confirmPassword")}
                         onBlur={() => handleBlur("confirmPassword")}
-                        className="w-full rounded-xl border border-white/10 bg-black/40 py-3 pl-11 pr-11 text-white placeholder-zinc-500 outline-none transition-all focus:border-rose-400/50 focus:bg-black/50"
+                        className="min-h-12 w-full rounded-xl border border-white/10 bg-black/40 py-3 pl-11 pr-11 text-white placeholder-zinc-500 outline-none transition-all focus:border-rose-400/50 focus:bg-black/50"
                       />
                       <button
                         type="button"
@@ -850,7 +850,7 @@ export default function LoginPage() {
                     disabled={isSubmitting || !isFormReady}
                     aria-disabled={isSubmitting || !isFormReady}
                     aria-busy={isSubmitting}
-                    className={`w-full rounded-xl py-3 text-sm font-semibold text-white shadow-lg transition-all active:scale-[0.98] ${
+                    className={`min-h-12 w-full rounded-xl py-3 text-sm font-semibold text-white shadow-lg transition-all active:scale-[0.98] ${
                       isSubmitting || !isFormReady
                         ? "bg-rose-500/25 text-zinc-400 shadow-none"
                         : "bg-rose-400/80 shadow-rose-500/20 hover:bg-rose-400 hover:shadow-rose-500/30"

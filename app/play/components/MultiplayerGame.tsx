@@ -461,19 +461,19 @@ export function MultiplayerGame({
 
   return (
     <section className="relative z-10 min-h-screen overflow-hidden">
-      <header className="pointer-events-none absolute inset-x-0 top-0 z-70 flex items-center justify-between px-4 py-4">
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-70 flex items-start justify-between gap-2 px-3 py-3 sm:px-4 sm:py-4">
         <button
           type="button"
           onClick={handleExit}
-          className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/55 px-4 py-2 text-sm text-zinc-300 backdrop-blur-md transition hover:text-white"
+          className="pointer-events-auto inline-flex min-h-11 items-center gap-2 rounded-full border border-white/10 bg-black/55 px-4 py-2 text-sm text-zinc-300 backdrop-blur-md transition hover:text-white"
         >
           <ArrowLeft className="h-4 w-4" />
           Menu
         </button>
 
-        <div className="rounded-full border border-white/10 bg-black/45 px-5 py-2 text-center backdrop-blur-md">
+        <div className="rounded-full border border-white/10 bg-black/45 px-3 py-2 text-center backdrop-blur-md sm:px-5">
           <p className="text-[0.65rem] tracking-[0.34em] text-zinc-500">SALA</p>
-          <h1 className="text-sm font-semibold tracking-[0.28em] text-white">{roomCode}</h1>
+          <h1 className="text-[0.8rem] font-semibold tracking-[0.16em] text-white sm:text-sm sm:tracking-[0.28em]">{roomCode}</h1>
         </div>
 
         <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-black/45 px-4 py-2 text-xs text-zinc-400 backdrop-blur-md sm:flex">
@@ -527,7 +527,7 @@ export function MultiplayerGame({
         detectedEnemies={gameState.enemies.length}
       />
 
-      <div className="absolute right-4 top-24 z-70 w-64 max-w-[calc(100vw-2rem)]">
+      <div className="absolute bottom-28 right-3 z-70 w-40 max-w-[calc(100vw-1.5rem)] sm:right-4 sm:top-24 sm:bottom-auto sm:w-64 sm:max-w-[calc(100vw-2rem)]">
         <RadarPanel
           player={player}
           signals={gameState.signals}

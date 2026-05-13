@@ -176,27 +176,27 @@ export function MultiplayerMenu({
   };
 
   return (
-    <section className="relative z-10 min-h-screen overflow-hidden px-5 py-8">
+    <section className="relative z-10 min-h-screen overflow-hidden px-4 py-6 sm:px-5 sm:py-8">
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-5xl items-center justify-center">
         <div className="grid w-full gap-6 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="rounded-4xl border border-white/10 bg-black/40 p-7 backdrop-blur-md">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <button
                 type="button"
                 onClick={isInRoom ? leaveRoom : onBack}
-                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/45 px-4 py-2 text-sm text-zinc-300 transition hover:text-white"
+                className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/10 bg-black/45 px-4 py-2 text-sm text-zinc-300 transition hover:text-white"
               >
                 <ArrowLeft className="h-4 w-4" />
                 {isInRoom ? "Salir de la sala" : "Menu"}
               </button>
-              <div className="inline-flex items-center gap-2 rounded-full border border-cyan-200/15 bg-cyan-950/40 px-4 py-2 text-xs tracking-[0.22em] text-cyan-100">
+              <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-cyan-200/15 bg-cyan-950/40 px-4 py-2 text-[0.65rem] tracking-[0.16em] text-cyan-100 sm:text-xs sm:tracking-[0.22em]">
                 <Radio className="h-4 w-4" />
                 {statusLabel}
               </div>
             </div>
 
             <p className="mt-8 text-xs tracking-[0.35em] text-zinc-500">SPELEUM</p>
-            <h1 className="mt-3 text-4xl font-semibold tracking-[0.12em] text-white">
+            <h1 className="mt-3 text-3xl font-semibold tracking-[0.1em] text-white sm:text-4xl sm:tracking-[0.12em]">
               SALA PRIVADA
             </h1>
             <p className="mt-4 max-w-xl text-sm leading-7 text-zinc-400">
@@ -242,7 +242,7 @@ export function MultiplayerMenu({
                   type="button"
                   onClick={submitCreate}
                   disabled={!multiplayerAvailable}
-                  className="rounded-3xl bg-white px-6 py-4 text-left text-black transition hover:bg-zinc-200"
+                  className="min-h-32 rounded-3xl bg-white px-6 py-4 text-left text-black transition hover:bg-zinc-200"
                 >
                   <p className="text-xs tracking-[0.24em] text-zinc-500">CREAR</p>
                   <p className="mt-2 text-lg font-semibold">Abrir sala privada</p>
@@ -250,18 +250,18 @@ export function MultiplayerMenu({
 
                 <div className="rounded-3xl border border-white/10 bg-black/35 p-4">
                   <p className="text-xs tracking-[0.24em] text-zinc-500">UNIRSE</p>
-                  <div className="mt-3 flex gap-3">
+                  <div className="mt-3 flex flex-col gap-3 sm:flex-row">
                     <input
                       value={roomCodeInput}
                       onChange={(event) => setRoomCodeInput(normalizeRoomCode(event.target.value))}
-                      className="min-w-0 flex-1 rounded-full border border-white/10 bg-black/40 px-4 py-3 text-sm tracking-[0.3em] text-white outline-none"
+                      className="min-h-12 min-w-0 flex-1 rounded-full border border-white/10 bg-black/40 px-4 py-3 text-sm tracking-[0.3em] text-white outline-none"
                       placeholder="ABC123"
                     />
                     <button
                       type="button"
                       onClick={submitJoin}
                       disabled={!multiplayerAvailable}
-                      className="rounded-full border border-cyan-200/20 bg-cyan-950/50 px-5 py-3 text-sm text-cyan-100 transition hover:bg-cyan-900/60"
+                      className="min-h-12 rounded-full border border-cyan-200/20 bg-cyan-950/50 px-5 py-3 text-sm text-cyan-100 transition hover:bg-cyan-900/60"
                     >
                       Entrar
                     </button>
@@ -275,14 +275,14 @@ export function MultiplayerMenu({
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-xs tracking-[0.24em] text-zinc-500">CODIGO DE SALA</p>
-                    <p className="mt-2 text-3xl font-semibold tracking-[0.34em] text-white">
+                    <p className="mt-2 break-all text-2xl font-semibold tracking-[0.24em] text-white sm:text-3xl sm:tracking-[0.34em]">
                       {roomCode}
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={copyRoomCode}
-                    className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/45 px-4 py-2 text-sm text-zinc-200 transition hover:text-white"
+                    className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/10 bg-black/45 px-4 py-2 text-sm text-zinc-200 transition hover:text-white"
                   >
                     <Copy className="h-4 w-4" />
                     {copied ? "Copiado" : "Copiar"}
@@ -306,7 +306,7 @@ export function MultiplayerMenu({
                   type="button"
                   onClick={markReady}
                   disabled={roomState.self.isReady || roomState.playerCount < roomState.requiredPlayers}
-                  className="mt-5 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                 >
                   <Users className="h-4 w-4" />
                   {roomState.self.isReady ? "Listo" : "Marcarme listo"}

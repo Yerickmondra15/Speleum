@@ -25,25 +25,25 @@ export function CharacterSelect({
   >;
 
   return (
-    <section className="relative z-10 mx-auto flex min-h-screen max-w-7xl flex-col px-5 py-8">
-      <header className="flex items-center justify-between border-b border-white/5 pb-5">
+    <section className="relative z-10 mx-auto flex min-h-screen max-w-7xl flex-col px-4 py-6 sm:px-5 sm:py-8">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 pb-5">
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex items-center gap-2 text-sm text-zinc-300 transition hover:text-white"
+          className="inline-flex min-h-11 items-center gap-2 text-sm text-zinc-300 transition hover:text-white"
         >
           <ArrowLeft className="h-4 w-4" />
           Menu
         </button>
-        <p className="text-xs tracking-[0.34em] text-zinc-500">
+        <p className="text-xs tracking-[0.24em] text-zinc-500 sm:tracking-[0.34em]">
           SELECCION DE PERSONAJE
         </p>
       </header>
 
-      <div className="grid flex-1 content-center gap-8 py-10 lg:grid-cols-[0.9fr_1.1fr]">
+      <div className="grid flex-1 content-center gap-8 py-8 sm:py-10 lg:grid-cols-[0.9fr_1.1fr]">
         <div>
           <p className="text-xs tracking-[0.3em] text-zinc-500">CRIATURAS</p>
-          <h1 className="mt-4 text-4xl font-semibold tracking-[0.16em] text-white sm:text-5xl">
+          <h1 className="mt-4 text-3xl font-semibold tracking-[0.12em] text-white sm:text-5xl sm:tracking-[0.16em]">
             Elige como entrar a la cueva
           </h1>
           <p className="mt-5 max-w-xl text-sm leading-7 text-zinc-400">
@@ -106,7 +106,7 @@ export function CharacterSelect({
                 key={character.id}
                 type="button"
                 onClick={() => onSelect(character)}
-                className={`grid grid-cols-[4rem_1fr_auto] items-center gap-4 rounded-[1.25rem] border p-4 text-left transition ${
+                className={`grid items-center gap-4 rounded-[1.25rem] border p-4 text-left transition sm:grid-cols-[4rem_1fr_auto] ${
                   isSelected
                     ? "border-white/35 bg-white/10"
                     : "border-white/10 bg-white/[0.035] hover:bg-white/[0.06]"
@@ -122,17 +122,17 @@ export function CharacterSelect({
                   />
                 </div>
 
-                <div>
+                <div className="min-w-0">
                   <h2 className="font-semibold text-white">{character.name}</h2>
                   <p className="mt-1 text-sm text-zinc-500">
                     {character.role}
                   </p>
-                  <p className="mt-2 text-xs leading-5 text-zinc-500">
+                  <p className="mt-2 break-words text-xs leading-5 text-zinc-500">
                     {character.ability}
                   </p>
                 </div>
 
-                <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">
+                <div className="text-xs uppercase tracking-[0.2em] text-zinc-500 sm:text-right">
                   {isSelected ? "Activa" : "Disponible"}
                 </div>
               </button>
@@ -142,7 +142,7 @@ export function CharacterSelect({
           <button
             type="button"
             onClick={onStart}
-            className="mt-3 inline-flex w-fit items-center gap-2 justify-self-end rounded-full bg-white px-7 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200"
+            className="mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-white px-7 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200 sm:w-fit sm:justify-self-end"
           >
             <Play className="h-4 w-4 fill-black" />
             Seleccionar criatura
