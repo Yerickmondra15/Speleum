@@ -51,7 +51,25 @@ npx prisma migrate dev --name init
 npm run dev
 ```
 
-5. Si quieres levantar tambien el servidor de sockets:
+5. Configura multiplayer local:
+
+```bash
+NEXT_PUBLIC_SOCKET_URL=http://localhost:4001
+```
+
+6. Si quieres levantar tambien el servidor de sockets:
+
+```bash
+npm run socket
+```
+
+7. Si quieres levantar frontend + socket al mismo tiempo:
+
+```bash
+npm run dev:full
+```
+
+8. El script anterior `dev:all` sigue disponible:
 
 ```bash
 npm run dev:all
@@ -80,3 +98,37 @@ npx prisma migrate deploy
 ```bash
 npm run db:migrate:deploy
 ```
+
+## Deploy del socket
+
+- El frontend se despliega en Vercel.
+- El servidor multiplayer de Socket.IO se despliega por separado en Render o Railway.
+- Usa este comando de arranque para el servicio del socket:
+
+```bash
+npm run socket
+```
+
+- El servidor escucha en `process.env.PORT || 4001`, asi que Render y Railway pueden inyectar `PORT` automaticamente.
+- CORS permite:
+  - `localhost`
+  - `127.0.0.1`
+  - el dominio configurado en `FRONTEND_URL` o `NEXT_PUBLIC_APP_URL`
+  - previews y produccion de `*.vercel.app`
+
+## Variables de entorno para multiplayer
+
+### Local
+
+```bash
+NEXT_PUBLIC_SOCKET_URL=http://localhost:4001
+```
+
+### Produccion
+
+```bash
+NEXT_PUBLIC_SOCKET_URL=https://URL_DEL_SOCKET
+```
+
+- Vercel necesita `NEXT_PUBLIC_SOCKET_URL` para activar multiplayer.
+- En el servicio del socket puedes definir `FRONTEND_URL=https://tu-frontend.vercel.app` para permitir un dominio exacto adicional.

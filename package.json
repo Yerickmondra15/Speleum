@@ -4,7 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    
+    "socket": "tsx server/socketServer.ts",
     "server": "tsx server/socketServer.ts",
+    "dev:full": "concurrently \"npm run socket\" \"npm run dev\"",
     "dev:all": "concurrently \"npm run dev\" \"npm run server\"",
     "build": "prisma generate && next build",
     "db:migrate:deploy": "prisma migrate deploy",

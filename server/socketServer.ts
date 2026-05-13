@@ -81,10 +81,47 @@ type ServerRoomState = {
   results: MatchResultEntry[];
 };
 
-const PORT = Number(process.env.SOCKET_PORT ?? 4001);
+const PORT = Number(process.env.PORT || 4001);
 const MOVE_INTERVAL_MS = 80;
 const PLAYER_ATTACK_RANGE = ATTACK_RADIUS * 0.72;
 const rooms = new Map<string, ServerRoomState>();
+
+function normalizeOrigin(value: string) {
+  return value.trim().replace(/\/$/, "");
+}
+
+function resolveAllowedOrigins() {
+  const allowed = new Set<string>([
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:4001",
+    "http://127.0.0.1:4001",
+  ]);
+  const envCandidates = [
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.FRONTEND_URL,
+    process.env.ALLOWED_ORIGINS,
+  ];
+
+  for (const candidate of envCandidates) {
+    if (!candidate) {
+      continue;
+    }
+
+    for (const origin of candidate.split(",")) {
+      const normalized = normalizeOrigin(origin);
+
+      if (normalized) {
+        allowed.add(normalized);
+      }
+    }
+  }
+
+  return allowed;
+}
+
+const allowedOrigins = resolveAllowedOrigins();
+const vercelPreviewOrigin = /^https:\/\/[a-z0-9-]+\.vercel\.app$/i;
 
 function generateRoomCode(): string {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -580,7 +617,21 @@ function evaluateRoom(room: ServerRoomState, io: Server) {
 const httpServer = createServer();
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
+    origin(origin, callback) {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      const normalized = normalizeOrigin(origin);
+
+      if (allowedOrigins.has(normalized) || vercelPreviewOrigin.test(normalized)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`Origin not allowed by Socket.IO CORS: ${origin}`));
+    },
     methods: ["GET", "POST"],
   },
 });
@@ -1019,5 +1070,6 @@ io.on("connection", (socket: Socket) => {
 });
 
 httpServer.listen(PORT, () => {
-  console.log(`Socket server running on http://localhost:${PORT}`);
+  console.log(`Socket server running on port ${PORT}`);
+  console.log(`Allowed Socket.IO origins: ${[...allowedOrigins].join(", ")} + *.vercel.app`);
 });
