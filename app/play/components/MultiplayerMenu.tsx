@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Copy, Radio, Users } from "lucide-react";
 import type { CharacterOption } from "../gameConfig";
 import type { MultiplayerStatePayload } from "../types";
-import { ensureSocketConnection, getSocket } from "@/lib/socket";
+import { ensureSocketConnection, getSocket, isSocketMultiplayerAvailable } from "@/lib/socket";
 
 type MultiplayerMenuProps = {
   selectedCharacter: CharacterOption;
@@ -30,15 +30,25 @@ export function MultiplayerMenu({
   onBack,
   onGameStart,
 }: MultiplayerMenuProps) {
+  const multiplayerAvailable = isSocketMultiplayerAvailable();
   const [playerName, setPlayerName] = useState(defaultPlayerName);
   const [roomCodeInput, setRoomCodeInput] = useState("");
   const [roomState, setRoomState] = useState<MultiplayerStatePayload | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [socketConnected, setSocketConnected] = useState(() => getSocket().connected);
+  const [errorMessage, setErrorMessage] = useState<string | null>(() =>
+    multiplayerAvailable
+      ? null
+      : "Multiplayer experimental no disponible en este entorno. Define NEXT_PUBLIC_SOCKET_URL o usa localhost:4001 en desarrollo.",
+  );
+  const [socketConnected, setSocketConnected] = useState(() => getSocket()?.connected ?? false);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const socket = getSocket();
+
+    if (!socket) {
+      return;
+    }
+
     const handleConnect = () => setSocketConnected(true);
     const handleDisconnect = () => setSocketConnected(false);
     const handleError = (message: string) => setErrorMessage(message);
@@ -96,6 +106,10 @@ export function MultiplayerMenu({
 
   const submitCreate = () => {
     const socket = ensureSocketConnection();
+    if (!socket) {
+      setErrorMessage("No hay servidor Socket.IO disponible para crear una sala.");
+      return;
+    }
     setErrorMessage(null);
     socket.emit("create-room", {
       name: playerName,
@@ -112,6 +126,10 @@ export function MultiplayerMenu({
     }
 
     const socket = ensureSocketConnection();
+    if (!socket) {
+      setErrorMessage("No hay servidor Socket.IO disponible para unirse a una sala.");
+      return;
+    }
     setErrorMessage(null);
     socket.emit("join-room", {
       roomCode: normalizedCode,
@@ -125,14 +143,21 @@ export function MultiplayerMenu({
       return;
     }
 
-    ensureSocketConnection().emit("player-ready", {
+    const socket = ensureSocketConnection();
+
+    if (!socket) {
+      setErrorMessage("La conexion multiplayer no esta disponible.");
+      return;
+    }
+
+    socket.emit("player-ready", {
       roomCode: roomState.roomCode,
     });
   };
 
   const leaveRoom = () => {
     if (roomState) {
-      getSocket().emit("leave-room", { roomCode: roomState.roomCode });
+      getSocket()?.emit("leave-room", { roomCode: roomState.roomCode });
     }
 
     setRoomState(null);
@@ -216,6 +241,7 @@ export function MultiplayerMenu({
                 <button
                   type="button"
                   onClick={submitCreate}
+                  disabled={!multiplayerAvailable}
                   className="rounded-3xl bg-white px-6 py-4 text-left text-black transition hover:bg-zinc-200"
                 >
                   <p className="text-xs tracking-[0.24em] text-zinc-500">CREAR</p>
@@ -234,6 +260,7 @@ export function MultiplayerMenu({
                     <button
                       type="button"
                       onClick={submitJoin}
+                      disabled={!multiplayerAvailable}
                       className="rounded-full border border-cyan-200/20 bg-cyan-950/50 px-5 py-3 text-sm text-cyan-100 transition hover:bg-cyan-900/60"
                     >
                       Entrar
@@ -295,6 +322,7 @@ export function MultiplayerMenu({
               <p>Las otras criaturas solo aparecen si entran en tu rango visible.</p>
               <p>La sala vive en memoria y se pierde al reiniciar el servidor.</p>
               <p>La partida inicia con 2 jugadores y soporta hasta 4.</p>
+              <p>Si el socket no esta configurado, multiplayer queda deshabilitado sin afectar /play local.</p>
             </div>
 
             {errorMessage && (

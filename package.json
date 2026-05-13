@@ -6,7 +6,8 @@
     "dev": "next dev",
     "server": "tsx server/socketServer.ts",
     "dev:all": "concurrently \"npm run dev\" \"npm run server\"",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && prisma migrate deploy && next build",
+    "postinstall": "prisma generate",
     "start": "next start",
     "lint": "eslint"
   },

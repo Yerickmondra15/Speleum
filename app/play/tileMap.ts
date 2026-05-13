@@ -1,4 +1,5 @@
 import type {
+  GoalArea,
   HazardArea,
   PlayerPosition,
   Rect,
@@ -12,13 +13,12 @@ import {
   RADAR_SIGNAL_RANGE_TILES,
   TILE_SIZE,
   TILE_VISION_RADIUS,
-  caveWalls,
   caveZones,
   goalArea,
-  hazardAreas,
   multiplayerSpawnPositions,
   startPosition,
 } from "./gameConfig";
+import { createFallbackCaveLayout, type CaveLayout } from "./proceduralCave";
 
 export type TileType =
   | "floor"
@@ -37,6 +37,11 @@ export type TileCell = {
   type: TileType;
   walkable: boolean;
   zoneId: string;
+};
+
+export type TileLookup = {
+  byKey: Map<string, TileCell>;
+  tiles: TileCell[];
 };
 
 function rectContainsTileCenter(rect: Rect, col: number, row: number) {
@@ -78,6 +83,8 @@ function tileTypeForCoordinate(
   row: number,
   walls: Rect[],
   hazards: HazardArea[],
+  activeGoalArea: GoalArea | null = goalArea,
+  spawnPositions = [startPosition, ...multiplayerSpawnPositions],
 ) {
   const wall = walls.find((entry) => rectContainsTileCenter(entry, col, row));
 
@@ -85,7 +92,7 @@ function tileTypeForCoordinate(
     return isBoundaryWall(wall.id) ? "wall" : "obstacle";
   }
 
-  if (rectContainsTileCenter(goalArea, col, row)) {
+  if (activeGoalArea && rectContainsTileCenter(activeGoalArea, col, row)) {
     return "goal";
   }
 
@@ -94,7 +101,7 @@ function tileTypeForCoordinate(
   }
 
   const tile = { col, row };
-  const spawnTiles = [startPosition, ...multiplayerSpawnPositions].map(worldToTile);
+  const spawnTiles = spawnPositions.map(worldToTile);
 
   if (spawnTiles.some((spawnTile) => spawnTile.col === tile.col && spawnTile.row === tile.row)) {
     return "spawn";
@@ -103,29 +110,72 @@ function tileTypeForCoordinate(
   return "floor";
 }
 
-export const tileMap: TileCell[] = Array.from({ length: MAP_ROWS * MAP_COLS }, (_, index) => {
-  const col = index % MAP_COLS;
-  const row = Math.floor(index / MAP_COLS);
-  const zone = zoneForTile(col, row, caveZones);
-  const type = tileTypeForCoordinate(col, row, caveWalls, hazardAreas);
+function tileTypeFromChar(char: string): TileType {
+  if (char === "#") {
+    return "wall";
+  }
 
+  if (char === "H" || char === "W") {
+    return "hazard";
+  }
+
+  if (char === "S") {
+    return "spawn";
+  }
+
+  return "floor";
+}
+
+export function buildTileMap(
+  layout: Pick<
+    CaveLayout,
+    "zones" | "walls" | "hazardAreas" | "goalArea" | "multiplayerSpawnPositions" | "startPosition" | "tileRows"
+  >,
+) {
+  return Array.from({ length: MAP_ROWS * MAP_COLS }, (_, index) => {
+    const col = index % MAP_COLS;
+    const row = Math.floor(index / MAP_COLS);
+    const zone = zoneForTile(col, row, layout.zones);
+    const char = layout.tileRows[row]?.[col] ?? null;
+    const type =
+      char !== null
+        ? tileTypeFromChar(char)
+        : tileTypeForCoordinate(
+            col,
+            row,
+            layout.walls,
+            layout.hazardAreas,
+            layout.goalArea,
+            [layout.startPosition, ...layout.multiplayerSpawnPositions],
+          );
+
+    return {
+      col,
+      row,
+      x: col * TILE_SIZE,
+      y: row * TILE_SIZE,
+      type,
+      walkable: type !== "wall" && type !== "obstacle",
+      zoneId: zone.id,
+    };
+  });
+}
+
+export function createTileLookup(tiles: TileCell[]): TileLookup {
   return {
-    col,
-    row,
-    x: col * TILE_SIZE,
-    y: row * TILE_SIZE,
-    type,
-    walkable: type !== "wall" && type !== "obstacle",
-    zoneId: zone.id,
+    tiles,
+    byKey: new Map(tiles.map((tile) => [`${tile.col},${tile.row}`, tile] as const)),
   };
-});
+}
 
-export const tileMapByKey = new Map(
-  tileMap.map((tile) => [`${tile.col},${tile.row}`, tile] as const),
-);
+const fallbackLayout = createFallbackCaveLayout("default-static");
 
-export function getTileAt(tile: TileCoordinate) {
-  return tileMapByKey.get(`${tile.col},${tile.row}`) ?? null;
+export const tileMap = buildTileMap(fallbackLayout);
+export const tileMapLookup = createTileLookup(tileMap);
+export const tileMapByKey = tileMapLookup.byKey;
+
+export function getTileAt(tile: TileCoordinate, lookup = tileMapLookup) {
+  return lookup.byKey.get(`${tile.col},${tile.row}`) ?? null;
 }
 
 export function getZoneAtTile(tile: TileCoordinate, zones = caveZones) {
@@ -149,8 +199,8 @@ export function getTileNeighbors(tile: TileCoordinate) {
   );
 }
 
-export function isWalkableTile(tile: TileCoordinate) {
-  return getTileAt(tile)?.walkable ?? false;
+export function isWalkableTile(tile: TileCoordinate, lookup = tileMapLookup) {
+  return getTileAt(tile, lookup)?.walkable ?? false;
 }
 
 export function clampTile(tile: TileCoordinate): TileCoordinate {
@@ -172,9 +222,13 @@ export function isTileVisible(origin: TileCoordinate, target: TileCoordinate) {
   return tileDistance(origin, target) <= TILE_VISION_RADIUS;
 }
 
-export function stepTowardTile(from: TileCoordinate, target: TileCoordinate) {
+export function stepTowardTile(
+  from: TileCoordinate,
+  target: TileCoordinate,
+  lookup = tileMapLookup,
+) {
   const candidates = getTileNeighbors(from)
-    .filter(isWalkableTile)
+    .filter((neighbor) => isWalkableTile(neighbor, lookup))
     .sort((a, b) => manhattanDistance(a, target) - manhattanDistance(b, target));
 
   return candidates[0] ?? from;
@@ -216,6 +270,7 @@ export function approximateRadarPosition(
 export function findReachableTiles(
   origin: TileCoordinate,
   maxSteps = PLAYER_MOVE_RANGE_TILES,
+  lookup = tileMapLookup,
 ) {
   const visited = new Map<string, { tile: TileCoordinate; distance: number }>();
   const queue: Array<{ tile: TileCoordinate; distance: number }> = [
@@ -238,7 +293,7 @@ export function findReachableTiles(
     for (const neighbor of getTileNeighbors(current.tile)) {
       const key = `${neighbor.col},${neighbor.row}`;
 
-      if (visited.has(key) || !isWalkableTile(neighbor)) {
+      if (visited.has(key) || !isWalkableTile(neighbor, lookup)) {
         continue;
       }
 
@@ -255,6 +310,7 @@ export function buildPathToTile(
   origin: TileCoordinate,
   target: TileCoordinate,
   maxSteps = PLAYER_MOVE_RANGE_TILES,
+  lookup = tileMapLookup,
 ) {
   const parents = new Map<string, string | null>();
   const queue: Array<{ tile: TileCoordinate; distance: number }> = [
@@ -294,7 +350,7 @@ export function buildPathToTile(
     for (const neighbor of getTileNeighbors(current.tile)) {
       const neighborKey = `${neighbor.col},${neighbor.row}`;
 
-      if (parents.has(neighborKey) || !isWalkableTile(neighbor)) {
+      if (parents.has(neighborKey) || !isWalkableTile(neighbor, lookup)) {
         continue;
       }
 

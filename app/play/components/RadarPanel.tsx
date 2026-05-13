@@ -3,14 +3,11 @@
 import { Radio } from "lucide-react";
 import type { PlayerPosition } from "../gameConfig";
 import { RADAR_SIGNAL_PROFILES, RADAR_SIGNAL_RANGE_TILES } from "../gameConfig";
-import type { EnemyState } from "../gameLogic";
 import type { RadarSignal } from "../types";
 import { approximateRadarPosition, tileDistance, worldToTile } from "../tileMap";
 
 type RadarPanelProps = {
   player: PlayerPosition;
-  enemy: EnemyState | null;
-  enemies?: EnemyState[];
   signals: RadarSignal[];
   moveCooldownRemaining: number;
 };
@@ -31,22 +28,8 @@ function signalClass(type: RadarSignal["type"]) {
   return "h-3 w-3 border-zinc-100 bg-white/30 shadow-[0_0_12px_rgba(255,255,255,0.35)]";
 }
 
-function enemyPingClass(enemy: EnemyState) {
-  if (enemy.state === "attacking") {
-    return "h-4 w-4 border-red-200 bg-red-400/55 shadow-[0_0_18px_rgba(248,113,113,0.8)]";
-  }
-
-  if (enemy.state === "alerted") {
-    return "h-3.5 w-3.5 border-rose-200 bg-rose-300/35 shadow-[0_0_14px_rgba(251,113,133,0.55)]";
-  }
-
-  return "h-3 w-3 border-zinc-200/80 bg-zinc-200/18";
-}
-
 export function RadarPanel({
   player,
-  enemy,
-  enemies = [],
   signals,
   moveCooldownRemaining,
 }: RadarPanelProps) {
@@ -54,15 +37,9 @@ export function RadarPanel({
   const nearbySignals = signals.filter(
     (signal) => tileDistance(playerTile, worldToTile(signal)) <= RADAR_SIGNAL_RANGE_TILES,
   );
-  const threatEntries = enemies.length > 0 ? enemies : enemy ? [enemy] : [];
-  const nearbyEnemies = threatEntries.filter(
-    (entry) =>
-      entry.alive !== false &&
-      tileDistance(playerTile, worldToTile(entry)) <= RADAR_SIGNAL_RANGE_TILES,
-  );
   const latestSignal = nearbySignals[nearbySignals.length - 1];
-  const hostileCount = nearbyEnemies.filter(
-    (entry) => entry.state === "alerted" || entry.state === "attacking",
+  const hostileCount = nearbySignals.filter(
+    (signal) => signal.type === "danger" || signal.type === "attack",
   ).length;
 
   return (
@@ -100,21 +77,6 @@ export function RadarPanel({
             <div className="mx-auto mt-1 h-1.5 w-1.5 rounded-full bg-rose-300" />
           </div>
         </div>
-
-        {nearbyEnemies.map((entry) => (
-          <div
-            key={entry.id}
-            className="absolute -translate-x-1/2 -translate-y-1/2"
-            style={approximateRadarPosition(
-              playerTile,
-              worldToTile(entry),
-              entry.state === "attacking" ? 1 : entry.state === "alerted" ? 1.75 : 3,
-              entry.x + entry.y,
-            )}
-          >
-            <div className={`rounded-full border ${enemyPingClass(entry)}`} />
-          </div>
-        ))}
       </div>
 
       <div className="mt-4 grid gap-2 text-xs text-zinc-500">
@@ -136,7 +98,7 @@ export function RadarPanel({
         </div>
         <div className="flex justify-between">
           <span>Contactos</span>
-          <span className="text-zinc-300">{nearbyEnemies.length}</span>
+          <span className="text-zinc-300">{nearbySignals.length}</span>
         </div>
         <div className="flex justify-between">
           <span>Peligro</span>
@@ -145,7 +107,7 @@ export function RadarPanel({
               ? "alto"
               : hostileCount === 1
                 ? "medio"
-                : nearbyEnemies.length > 0
+                : nearbySignals.length > 0
                   ? "latente"
                   : "bajo"}
           </span>

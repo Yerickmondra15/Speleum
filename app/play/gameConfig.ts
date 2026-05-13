@@ -63,7 +63,12 @@ export type GoalArea = Rect & {
   label: string;
 };
 
-export type EnemyBehaviorType = "stalker" | "territorial" | "wanderer";
+export type EnemyBehaviorType =
+  | "stalker"
+  | "territorial"
+  | "wanderer"
+  | "ambusher"
+  | "aggressive";
 export type RadarSignalStrength = "low" | "medium" | "high";
 
 export type EnemyConfig = {
@@ -102,7 +107,7 @@ export const MAX_HEALTH = PLAYER_MAX_HEALTH;
 export const MAX_SANITY = 100;
 export const FEAR_WARNING_THRESHOLD = 45;
 export const FEAR_CRITICAL_THRESHOLD = 18;
-export const KEYBOARD_STEP = 110;
+export const KEYBOARD_STEP = 10;
 export const PLAYER_SPEED = 240;
 export const VISION_TILE_SIZE = TILE_SIZE;
 export const TILE_VISION_RADIUS = 8;
@@ -132,7 +137,7 @@ export const SANITY_DAMAGE_PER_TICK = 8;
 export const MAX_ROOM_PLAYERS = 4;
 export const MIN_ROOM_PLAYERS = 2;
 export const ENEMY_MOVE_INTERVAL = 420;
-export const PLAYER_MOVE_RANGE_TILES = 8;
+export const PLAYER_MOVE_RANGE_TILES = 4;
 export const PLAYER_ATTACK_RANGE_TILES = 3;
 export const ENEMY_ATTACK_RANGE_TILES = 1;
 export const RADAR_SIGNAL_RANGE_TILES = 12;

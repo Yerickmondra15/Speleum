@@ -23,7 +23,7 @@ import type { EnemyState } from "../gameLogic";
 import type { MultiplayerPlayerState, RadarSignal } from "../types";
 import { isWithinVision } from "../gameLogic";
 import type { TileCoordinate } from "../gameConfig";
-import { isTileVisible, tileMap, worldToTile } from "../tileMap";
+import { isTileVisible, tileMap, type TileCell, worldToTile } from "../tileMap";
 
 type GameMapProps = {
   player: PlayerPosition;
@@ -40,6 +40,7 @@ type GameMapProps = {
   reachableTiles?: Map<string, { tile: TileCoordinate; distance: number }>;
   selectedPath?: PlayerPosition[];
   isMoveReady?: boolean;
+  tiles?: TileCell[];
   onChooseDestination: (position: PlayerPosition) => void;
 };
 
@@ -117,6 +118,7 @@ export function GameMap({
   reachableTiles = new Map(),
   selectedPath = [],
   isMoveReady = false,
+  tiles = tileMap,
   onChooseDestination,
 }: GameMapProps) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -182,13 +184,13 @@ export function GameMap({
 
   const visibleTiles = useMemo(
     () =>
-      tileMap.filter((tile) =>
+      tiles.filter((tile) =>
         tile.x + TILE_SIZE >= camera.x &&
         tile.x <= camera.x + viewportSize.width &&
         tile.y + TILE_SIZE >= camera.y &&
         tile.y <= camera.y + viewportSize.height,
       ),
-    [camera, viewportSize],
+    [camera, tiles, viewportSize],
   );
 
   const threatEntries = enemies.length > 0 ? enemies : enemy ? [enemy] : [];
@@ -287,7 +289,9 @@ export function GameMap({
             >
               <div
                 className={`relative rounded-full border ${
-                  entry.state === "attacking" || entry.state === "alerted"
+                  entry.state === "attacking" ||
+                  entry.state === "chasing" ||
+                  entry.state === "investigating"
                     ? "border-rose-200/80 bg-rose-300/30 shadow-[0_0_30px_rgba(127,29,29,0.55)]"
                     : entry.state === "dead"
                       ? "border-zinc-500/40 bg-zinc-900/40"
@@ -302,7 +306,9 @@ export function GameMap({
                     width={34}
                     height={34}
                     className={`h-8.5 w-8.5 object-contain ${
-                      entry.state === "attacking" || entry.state === "alerted"
+                      entry.state === "attacking" ||
+                      entry.state === "chasing" ||
+                      entry.state === "investigating"
                         ? "animate-pulse"
                         : ""
                     }`}

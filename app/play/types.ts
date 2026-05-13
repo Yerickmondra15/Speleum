@@ -5,8 +5,21 @@ import type {
   RadarSignalStrength,
 } from "./gameConfig";
 import type { EnemyState, ThreatLevel } from "./gameLogic";
+import type { CaveLayout } from "./proceduralCave";
 
 export type SignalType = "move" | "attack" | "defend" | "danger";
+
+export type NoiseType = "move" | "attack" | "defend";
+
+export type NoiseEvent = {
+  id: string;
+  type: NoiseType;
+  sourceId: string;
+  position: PlayerPosition;
+  radiusTiles: number;
+  intensity: number;
+  createdAt: number;
+};
 
 export type RadarSignal = {
   id: number;
@@ -74,10 +87,13 @@ export type MultiplayerStatePayload = {
   matchId: string;
   roomCode: string;
   status: MultiplayerRoomStatus;
+  cave: CaveLayout;
   self: MultiplayerPlayerState;
   otherPlayers: MultiplayerPlayerState[];
   enemy: EnemyState | null;
+  enemies: EnemyState[];
   signals: RadarSignal[];
+  noises: NoiseEvent[];
   winnerId: string | null;
   playerCount: number;
   aliveCount: number;
@@ -105,6 +121,20 @@ export type MultiplayerSession = {
   playerId: string;
   playerName: string;
   characterId: string;
+};
+
+export type MultiplayerRoomSyncState = {
+  roomCode: string;
+  seed: string;
+  status: MultiplayerRoomStatus;
+  cave: CaveLayout;
+  players: MultiplayerPlayerState[];
+  enemy: EnemyState | null;
+  enemies: EnemyState[];
+  signals: RadarSignal[];
+  noises: NoiseEvent[];
+  winnerId: string | null;
+  updatedAt: string;
 };
 
 export function getCharacterName(

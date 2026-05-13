@@ -10,14 +10,12 @@ import {
   MAX_SANITY,
   TILE_SIZE,
   VISION_RADIUS,
-  caveZones,
   characterOptions,
-  pointsOfInterest,
 } from "../gameConfig";
 import { distanceBetween, getZoneForPosition } from "../gameLogic";
 import type { MatchResultEntry, MultiplayerStatePayload } from "../types";
 import { getCharacterName } from "../types";
-import { ensureSocketConnection, getSocket } from "@/lib/socket";
+import { ensureSocketConnection, getSocket, isSocketMultiplayerAvailable } from "@/lib/socket";
 import { appendLocalRanking } from "@/lib/ranking";
 import { useAuth } from "../../auth/AuthProvider";
 import { ActionControls } from "./ActionControls";
@@ -25,6 +23,7 @@ import { GameHud } from "./GameHud";
 import { GameMap } from "./GameMap";
 import { GameOverlay } from "./GameOverlay";
 import { RadarPanel } from "./RadarPanel";
+import { buildTileMap } from "../tileMap";
 
 type MultiplayerGameProps = {
   matchId: string;
@@ -83,7 +82,11 @@ export function MultiplayerGame({
 }: MultiplayerGameProps) {
   const { user } = useAuth();
   const [gameState, setGameState] = useState<MultiplayerStatePayload | null>(null);
-  const [message, setMessage] = useState("Conectando con la sala...");
+  const [message, setMessage] = useState(() =>
+    isSocketMultiplayerAvailable()
+      ? "Conectando con la sala..."
+      : "Multiplayer experimental no disponible: no hay servidor Socket.IO configurado.",
+  );
   const [activeAction, setActiveAction] = useState<"move" | "attack" | "defend">("move");
   const [cooldownEndsAt, setCooldownEndsAt] = useState(0);
   const [now, setNow] = useState(() => Date.now());
@@ -95,6 +98,11 @@ export function MultiplayerGame({
 
   useEffect(() => {
     const socket = ensureSocketConnection();
+
+    if (!socket) {
+      return;
+    }
+
     const handleGameState = (state: MultiplayerStatePayload) => {
       if (state.roomCode !== roomCode) {
         return;
@@ -102,6 +110,16 @@ export function MultiplayerGame({
 
       setGameState(state);
       setMessage(state.message ?? "La cueva escucha todos tus movimientos.");
+      console.log("CAVE SOURCE:", state.cave.source);
+      console.log("CAVE SEED:", state.cave.seed);
+      console.log("TEMPLATES:", state.cave.templatesUsed);
+
+      if (state.cave.source === "fallback") {
+        console.warn("[Speleum] Multiplayer cave is using fallback.", {
+          seed: state.cave.seed,
+          reason: state.cave.fallbackReason ?? "no reason provided",
+        });
+      }
     };
     const handlePlayerLeft = (payload: { roomCode?: string; message?: string }) => {
       if (payload.roomCode !== roomCode) {
@@ -199,7 +217,25 @@ export function MultiplayerGame({
   const self = gameState?.self ?? null;
   const player = useMemo(() => self?.position ?? { x: 0, y: 0 }, [self?.position]);
   const enemy = gameState?.enemy ?? null;
-  const currentZone = useMemo(() => getZoneForPosition(player, caveZones), [player]);
+  const currentZone = useMemo(() => {
+    if (!gameState) {
+      return {
+        id: "loading-zone",
+        name: "Cargando cueva",
+        subtitle: "Sincronizando",
+        tone: "safe" as const,
+        x: 0,
+        y: 0,
+        width: TILE_SIZE,
+        height: TILE_SIZE,
+        ambient: "Esperando datos de la sala.",
+        pressure: 0,
+      };
+    }
+
+    return getZoneForPosition(player, gameState.cave.zones);
+  }, [gameState, player]);
+  const caveTiles = useMemo(() => (gameState ? buildTileMap(gameState.cave) : []), [gameState]);
   const gameStatus: GameStatus =
     self?.status === "won"
       ? "won"
@@ -208,13 +244,13 @@ export function MultiplayerGame({
         : "playing";
 
   const nearestPoint = useMemo(() => {
-    return pointsOfInterest
+    return (gameState?.cave.pointsOfInterest ?? [])
       .map((point) => ({
         ...point,
         distance: Math.round(Math.hypot(player.x - point.x, player.y - point.y)),
       }))
       .sort((a, b) => a.distance - b.distance)[0];
-  }, [player]);
+  }, [gameState?.cave.pointsOfInterest, player]);
 
   const objective =
     gameStatus === "won"
@@ -224,7 +260,7 @@ export function MultiplayerGame({
         : "Sobrevive, conserva la cordura y conviertete en la ultima criatura viva.";
 
   const enemyStateLabel = enemy
-    ? enemy.state === "attacking" || enemy.state === "alerted"
+    ? enemy.state === "attacking" || enemy.state === "chasing" || enemy.state === "investigating"
       ? "la cueva acecha"
       : "eco hostil"
     : "sin rastro";
@@ -249,6 +285,10 @@ export function MultiplayerGame({
     }
 
     const socket = getSocket();
+
+    if (!socket || !socket.connected) {
+      return;
+    }
     const keys = keyStateRef.current;
     const vectorX = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
     const vectorY = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
@@ -359,7 +399,14 @@ export function MultiplayerGame({
       return;
     }
 
-    getSocket().emit("player-attack", { roomCode });
+    const socket = getSocket();
+
+    if (!socket) {
+      setMessage("Multiplayer experimental no disponible en este entorno.");
+      return;
+    }
+
+    socket.emit("player-attack", { roomCode });
     setActiveAction("attack");
     setCooldownEndsAt(Date.now() + ATTACK_COOLDOWN);
     setMessage("Tu criatura arremete contra todo lo que tenga cerca.");
@@ -370,14 +417,21 @@ export function MultiplayerGame({
       return;
     }
 
-    getSocket().emit("player-defend", { roomCode });
+    const socket = getSocket();
+
+    if (!socket) {
+      setMessage("Multiplayer experimental no disponible en este entorno.");
+      return;
+    }
+
+    socket.emit("player-defend", { roomCode });
     setActiveAction("defend");
     setCooldownEndsAt(Date.now() + DEFEND_COOLDOWN);
     setMessage("Tu criatura endurece el cuerpo para resistir un impacto.");
   };
 
   const handleExit = () => {
-    getSocket().emit("leave-room", { roomCode });
+    getSocket()?.emit("leave-room", { roomCode });
     onExitToMenu();
   };
 
@@ -432,6 +486,7 @@ export function MultiplayerGame({
         player={player}
         playerCharacterId={selectedCharacter.id}
         enemy={enemy}
+        enemies={gameState.enemies}
         otherPlayers={gameState.otherPlayers}
         signals={gameState.signals}
         activeAction={activeAction}
@@ -439,6 +494,7 @@ export function MultiplayerGame({
         currentZone={currentZone}
         gameStatus={gameStatus}
         visionRadius={VISION_RADIUS}
+        tiles={caveTiles}
         onChooseDestination={handleMoveIntent}
       />
 
@@ -462,15 +518,18 @@ export function MultiplayerGame({
         defenseDurationRemaining={self.combat.defenseDurationRemaining}
         nearestThreatTiles={nearestThreatTiles}
         nearbyDangerLabel={
-          enemy?.state === "attacking" ? "alto" : enemy?.state === "alerted" ? "medio" : "bajo"
+          enemy?.state === "attacking"
+            ? "alto"
+            : enemy?.state === "chasing" || enemy?.state === "investigating"
+              ? "medio"
+              : "bajo"
         }
-        detectedEnemies={enemy ? 1 : 0}
+        detectedEnemies={gameState.enemies.length}
       />
 
       <div className="absolute right-4 top-24 z-70 w-64 max-w-[calc(100vw-2rem)]">
         <RadarPanel
           player={player}
-          enemy={enemy}
           signals={gameState.signals}
           moveCooldownRemaining={moveCooldownRemaining}
         />
@@ -478,7 +537,7 @@ export function MultiplayerGame({
 
       <div className="pointer-events-none absolute right-4 top-88 z-70 hidden max-w-xs rounded-[1.25rem] border border-white/10 bg-black/45 p-4 text-sm text-zinc-300 backdrop-blur-md lg:block">
         <p className="text-xs tracking-[0.25em] text-zinc-500">CADENA DE VIDA</p>
-        <p className="mt-2">Conexion: {getSocket().connected ? "estable" : "reconectando"}</p>
+        <p className="mt-2">Conexion: {getSocket()?.connected ? "estable" : "experimental / sin servidor"}</p>
         <p className="mt-2">Criaturas en sala: {gameState.playerCount}/{gameState.maxPlayers}</p>
         <p className="mt-2">Ultimos vivos: {gameState.aliveCount}</p>
         <p className="mt-2">Punto cercano: {nearestPoint?.label ?? currentZone.name}</p>

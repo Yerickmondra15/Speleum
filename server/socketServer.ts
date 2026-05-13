@@ -18,11 +18,7 @@ import {
   RADAR_SIGNAL_PROFILES,
   THREAT_DEATH_MS,
   VISION_RADIUS,
-  caveZones,
   characterOptions,
-  hazardAreas,
-  multiplayerSpawnPositions,
-  stalkerConfig,
 } from "../app/play/gameConfig";
 import {
   applyDamage,
@@ -46,8 +42,11 @@ import type {
   MultiplayerPlayerState,
   MultiplayerRoomStatus,
   MultiplayerStatePayload,
+  NoiseEvent,
   RadarSignal,
 } from "../app/play/types";
+import { buildTileMap, createTileLookup } from "../app/play/tileMap";
+import { createCaveLayout, type CaveLayout } from "../app/play/proceduralCave";
 
 type ServerPlayerState = MultiplayerPlayerState & {
   socketId: string;
@@ -67,13 +66,16 @@ type ServerEnemyState = EnemyState & {
 type ServerRoomState = {
   matchId: string;
   code: string;
+  cave: CaveLayout;
+  tileLookup: ReturnType<typeof createTileLookup>;
   status: MultiplayerRoomStatus;
   createdAt: number;
   startedAt: number | null;
   finishedAt: number | null;
-  enemy: ServerEnemyState;
+  enemies: ServerEnemyState[];
   players: Map<string, ServerPlayerState>;
   signals: RadarSignal[];
+  noises: NoiseEvent[];
   winnerId: string | null;
   message: string | null;
   results: MatchResultEntry[];
@@ -82,7 +84,6 @@ type ServerRoomState = {
 const PORT = Number(process.env.SOCKET_PORT ?? 4001);
 const MOVE_INTERVAL_MS = 80;
 const PLAYER_ATTACK_RANGE = ATTACK_RADIUS * 0.72;
-const ENEMY_ATTACK_RANGE = stalkerConfig.touchRange + 16;
 const rooms = new Map<string, ServerRoomState>();
 
 function generateRoomCode(): string {
@@ -136,6 +137,7 @@ function cleanupSignals(room: ServerRoomState) {
   room.signals = room.signals.filter(
     (signal) => now - signal.createdAt < signal.duration,
   );
+  room.noises = room.noises.filter((noise) => now - noise.createdAt < 3200);
 }
 
 function createInitialCombatState() {
@@ -207,16 +209,22 @@ function emitState(room: ServerRoomState, io: Server) {
   cleanupSignals(room);
   room.results = buildResults(room);
   const alivePlayers = getAlivePlayers(room);
+  const aliveEnemies = room.enemies.filter((enemy) => enemy.alive && enemy.state !== "dead");
 
   for (const player of room.players.values()) {
     if (!player.connected) {
       continue;
     }
 
+    const visibleEnemies = aliveEnemies.filter((enemy) =>
+      isWithinVision(player.position, enemy, VISION_RADIUS),
+    );
+
     const payload: MultiplayerStatePayload = {
       matchId: room.matchId,
       roomCode: room.code,
       status: room.status,
+      cave: room.cave,
       self: toPublicPlayer(player),
       otherPlayers: [...room.players.values()]
         .filter(
@@ -226,15 +234,13 @@ function emitState(room: ServerRoomState, io: Server) {
             isWithinVision(player.position, other.position, VISION_RADIUS),
         )
         .map(toPublicPlayer),
-      enemy: isWithinVision(
-        player.position,
-        { x: room.enemy.x, y: room.enemy.y },
-        VISION_RADIUS,
-      )
-        ? room.enemy
-        : null,
+      enemy: visibleEnemies[0] ?? null,
+      enemies: visibleEnemies,
       signals: room.signals.filter((signal) =>
         isWithinVision(player.position, { x: signal.x, y: signal.y }, VISION_RADIUS),
+      ),
+      noises: room.noises.filter((noise) =>
+        isWithinVision(player.position, noise.position, VISION_RADIUS * 1.25),
       ),
       winnerId: room.winnerId,
       playerCount: [...room.players.values()].filter((entry) => entry.connected).length,
@@ -269,6 +275,37 @@ function addSignal(
     radarJitter: profile.radarJitter,
     ownerId,
   });
+}
+
+function addNoise(
+  room: ServerRoomState,
+  type: NoiseEvent["type"],
+  position: PlayerPosition,
+  radiusTiles: number,
+  intensity: number,
+  sourceId: string,
+) {
+  room.noises.push({
+    id: `${sourceId}-${Date.now()}-${room.noises.length}`,
+    type,
+    sourceId,
+    position,
+    radiusTiles,
+    intensity,
+    createdAt: Date.now(),
+  });
+}
+
+function roomSpawnAt(room: ServerRoomState, index: number) {
+  return (
+    room.cave.multiplayerSpawnPositions[
+      Math.min(index, room.cave.multiplayerSpawnPositions.length - 1)
+    ] ?? room.cave.startPosition
+  );
+}
+
+function roomEnemyConfigs(room: ServerRoomState) {
+  return room.cave.enemyConfigs;
 }
 
 function eliminatePlayer(
@@ -382,19 +419,26 @@ function evaluateRoom(room: ServerRoomState, io: Server) {
       continue;
     }
 
-    if (hitHazard(player.position, hazardAreas)) {
+    if (hitHazard(player.position, room.cave.hazardAreas)) {
       eliminatePlayer(room, player, `${player.name} fue tragado por la cueva.`);
       continue;
     }
 
-    const zone = getZoneForPosition(player.position, caveZones);
+    const zone = getZoneForPosition(player.position, room.cave.zones);
+    const dominantEnemyState =
+      room.enemies.find(
+        (enemy) =>
+          enemy.state === "chasing" ||
+          enemy.state === "investigating" ||
+          enemy.state === "attacking",
+      )?.state ?? "idle";
     player.combat.sanity = updateSanity(
       player.combat.sanity,
       MOVE_INTERVAL_MS / 1000,
       zone,
       now - player.lastMoveAt < MOVE_BURST_IDLE_MS,
       player.combat.threatLevel,
-      room.enemy.state,
+      dominantEnemyState,
       DARKNESS_SANITY_DRAIN,
     );
 
@@ -435,51 +479,85 @@ function evaluateRoom(room: ServerRoomState, io: Server) {
     return;
   }
 
-  const enemyTarget = survivors.reduce((closest, candidate) => {
-    const closestDistance =
-      (room.enemy.x - closest.position.x) ** 2 + (room.enemy.y - closest.position.y) ** 2;
-    const candidateDistance =
-      (room.enemy.x - candidate.position.x) ** 2 +
-      (room.enemy.y - candidate.position.y) ** 2;
-
-    return candidateDistance < closestDistance ? candidate : closest;
-  });
-
-  const updatedEnemy: EnemyState = updateEnemyState(
-    room.enemy,
-    enemyTarget.position,
-    stalkerConfig,
-    MOVE_INTERVAL_MS / 1000,
-    "playing",
-  );
-
-  room.enemy = {
-    ...updatedEnemy,
-    lastAttackAt: room.enemy.lastAttackAt,
-  };
-
-  if (
-    now - room.enemy.lastAttackAt >= ATTACK_COOLDOWN &&
-    distanceBetween(room.enemy, enemyTarget.position) <= ENEMY_ATTACK_RANGE
-  ) {
-    room.enemy.lastAttackAt = now;
-    enemyTarget.combat.health = applyDamage(
-      enemyTarget.combat.health,
-      CAVE_ATTACK_DAMAGE,
-      enemyTarget.combat.isDefending,
-    );
-    addSignal(room, "attack", enemyTarget.position, "cave");
-
-    if (enemyTarget.combat.health <= 0) {
-      eliminatePlayer(
-        room,
-        enemyTarget,
-        `${enemyTarget.name} fue cazado por la cueva.`,
-      );
-    } else {
-      room.message = `La cueva golpeo a ${enemyTarget.name}.`;
+  room.enemies = room.enemies.map((enemy) => {
+    if (!enemy.alive || enemy.state === "dead") {
+      return enemy;
     }
-  }
+
+    const config = roomEnemyConfigs(room).find((entry) => entry.id === enemy.id);
+
+    if (!config) {
+      return enemy;
+    }
+
+    const updatedEnemy = updateEnemyState(
+      enemy,
+      survivors.map((player) => ({
+        id: player.id,
+        position: player.position,
+        alive: player.status === "playing",
+      })),
+      config,
+      MOVE_INTERVAL_MS / 1000,
+      "playing",
+      room.noises,
+      now,
+      room.tileLookup,
+    );
+    const enemyMoved = distanceBetween(enemy, updatedEnemy) >= 24;
+    const stateChanged = enemy.state !== updatedEnemy.state;
+
+    const closestTarget =
+      survivors
+        .filter((player) => player.status === "playing")
+        .sort(
+          (left, right) =>
+            distanceBetween(updatedEnemy, left.position) -
+            distanceBetween(updatedEnemy, right.position),
+        )[0] ?? null;
+
+    if (
+      closestTarget &&
+      updatedEnemy.state === "attacking" &&
+      now - enemy.lastAttackAt >= ATTACK_COOLDOWN &&
+      distanceBetween(updatedEnemy, closestTarget.position) <= config.touchRange + 20
+    ) {
+      closestTarget.combat.health = applyDamage(
+        closestTarget.combat.health,
+        CAVE_ATTACK_DAMAGE,
+        closestTarget.combat.isDefending,
+      );
+      addSignal(room, "attack", updatedEnemy, enemy.id);
+      addNoise(room, "attack", updatedEnemy, 8, 1.1, enemy.id);
+
+      if (closestTarget.combat.health <= 0) {
+        eliminatePlayer(room, closestTarget, `${closestTarget.name} fue cazado por la cueva.`);
+      } else {
+        room.message = `${updatedEnemy.name} golpeo a ${closestTarget.name}.`;
+      }
+
+      return {
+        ...updatedEnemy,
+        lastAttackAt: now,
+      };
+    }
+
+    if (enemyMoved) {
+      addSignal(room, "move", updatedEnemy, enemy.id);
+    }
+
+    if (
+      stateChanged &&
+      (updatedEnemy.state === "chasing" || updatedEnemy.state === "investigating")
+    ) {
+      addSignal(room, "danger", updatedEnemy, enemy.id);
+    }
+
+    return {
+      ...updatedEnemy,
+      lastAttackAt: enemy.lastAttackAt,
+    };
+  });
 
   const finalSurvivors = getAlivePlayers(room);
 
@@ -517,19 +595,23 @@ io.on("connection", (socket: Socket) => {
   socket.on("create-room", ({ name, characterId }: { name?: string; characterId?: string }) => {
     const roomCode = generateRoomCode();
     const playerId = crypto.randomUUID();
+    const cave = createCaveLayout(`room:${roomCode}`);
     const room: ServerRoomState = {
       matchId: crypto.randomUUID(),
       code: roomCode,
+      cave,
+      tileLookup: createTileLookup(buildTileMap(cave)),
       status: "waiting",
       createdAt: Date.now(),
       startedAt: null,
       finishedAt: null,
-      enemy: {
-        ...createEnemyState(stalkerConfig),
+      enemies: cave.enemyConfigs.map((config) => ({
+        ...createEnemyState(config),
         lastAttackAt: 0,
-      },
+      })),
       players: new Map(),
       signals: [],
+      noises: [],
       winnerId: null,
       message: "Sala creada. Reune al menos dos criaturas para iniciar.",
       results: [],
@@ -540,7 +622,7 @@ io.on("connection", (socket: Socket) => {
       socketId: socket.id,
       name: sanitizeName(name, `Criatura-${roomCode.slice(0, 3)}`),
       characterId: characterId ?? "cave-axolotl",
-      position: multiplayerSpawnPositions[0],
+      position: cave.multiplayerSpawnPositions[0] ?? cave.startPosition,
       status: "waiting",
       isReady: false,
       connected: true,
@@ -582,14 +664,13 @@ io.on("connection", (socket: Socket) => {
         return;
       }
 
-      const spawnIndex = Math.min(room.players.size, multiplayerSpawnPositions.length - 1);
       const code = normalizedCode ?? "";
       const player: ServerPlayerState = {
         id: crypto.randomUUID(),
         socketId: socket.id,
         name: sanitizeName(name, `Criatura-${code.slice(0, 3)}`),
         characterId: characterId ?? "cave-axolotl",
-        position: multiplayerSpawnPositions[spawnIndex] ?? multiplayerSpawnPositions[0],
+        position: roomSpawnAt(room, room.players.size),
         status: "waiting",
         isReady: false,
         connected: true,
@@ -640,13 +721,10 @@ io.on("connection", (socket: Socket) => {
 
       for (const entry of room.players.values()) {
         entry.status = entry.connected ? "playing" : "left";
-        entry.position =
-          multiplayerSpawnPositions[
-            Math.min(
-              [...room.players.values()].findIndex((playerItem) => playerItem.id === entry.id),
-              multiplayerSpawnPositions.length - 1,
-            )
-          ] ?? multiplayerSpawnPositions[0];
+        entry.position = roomSpawnAt(
+          room,
+          [...room.players.values()].findIndex((playerItem) => playerItem.id === entry.id),
+        );
         entry.combat = createInitialCombatState();
         entry.lastAction = "move";
         entry.lastAttackAt = 0;
@@ -656,6 +734,13 @@ io.on("connection", (socket: Socket) => {
         entry.movementBurstDistance = 0;
         entry.defendingUntil = 0;
       }
+
+      room.noises = [];
+      room.signals = [];
+      room.enemies = room.cave.enemyConfigs.map((config) => ({
+        ...createEnemyState(config),
+        lastAttackAt: 0,
+      }));
     }
 
     emitState(room, io);
@@ -696,13 +781,26 @@ io.on("connection", (socket: Socket) => {
       let nextPosition = player.position;
 
       if (target) {
-        nextPosition = moveTowardPosition(player.position, target, maxDistance);
+        nextPosition = moveTowardPosition(
+          player.position,
+          target,
+          maxDistance,
+          undefined,
+          room.cave.walls,
+          room.tileLookup,
+        );
       } else if (direction) {
         const magnitude = Math.hypot(direction.x, direction.y) || 1;
-        nextPosition = moveWithCollisions(player.position, {
-          x: (direction.x / magnitude) * maxDistance,
-          y: (direction.y / magnitude) * maxDistance,
-        });
+        nextPosition = moveWithCollisions(
+          player.position,
+          {
+            x: (direction.x / magnitude) * maxDistance,
+            y: (direction.y / magnitude) * maxDistance,
+          },
+          undefined,
+          room.cave.walls,
+          room.tileLookup,
+        );
       }
 
       const movedDistance = distanceBetween(player.position, nextPosition);
@@ -714,6 +812,9 @@ io.on("connection", (socket: Socket) => {
         player.combat.idleMs = 0;
         player.combat.threatLevel = "calm";
         addSignal(room, "move", player.position, player.id);
+        const moveMultiplier =
+          characterOptions.find((option) => option.id === player.characterId)?.moveSignalMultiplier ?? 1;
+        addNoise(room, "move", player.position, 4 + Math.round(moveMultiplier * 2), 0.45 * moveMultiplier, player.id);
       }
       emitState(room, io);
     },
@@ -749,6 +850,7 @@ io.on("connection", (socket: Socket) => {
     attacker.lastAction = "attack";
     attacker.combat.attackCooldownRemaining = ATTACK_COOLDOWN;
     addSignal(room, "attack", attacker.position, attacker.id);
+    addNoise(room, "attack", attacker.position, 9, 1.2, attacker.id);
 
     let inflictedDamage = 0;
 
@@ -779,14 +881,34 @@ io.on("connection", (socket: Socket) => {
       }
     }
 
-    if (distanceBetween(attacker.position, room.enemy) <= PLAYER_ATTACK_RANGE) {
-      room.message =
-        inflictedDamage > 0
-          ? `${attacker.name} agito la cueva con un ataque.`
-          : `${attacker.name} ataco, pero no encontro presa.`;
+    for (const enemy of room.enemies) {
+      if (!enemy.alive || enemy.state === "dead") {
+        continue;
+      }
+
+      if (distanceBetween(attacker.position, enemy) > PLAYER_ATTACK_RANGE) {
+        continue;
+      }
+
+      const previousHp = enemy.hp;
+      enemy.hp = Math.max(0, enemy.hp - PLAYER_ATTACK_DAMAGE);
+      inflictedDamage += previousHp - enemy.hp;
+
+      if (enemy.hp <= 0) {
+        enemy.alive = false;
+        enemy.state = "dead";
+        attacker.combat.kills += 1;
+        room.message = `${attacker.name} derribo a ${enemy.name}.`;
+      } else {
+        enemy.state = "chasing";
+      }
     }
 
     attacker.combat.damageDealt += inflictedDamage;
+
+    if (inflictedDamage > 0 && !room.message) {
+      room.message = `${attacker.name} agito la cueva con un ataque.`;
+    }
 
     if (inflictedDamage === 0 && !room.message) {
       room.message = `${attacker.name} ataco, pero no encontro presa.`;
@@ -828,6 +950,7 @@ io.on("connection", (socket: Socket) => {
     player.combat.defenseCooldownRemaining = DEFEND_COOLDOWN;
     player.combat.defenseDurationRemaining = DEFEND_ACTIVE_DURATION;
     addSignal(room, "defend", player.position, player.id);
+    addNoise(room, "defend", player.position, 6, 0.65, player.id);
     room.message = `${player.name} endurece su caparazon por un instante.`;
     emitState(room, io);
   });
