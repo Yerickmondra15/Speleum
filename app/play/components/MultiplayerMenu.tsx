@@ -37,7 +37,7 @@ export function MultiplayerMenu({
   const [errorMessage, setErrorMessage] = useState<string | null>(() =>
     multiplayerAvailable
       ? null
-      : "Multiplayer experimental no disponible en este entorno. Define NEXT_PUBLIC_SOCKET_URL o usa localhost:4001 en desarrollo.",
+      : "Multiplayer experimental no disponible. Si NEXT_PUBLIC_SOCKET_URL no esta configurado, el multiplayer queda deshabilitado sin afectar /play local.",
   );
   const [socketConnected, setSocketConnected] = useState(() => getSocket()?.connected ?? false);
   const [copied, setCopied] = useState(false);
@@ -321,8 +321,9 @@ export function MultiplayerMenu({
               <p>Vision limitada a 8 casillas alrededor del jugador.</p>
               <p>Las otras criaturas solo aparecen si entran en tu rango visible.</p>
               <p>La sala vive en memoria y se pierde al reiniciar el servidor.</p>
-              <p>La partida inicia con 2 jugadores y soporta hasta 4.</p>
-              <p>Si el socket no esta configurado, multiplayer queda deshabilitado sin afectar /play local.</p>
+              <p>La partida inicia con minimo 3 jugadores y soporta hasta 4.</p>
+              <p>El multiplayer sigue siendo experimental.</p>
+              <p>Si NEXT_PUBLIC_SOCKET_URL no esta configurado, el multiplayer queda deshabilitado sin afectar /play local.</p>
             </div>
 
             {errorMessage && (

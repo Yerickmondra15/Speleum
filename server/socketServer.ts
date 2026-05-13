@@ -81,7 +81,8 @@ type ServerRoomState = {
   results: MatchResultEntry[];
 };
 
-const PORT = Number(process.env.PORT || 4001);
+const PORT = Number(process.env.PORT) || 4001;
+const HOST = "0.0.0.0";
 const MOVE_INTERVAL_MS = 80;
 const PLAYER_ATTACK_RANGE = ATTACK_RADIUS * 0.72;
 const rooms = new Map<string, ServerRoomState>();
@@ -664,7 +665,7 @@ io.on("connection", (socket: Socket) => {
       signals: [],
       noises: [],
       winnerId: null,
-      message: "Sala creada. Reune al menos dos criaturas para iniciar.",
+      message: "Sala creada. Reune al menos tres criaturas para iniciar.",
       results: [],
     };
 
@@ -1069,7 +1070,7 @@ io.on("connection", (socket: Socket) => {
   });
 });
 
-httpServer.listen(PORT, () => {
-  console.log(`Socket server running on port ${PORT}`);
+httpServer.listen(PORT, HOST, () => {
+  console.log(`Socket server running on http://${HOST}:${PORT}`);
   console.log(`Allowed Socket.IO origins: ${[...allowedOrigins].join(", ")} + *.vercel.app`);
 });

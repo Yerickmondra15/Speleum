@@ -103,13 +103,20 @@ npm run db:migrate:deploy
 
 - El frontend se despliega en Vercel.
 - El servidor multiplayer de Socket.IO se despliega por separado en Render o Railway.
-- Usa este comando de arranque para el servicio del socket:
+- En Render usa:
 
 ```bash
-npm run socket
+Build Command: npm ci
+Start Command: npm run socket
 ```
 
-- El servidor escucha en `process.env.PORT || 4001`, asi que Render y Railway pueden inyectar `PORT` automaticamente.
+- Tambien sigue siendo compatible con:
+
+```bash
+npx tsx server/socketServer.ts
+```
+
+- Render debe usar `process.env.PORT` automaticamente.
 - CORS permite:
   - `localhost`
   - `127.0.0.1`
@@ -127,8 +134,16 @@ NEXT_PUBLIC_SOCKET_URL=http://localhost:4001
 ### Produccion
 
 ```bash
-NEXT_PUBLIC_SOCKET_URL=https://URL_DEL_SOCKET
+NEXT_PUBLIC_SOCKET_URL=https://URL_DEL_SOCKET.onrender.com
 ```
 
 - Vercel necesita `NEXT_PUBLIC_SOCKET_URL` para activar multiplayer.
-- En el servicio del socket puedes definir `FRONTEND_URL=https://tu-frontend.vercel.app` para permitir un dominio exacto adicional.
+- En Render pon:
+
+```bash
+FRONTEND_URL=https://URL_DE_VERCEL.vercel.app
+```
+
+- La partida inicia con minimo 3 jugadores y soporta hasta 4.
+- El multiplayer sigue siendo experimental.
+- Si `NEXT_PUBLIC_SOCKET_URL` no esta configurado, el multiplayer queda deshabilitado sin afectar `/play` local.

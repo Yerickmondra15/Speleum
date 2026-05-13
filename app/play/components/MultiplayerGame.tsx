@@ -85,7 +85,7 @@ export function MultiplayerGame({
   const [message, setMessage] = useState(() =>
     isSocketMultiplayerAvailable()
       ? "Conectando con la sala..."
-      : "Multiplayer experimental no disponible: no hay servidor Socket.IO configurado.",
+      : "Multiplayer experimental no disponible. Si NEXT_PUBLIC_SOCKET_URL no esta configurado, el multiplayer queda deshabilitado sin afectar /play local.",
   );
   const [activeAction, setActiveAction] = useState<"move" | "attack" | "defend">("move");
   const [cooldownEndsAt, setCooldownEndsAt] = useState(0);
@@ -402,7 +402,7 @@ export function MultiplayerGame({
     const socket = getSocket();
 
     if (!socket) {
-      setMessage("Multiplayer experimental no disponible en este entorno.");
+      setMessage("Multiplayer experimental no disponible. Si NEXT_PUBLIC_SOCKET_URL no esta configurado, el multiplayer queda deshabilitado sin afectar /play local.");
       return;
     }
 
@@ -420,7 +420,7 @@ export function MultiplayerGame({
     const socket = getSocket();
 
     if (!socket) {
-      setMessage("Multiplayer experimental no disponible en este entorno.");
+      setMessage("Multiplayer experimental no disponible. Si NEXT_PUBLIC_SOCKET_URL no esta configurado, el multiplayer queda deshabilitado sin afectar /play local.");
       return;
     }
 
