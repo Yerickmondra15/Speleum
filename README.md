@@ -43,7 +43,7 @@ npm install
 - `AUTH_CODE_SECRET` opcional, recomendado para separar la firma de codigos
 - `RESEND_API_KEY` para intentar envio real con Resend
 - `EMAIL_FROM` remitente de correo. Para demo en Vercel gratis puedes usar `Speleum <onboarding@resend.dev>`
-- `DEMO_AUTH_CODES` opcional. Usa `true` solo para demo o desarrollo para exponer el codigo al frontend
+- `DEMO_AUTH_CODES` opcional. Usa `true` solo en casos puntuales de demo o desarrollo
 
 3. Genera Prisma y aplica migraciones en desarrollo:
 
@@ -119,13 +119,20 @@ EMAIL_FROM="Speleum <onboarding@resend.dev>"
 - Para correo real profesional necesitas un dominio propio verificado en Resend.
 - Variables recomendadas en Vercel:
 
+- Variables recomendadas en Vercel sin dominio propio:
+
 ```bash
 RESEND_API_KEY=...
 EMAIL_FROM="Speleum <onboarding@resend.dev>"
+```
+
+- Si necesitas una presentacion puntual sin entrega real de correo, puedes activar temporalmente:
+
+```bash
 DEMO_AUTH_CODES=true
 ```
 
-- Si `DEMO_AUTH_CODES=true`, el backend devolvera el codigo en la respuesta y la UI mostrara una tarjeta `Codigo demo`.
+- Si `DEMO_AUTH_CODES=true`, el backend devolvera el codigo en la respuesta solo para ese uso puntual.
 - Si `DEMO_AUTH_CODES` no esta activo, nunca se devuelve el codigo al frontend.
 
 ## Deploy del socket

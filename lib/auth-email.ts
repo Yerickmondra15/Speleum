@@ -132,7 +132,7 @@ export async function sendAuthCodeEmail(input: SendAuthCodeEmailInput) {
     return {
       ok: false,
       mode: "not-configured",
-      error: "No se pudo enviar el correo. Intenta de nuevo o usa modo demo.",
+      error: "No se pudo enviar el correo. Intenta de nuevo.",
     } satisfies EmailDeliveryResult;
   }
 
@@ -156,7 +156,7 @@ export async function sendAuthCodeEmail(input: SendAuthCodeEmailInput) {
       return {
         ok: false,
         mode: "failed",
-        error: "No se pudo enviar el correo. Intenta de nuevo o usa modo demo.",
+        error: "No se pudo enviar el correo. Intenta de nuevo.",
       } satisfies EmailDeliveryResult;
     }
 
@@ -168,7 +168,7 @@ export async function sendAuthCodeEmail(input: SendAuthCodeEmailInput) {
     return {
       ok: false,
       mode: "failed",
-      error: "No se pudo enviar el correo. Intenta de nuevo o usa modo demo.",
+      error: "No se pudo enviar el correo. Intenta de nuevo.",
     } satisfies EmailDeliveryResult;
   }
 }
