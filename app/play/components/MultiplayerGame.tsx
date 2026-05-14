@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Radio, Skull, Users } from "lucide-react";
+import { ArrowLeft, Radio, Skull } from "lucide-react";
 import type { CharacterOption, GameStatus, PlayerPosition } from "../gameConfig";
 import {
   MAX_ROOM_PLAYERS,
@@ -22,6 +22,7 @@ import { ActionControls } from "./ActionControls";
 import { GameHud } from "./GameHud";
 import { GameMap } from "./GameMap";
 import { GameOverlay } from "./GameOverlay";
+import { GameTopControls } from "./GameTopControls";
 import { RadarPanel } from "./RadarPanel";
 import { buildTileMap, createTileLookup, findReachableTiles, tileToWorld, worldToTile } from "../tileMap";
 
@@ -73,6 +74,7 @@ export function MultiplayerGame({
       : "El modo multijugador necesita una URL de Socket.IO para habilitar salas en tiempo real.",
   );
   const [activeAction, setActiveAction] = useState<"move" | "attack" | "defend">("move");
+  const [isUiHidden, setIsUiHidden] = useState(false);
   const [disconnectedMessage, setDisconnectedMessage] = useState<string | null>(null);
   const [pendingMoveTarget, setPendingMoveTarget] = useState<PlayerPosition | null>(null);
   const [pathPreview, setPathPreview] = useState<PlayerPosition[]>([]);
@@ -450,14 +452,19 @@ export function MultiplayerGame({
           Menu
         </button>
 
-        <div className="rounded-full border border-white/10 bg-black/45 px-3 py-2 text-center backdrop-blur-md sm:px-5">
-          <p className="text-[0.65rem] tracking-[0.34em] text-zinc-500">SALA</p>
-          <h1 className="text-[0.8rem] font-semibold tracking-[0.16em] text-white sm:text-sm sm:tracking-[0.28em]">{roomCode}</h1>
-        </div>
+        {!isUiHidden && (
+          <div className="rounded-full border border-white/10 bg-black/45 px-3 py-2 text-center backdrop-blur-md sm:px-5">
+            <p className="text-[0.65rem] tracking-[0.34em] text-zinc-500">SALA</p>
+            <h1 className="text-[0.8rem] font-semibold tracking-[0.16em] text-white sm:text-sm sm:tracking-[0.28em]">{roomCode}</h1>
+          </div>
+        )}
 
-        <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-black/45 px-4 py-2 text-xs text-zinc-400 backdrop-blur-md sm:flex">
-          <Users className="h-4 w-4" />
-          {selectedCharacter.name}
+        <div className="flex items-start gap-2">
+          <GameTopControls
+            characterName={selectedCharacter.name}
+            isUiHidden={isUiHidden}
+            onToggleUi={() => setIsUiHidden((current) => !current)}
+          />
         </div>
       </header>
 
@@ -480,102 +487,112 @@ export function MultiplayerGame({
         onChooseDestination={handleMoveIntent}
       />
 
-      <GameHud
-        selectedCharacter={selectedCharacter}
-        zone={currentZone}
-        objective={objective}
-        message={message}
-        zoneMessage={disconnectedMessage}
-        health={health}
-        maxHealth={MAX_HEALTH}
-        aliveCount={gameState.aliveCount}
-        enemyStateLabel={`rivales ${gameState.otherPlayers.length} · ecos ${gameState.enemies.length}`}
-        isPaused={false}
-        parryActive={isParrying}
-        isStunned={isStunned}
-        moveCooldownRemaining={moveCooldownRemaining}
-        attackCooldownRemaining={attackCooldownRemaining}
-        parryCooldownRemaining={parryCooldownRemaining}
-        parryWindowRemaining={self.combat.parryWindowRemaining}
-        stunRemaining={self.combat.stunRemaining}
-        nearestThreatTiles={nearestThreatTiles}
-        nearbyDangerLabel={
-          enemy?.state === "attacking"
-            ? "alto"
-            : enemy?.state === "chasing" || enemy?.state === "investigating"
-              ? "medio"
-              : "bajo"
-        }
-        detectedEnemies={gameState.enemies.length}
-        attackRangeLabel={`${PLAYER_ATTACK_RANGE_TILES} casillas`}
-        otherPlayersSummary={otherPlayersSummary}
-      />
-
-      <div className="absolute bottom-28 right-3 z-70 w-40 max-w-[calc(100vw-1.5rem)] sm:right-4 sm:top-24 sm:bottom-auto sm:w-64 sm:max-w-[calc(100vw-2rem)]">
-        <RadarPanel
-          player={player}
-          signals={gameState.signals}
+      {!isUiHidden && (
+        <GameHud
+          selectedCharacter={selectedCharacter}
+          zone={currentZone}
+          objective={objective}
+          message={message}
+          zoneMessage={disconnectedMessage}
+          health={health}
+          maxHealth={MAX_HEALTH}
+          aliveCount={gameState.aliveCount}
+          enemyStateLabel={`rivales ${gameState.otherPlayers.length} Â· ecos ${gameState.enemies.length}`}
+          isPaused={false}
+          parryActive={isParrying}
+          isStunned={isStunned}
           moveCooldownRemaining={moveCooldownRemaining}
+          attackCooldownRemaining={attackCooldownRemaining}
+          parryCooldownRemaining={parryCooldownRemaining}
+          parryWindowRemaining={self.combat.parryWindowRemaining}
+          stunRemaining={self.combat.stunRemaining}
+          nearestThreatTiles={nearestThreatTiles}
+          nearbyDangerLabel={
+            enemy?.state === "attacking"
+              ? "alto"
+              : enemy?.state === "chasing" || enemy?.state === "investigating"
+                ? "medio"
+                : "bajo"
+          }
+          detectedEnemies={gameState.enemies.length}
+          attackRangeLabel={`${PLAYER_ATTACK_RANGE_TILES} casillas`}
+          otherPlayersSummary={otherPlayersSummary}
         />
-      </div>
+      )}
 
-      <div className="pointer-events-none absolute right-4 top-88 z-70 hidden max-w-xs rounded-[1.25rem] border border-white/10 bg-black/45 p-4 text-sm text-zinc-300 backdrop-blur-md lg:block">
-        <p className="text-xs tracking-[0.25em] text-zinc-500">CADENA DE VIDA</p>
-        <p className="mt-2">Conexion: {socketConnected ? "estable" : "reconectando"}</p>
-        <p className="mt-2">Criaturas en sala: {gameState.playerCount}/{maxPlayers}</p>
-        <p className="mt-2">Ultimos vivos: {gameState.aliveCount}</p>
-        <p className="mt-2">Punto cercano: {nearestPoint?.label ?? currentZone.name}</p>
-        <p className="mt-2">Vision: 8 casillas alrededor.</p>
-        <div className="mt-3 inline-flex items-center gap-2 text-xs tracking-[0.2em] text-cyan-100">
-          <Radio className="h-4 w-4" />
-          {self.combat.kills} bajas
+      {!isUiHidden && (
+        <div className="absolute bottom-28 right-3 z-70 w-40 max-w-[calc(100vw-1.5rem)] sm:right-4 sm:top-24 sm:bottom-auto sm:w-64 sm:max-w-[calc(100vw-2rem)]">
+          <RadarPanel
+            player={player}
+            signals={gameState.signals}
+            moveCooldownRemaining={moveCooldownRemaining}
+          />
         </div>
-        {pendingMoveTarget && (
-          <p className="mt-2 text-xs text-zinc-500">
-            Trayecto pendiente hacia {worldToTile(pendingMoveTarget).col},{worldToTile(pendingMoveTarget).row}
-          </p>
-        )}
-      </div>
+      )}
 
-      <div className="absolute bottom-28 left-4 z-70 hidden w-88 rounded-[1.25rem] border border-white/10 bg-black/45 p-4 text-sm text-zinc-300 backdrop-blur-md xl:block">
-        <div className="flex items-center justify-between">
-          <p className="text-xs tracking-[0.25em] text-zinc-500">RESULTADOS PARCIALES</p>
-          <Skull className="h-4 w-4 text-zinc-500" />
+      {!isUiHidden && (
+        <div className="pointer-events-none absolute right-4 top-88 z-70 hidden max-w-xs rounded-[1.25rem] border border-white/10 bg-black/45 p-4 text-sm text-zinc-300 backdrop-blur-md lg:block">
+          <p className="text-xs tracking-[0.25em] text-zinc-500">CADENA DE VIDA</p>
+          <p className="mt-2">Conexion: {socketConnected ? "estable" : "reconectando"}</p>
+          <p className="mt-2">Criaturas en sala: {gameState.playerCount}/{maxPlayers}</p>
+          <p className="mt-2">Ultimos vivos: {gameState.aliveCount}</p>
+          <p className="mt-2">Punto cercano: {nearestPoint?.label ?? currentZone.name}</p>
+          <p className="mt-2">Vision: 8 casillas alrededor.</p>
+          <div className="mt-3 inline-flex items-center gap-2 text-xs tracking-[0.2em] text-cyan-100">
+            <Radio className="h-4 w-4" />
+            {self.combat.kills} bajas
+          </div>
+          {pendingMoveTarget && (
+            <p className="mt-2 text-xs text-zinc-500">
+              Trayecto pendiente hacia {worldToTile(pendingMoveTarget).col},{worldToTile(pendingMoveTarget).row}
+            </p>
+          )}
         </div>
-        <div className="mt-4 space-y-3">
-          {gameState.results.slice(0, 4).map((entry) => (
-            <div
-              key={entry.playerId}
-              className="flex items-center justify-between rounded-xl border border-white/10 bg-black/35 px-3 py-2"
-            >
-              <div>
-                <p className="text-sm text-white">
-                  #{entry.placement} {entry.name}
-                </p>
-                <p className="text-xs text-zinc-500">
-                  {getCharacterName(characterOptions, entry.characterId)}
-                </p>
+      )}
+
+      {!isUiHidden && (
+        <div className="absolute bottom-28 left-4 z-70 hidden w-88 rounded-[1.25rem] border border-white/10 bg-black/45 p-4 text-sm text-zinc-300 backdrop-blur-md xl:block">
+          <div className="flex items-center justify-between">
+            <p className="text-xs tracking-[0.25em] text-zinc-500">RESULTADOS PARCIALES</p>
+            <Skull className="h-4 w-4 text-zinc-500" />
+          </div>
+          <div className="mt-4 space-y-3">
+            {gameState.results.slice(0, 4).map((entry) => (
+              <div
+                key={entry.playerId}
+                className="flex items-center justify-between rounded-xl border border-white/10 bg-black/35 px-3 py-2"
+              >
+                <div>
+                  <p className="text-sm text-white">
+                    #{entry.placement} {entry.name}
+                  </p>
+                  <p className="text-xs text-zinc-500">
+                    {getCharacterName(characterOptions, entry.characterId)}
+                  </p>
+                </div>
+                <div className="text-right text-xs text-zinc-400">
+                  <p>{entry.kills} kills</p>
+                  <p>{entry.status}</p>
+                </div>
               </div>
-              <div className="text-right text-xs text-zinc-400">
-                <p>{entry.kills} kills</p>
-                <p>{entry.status}</p>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
-      <ActionControls
-        activeAction={activeAction}
-        cooldownRemaining={attackCooldownRemaining}
-        moveCooldownRemaining={moveCooldownRemaining}
-        parryCooldownRemaining={parryCooldownRemaining}
-        isRecovering={attackCooldownRemaining > 0 || isStunned}
-        isParrying={isParrying}
-        onMove={() => setActiveAction("move")}
-        onAttack={handleAttack}
-        onDefend={handleDefend}
-      />
+      {!isUiHidden && (
+        <ActionControls
+          activeAction={activeAction}
+          cooldownRemaining={attackCooldownRemaining}
+          moveCooldownRemaining={moveCooldownRemaining}
+          parryCooldownRemaining={parryCooldownRemaining}
+          isRecovering={attackCooldownRemaining > 0 || isStunned}
+          isParrying={isParrying}
+          onMove={() => setActiveAction("move")}
+          onAttack={handleAttack}
+          onDefend={handleDefend}
+        />
+      )}
 
       <GameOverlay
         status={gameStatus}

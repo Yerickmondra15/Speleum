@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import { Heart, Pause, Play, Target } from "lucide-react";
 import type { CharacterOption, Zone } from "../gameConfig";
 
 type GameHudProps = {
@@ -15,7 +14,6 @@ type GameHudProps = {
   aliveCount?: number;
   enemyStateLabel: string;
   isPaused: boolean;
-  onTogglePause?: () => void;
   score?: number;
   kills?: number;
   parryActive?: boolean;
@@ -70,17 +68,11 @@ function formatGuardState({
 export function GameHud({
   selectedCharacter,
   zone,
-  objective,
   message,
   zoneMessage,
   health,
   maxHealth,
-  aliveCount,
-  enemyStateLabel,
-  isPaused,
-  onTogglePause,
   score = 0,
-  kills = 0,
   parryActive = false,
   isStunned = false,
   moveCooldownRemaining = 0,
@@ -88,11 +80,7 @@ export function GameHud({
   parryCooldownRemaining = 0,
   parryWindowRemaining = 0,
   stunRemaining = 0,
-  nearestThreatTiles = null,
   nearbyDangerLabel = "bajo",
-  detectedEnemies = 0,
-  attackRangeLabel = "3 casillas",
-  otherPlayersSummary = [],
 }: GameHudProps) {
   const hpPercent = Math.max(0, Math.min(100, (health / maxHealth) * 100));
   const guardState = formatGuardState({
@@ -222,17 +210,6 @@ export function GameHud({
           </p>
         )}
       </div>
-
-      {onTogglePause && (
-        <button
-          type="button"
-          onClick={onTogglePause}
-          className="absolute right-3 top-3 z-72 inline-flex min-h-11 items-center gap-2 rounded-full border border-white/10 bg-black/55 px-4 py-2 text-sm text-zinc-300 backdrop-blur-md transition hover:text-white sm:right-4 sm:top-4"
-        >
-          {isPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
-          {isPaused ? "Reanudar" : "Pausa"}
-        </button>
-      )}
     </>
   );
 }
