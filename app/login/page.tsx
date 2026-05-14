@@ -749,13 +749,13 @@ export default function LoginPage() {
 
           <div className="mb-8 text-center">
             <h1 className="text-2xl font-semibold tracking-wide text-white sm:text-3xl">
-              {step === "verify" ? "Verificar acceso" : "Entrar a Speleum"}
+              {step === "verify" ? "Verificar acceso" : "Acceder a Speleum"}
             </h1>
             <p className="mt-2 text-sm text-zinc-400">
               {step === "verify"
                 ? pendingAuth?.message ??
                   "Revisa tu correo y escribe el codigo de 6 digitos para continuar."
-                : "Inicia sesion o registra tu criatura para volver a la cueva."}
+                : "Inicia sesion o registra tu cuenta para guardar perfil, ranking y progreso de partida."}
             </p>
             <p className="mx-auto mt-4 max-w-xs text-xs uppercase tracking-[0.22em] text-rose-300/70">
               {step === "verify"

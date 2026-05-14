@@ -3,9 +3,8 @@ import { AuthProvider } from './auth/AuthProvider'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Speleum - Explora la oscuridad',
-  description: 'Entra a la cueva. Explora la oscuridad. Se el ultimo en pie.',
-  generator: 'v0.app',
+  title: 'Speleum | Supervivencia en cuevas',
+  description: 'Juego web de supervivencia en cuevas con vision limitada, radar de senales, combate, ranking y persistencia.',
   icons: {
     icon: [
       {
@@ -31,7 +30,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
+    <html lang="es">
       <body className="font-sans antialiased">
         <AuthProvider>{children}</AuthProvider>
       </body>

@@ -48,7 +48,7 @@ export function CharacterSelect({
           </h1>
           <p className="mt-5 max-w-xl text-sm leading-7 text-zinc-400">
             Cada criatura cambia la forma de moverte y la senal que dejas en el
-            radar. Elige una entrada antes de buscar partida.
+            radar. Elige una entrada antes de buscar partida o registrar nuevos resultados.
           </p>
 
           <div className="mt-8 overflow-hidden rounded-[1.6rem] border border-white/10 bg-white/[0.035]">

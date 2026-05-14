@@ -46,6 +46,9 @@ export default function RankingView() {
             <h1 className="mt-3 text-3xl font-semibold tracking-[0.12em] text-white sm:text-4xl">
               RANKING
             </h1>
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-zinc-400">
+              Este panel resume puntuacion, victorias y actividad reciente de las criaturas registradas.
+            </p>
           </div>
           <Link
             href="/play"
@@ -63,7 +66,7 @@ export default function RankingView() {
             </div>
           ) : entries.length === 0 ? (
             <div className="rounded-[1.4rem] border border-white/10 bg-black/30 p-6 text-zinc-400">
-              Todavia no hay resultados registrados en Speleum.
+              Todavia no hay resultados persistidos para mostrar en el ranking.
             </div>
           ) : (
             <div className="space-y-4">

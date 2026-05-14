@@ -35,7 +35,7 @@ const cards = [
   {
     icon: Footprints,
     title: "Movimiento por ecos",
-    text: "Selecciona una celda dentro de tu zona visible. Speleum calcula el trayecto por tiles y la roca bloquea rutas imposibles.",
+    text: "Selecciona una celda dentro de tu zona visible. Speleum calcula el trayecto por tiles y la roca bloquea rutas imposibles tanto en la partida local como en la base multijugador.",
   },
   {
     icon: Timer,
@@ -45,7 +45,7 @@ const cards = [
   {
     icon: Radio,
     title: "Radar y senales",
-    text: "Moverse deja una senal leve. Atacar emite una senal mas fuerte. Defenderse emite muy poco.",
+    text: "Moverse deja una senal leve. Atacar emite una senal fuerte. Defenderse deja una marca corta y discreta. El radar orienta, pero no revela posiciones perfectas.",
   },
   {
     icon: Swords,
@@ -111,7 +111,7 @@ export default function ComoJugarPage() {
           <p className="mt-6 text-sm leading-7 text-zinc-400 sm:text-base">
             Speleum se juega leyendo oscuridad, distancia y senales. Controlas
             una criatura subterranea, eliges celdas dentro de tu zona visible y
-            sobrevives gestionando movimiento, ataque, defensa y radar.
+            sobrevives gestionando movimiento, ataque, defensa, criaturas hostiles y radar.
           </p>
         </motion.div>
       </section>
@@ -194,7 +194,7 @@ export default function ComoJugarPage() {
               <li>Marca trayectos cortos si necesitas recuperar pulso rapido.</li>
               <li>Ataca cuando una amenaza entre en tus 3 casillas de alcance.</li>
               <li>Usa defensa para amortiguar dano antes de exponerte.</li>
-              <li>Mira el radar despues de cada accion: cada eco importa.</li>
+              <li>Mira el radar despues de cada accion: cada senal sugiere actividad cercana.</li>
             </ul>
           </div>
         </motion.div>

@@ -97,7 +97,7 @@ export function ProfilePanel() {
             {profile.username}
           </h1>
           <p className="mt-5 max-w-xl text-sm leading-7 text-zinc-400">
-            Tu perfil conserva la identidad de tu criatura y tus estadisticas reales de Speleum.
+            Tu perfil conserva tu criatura activa, tus resultados acumulados y el avance registrado en Speleum.
           </p>
         </div>
 
@@ -133,7 +133,7 @@ export function ProfilePanel() {
             </div>
             <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-zinc-500">Estado</span>
-              <span className="text-zinc-200">sesion en servidor</span>
+              <span className="text-zinc-200">sesion autenticada</span>
             </div>
             <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-zinc-500">Criatura activa</span>

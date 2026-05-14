@@ -42,7 +42,7 @@ export function MultiplayerMenu({
   const [errorMessage, setErrorMessage] = useState<string | null>(() =>
     multiplayerAvailable
       ? null
-      : "Multiplayer experimental no disponible. Si NEXT_PUBLIC_SOCKET_URL no esta configurado, el multiplayer queda deshabilitado sin afectar /play local.",
+      : "El modo multijugador necesita NEXT_PUBLIC_SOCKET_URL para habilitar salas en tiempo real.",
   );
   const [socketConnected, setSocketConnected] = useState(() => getSocket()?.connected ?? false);
   const [copied, setCopied] = useState(false);
@@ -428,9 +428,9 @@ export function MultiplayerMenu({
               <p>Las otras criaturas solo aparecen si entran en tu rango visible.</p>
               <p>La sala vive en memoria y se pierde al reiniciar el servidor.</p>
               <p>La partida inicia con minimo {MIN_ROOM_PLAYERS} jugadores y soporta hasta {MAX_ROOM_PLAYERS}.</p>
-              <p>El multiplayer sigue siendo experimental.</p>
+              <p>El multijugador ya funciona como base integrada de partidas en tiempo real.</p>
               <p>El servidor puede tardar unos segundos en despertar.</p>
-              <p>Si NEXT_PUBLIC_SOCKET_URL no esta configurado, el multiplayer queda deshabilitado sin afectar /play local.</p>
+              <p>Si NEXT_PUBLIC_SOCKET_URL no esta configurado, esta vista solo mostrara el modo local.</p>
             </div>
 
             {errorMessage && (

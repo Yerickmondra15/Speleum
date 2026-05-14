@@ -47,6 +47,7 @@ import {
   worldToTile,
 } from "../tileMap";
 import { createCaveLayout, type CaveLayout } from "../proceduralCave";
+import { createRadarSignal, upsertRadarSignal } from "../signalUtils";
 
 type TacticalGameProps = {
   selectedCharacter: CharacterOption;
@@ -270,21 +271,16 @@ export function TacticalGame({
 
   function addSignal(type: SignalType, position: PlayerPosition, ownerId?: string) {
     const profile = RADAR_SIGNAL_PROFILES[type];
+    const nextSignal = createRadarSignal({
+      type,
+      strength: profile.strength,
+      position,
+      duration: profile.duration,
+      radarJitter: profile.radarJitter,
+      ownerId,
+    });
 
-    setSignals((current) => [
-      ...current.slice(-20),
-      {
-        id: Date.now() + current.length,
-        type,
-        strength: profile.strength,
-        x: position.x,
-        y: position.y,
-        createdAt: Date.now(),
-        duration: profile.duration,
-        radarJitter: profile.radarJitter,
-        ownerId,
-      },
-    ]);
+    setSignals((current) => upsertRadarSignal(current, nextSignal));
   }
 
   function addNoise(
@@ -682,10 +678,10 @@ export function TacticalGame({
     } else if (key === "arrowright" || key === "d") {
       event.preventDefault();
       queueMovementTo(tileToWorld({ ...worldToTile(playerRef.current), col: worldToTile(playerRef.current).col + 1 }));
-    } else if (key === " ") {
+    } else if (key === " " || key === "e") {
       event.preventDefault();
       handleAttack();
-    } else if (key === "shift") {
+    } else if (key === "shift" || key === "q") {
       event.preventDefault();
       handleDefend();
     }

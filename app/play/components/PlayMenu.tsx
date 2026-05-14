@@ -41,7 +41,7 @@ export function PlayMenu({
         </h1>
         <p className="mt-7 max-w-2xl text-sm leading-7 text-zinc-400 sm:text-base">
           Sobrevive con vision limitada, lee las senales de la cueva y decide
-          cada accion antes de convertirte en presa.
+          cada accion antes de quedar expuesto frente a criaturas hostiles u otros jugadores.
         </p>
 
         <div className="mt-12 grid w-full max-w-md gap-3 sm:flex sm:max-w-none sm:flex-wrap sm:justify-center">

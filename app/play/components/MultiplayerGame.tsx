@@ -70,7 +70,7 @@ export function MultiplayerGame({
   const [message, setMessage] = useState(() =>
     isSocketMultiplayerAvailable()
       ? "Conectando con la sala..."
-      : "Multiplayer experimental no disponible. Si NEXT_PUBLIC_SOCKET_URL no esta configurado, el multiplayer queda deshabilitado sin afectar /play local.",
+      : "El modo multijugador necesita una URL de Socket.IO para habilitar salas en tiempo real.",
   );
   const [activeAction, setActiveAction] = useState<"move" | "attack" | "defend">("move");
   const [disconnectedMessage, setDisconnectedMessage] = useState<string | null>(null);
@@ -352,10 +352,10 @@ export function MultiplayerGame({
     } else if (event.key === "ArrowRight" || event.key.toLowerCase() === "d") {
       event.preventDefault();
       target = tileToWorld({ ...tile, col: tile.col + 1 });
-    } else if (event.key === " ") {
+    } else if (event.key === " " || event.key.toLowerCase() === "e") {
       event.preventDefault();
       handleAttack();
-    } else if (event.key.toLowerCase() === "shift") {
+    } else if (event.key.toLowerCase() === "shift" || event.key.toLowerCase() === "q") {
       event.preventDefault();
       handleDefend();
     }
@@ -383,7 +383,7 @@ export function MultiplayerGame({
     const socket = getSocket();
 
     if (!socket) {
-      setMessage("Multiplayer experimental no disponible. Si NEXT_PUBLIC_SOCKET_URL no esta configurado, el multiplayer queda deshabilitado sin afectar /play local.");
+      setMessage("El modo multijugador necesita una URL de Socket.IO para enviar ataques en tiempo real.");
       return;
     }
 
@@ -400,7 +400,7 @@ export function MultiplayerGame({
     const socket = getSocket();
 
     if (!socket) {
-      setMessage("Multiplayer experimental no disponible. Si NEXT_PUBLIC_SOCKET_URL no esta configurado, el multiplayer queda deshabilitado sin afectar /play local.");
+      setMessage("El modo multijugador necesita una URL de Socket.IO para activar defensa en tiempo real.");
       return;
     }
 

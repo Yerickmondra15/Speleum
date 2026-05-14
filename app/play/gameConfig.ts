@@ -140,23 +140,23 @@ export const SPAWN_ENEMY_BUFFER_TILES = 3;
 export const RADAR_SIGNAL_PROFILES: Record<"move" | "attack" | "defend" | "danger", SignalProfile> = {
   move: {
     strength: "low",
-    duration: 900,
-    radarJitter: 3.5,
+    duration: 1050,
+    radarJitter: 4.8,
   },
   attack: {
     strength: "high",
     duration: 1600,
-    radarJitter: 1.25,
+    radarJitter: 1.4,
   },
   defend: {
-    strength: "medium",
-    duration: 1150,
-    radarJitter: 2.5,
+    strength: "low",
+    duration: 1300,
+    radarJitter: 0.9,
   },
   danger: {
     strength: "medium",
     duration: 1450,
-    radarJitter: 2,
+    radarJitter: 2.3,
   },
 };
 

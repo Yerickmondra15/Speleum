@@ -12,7 +12,7 @@ const sections = [
   {
     icon: Radio,
     title: "Senales",
-    text: "Speleum convierte esa biologia en ecos: moverse, atacar o defenderse no solo cambia tu posicion, tambien produce rastros que otras criaturas pueden interpretar.",
+    text: "Speleum convierte esa biologia en ecos: moverse, atacar o defenderse no solo cambia tu posicion, tambien produce rastros parciales que otras criaturas pueden interpretar.",
   },
   {
     icon: Waves,

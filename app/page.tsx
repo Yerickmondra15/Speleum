@@ -1,8 +1,9 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Trophy,
   CircleHelp,
@@ -11,6 +12,7 @@ import {
   LogIn,
   Lightbulb,
   ChevronDown,
+  LogOut,
 } from "lucide-react";
 import { motion, type Variants } from "framer-motion";
 import { LIGHTS_ON_KEY, creatures } from "@/lib/creatures";
@@ -30,7 +32,8 @@ const fadeUp: Variants = {
 };
 
 export default function Home() {
-  const { status } = useAuth();
+  const router = useRouter();
+  const { status, logout } = useAuth();
   const [turnedOn, setTurnedOn] = useState(false);
   const hasSession = status === "signed-in";
 
@@ -43,11 +46,16 @@ export default function Home() {
   }, []);
 
   const primaryHref = hasSession ? "/play" : "/login";
-  const primaryLabel = hasSession ? "Entrar a la cueva" : "Iniciar sesion";
+  const primaryLabel = hasSession ? "Jugar ahora" : "Iniciar sesion";
 
   const handleTurnOn = () => {
     setTurnedOn(true);
     window.localStorage.setItem(LIGHTS_ON_KEY, "true");
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    router.refresh();
   };
 
   return (
@@ -113,12 +121,23 @@ export default function Home() {
               <Link href="/How-to-play" className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10">
                 <CircleHelp className="h-5 w-5 text-zinc-200" />
               </Link>
-              <Link href="/login" className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10">
-                <LogIn className="h-5 w-5 text-zinc-200" />
-              </Link>
               <Link href="/profile" className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10">
                 <User className="h-5 w-5 text-zinc-200" />
               </Link>
+              {hasSession ? (
+                <button
+                  type="button"
+                  onClick={() => void handleLogout()}
+                  className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10"
+                  aria-label="Cerrar sesion"
+                >
+                  <LogOut className="h-5 w-5 text-zinc-200" />
+                </button>
+              ) : (
+                <Link href="/login" className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10">
+                  <LogIn className="h-5 w-5 text-zinc-200" />
+                </Link>
+              )}
             </div>
           </nav>
         </header>
@@ -135,8 +154,8 @@ export default function Home() {
           </h1>
 
           <p className="mt-5 max-w-2xl text-sm leading-7 text-zinc-400 sm:text-base">
-            Un juego web multijugador de supervivencia en cuevas con criaturas subterraneas,
-            vision limitada, radar de ecos y ranking competitivo.
+            Speleum es un juego web de supervivencia en cuevas con vision limitada,
+            criaturas subterraneas, radar de ecos, combate, defensa, ranking y persistencia de puntuaciones.
           </p>
 
           <div className="mt-14 flex w-full justify-center">
@@ -229,8 +248,8 @@ export default function Home() {
               <p className="mb-3 text-xs tracking-[0.25em] text-zinc-500">QUE ES SPELEUM</p>
               <h2 className="text-2xl font-semibold text-white">Supervivencia subterranea con vision limitada</h2>
               <p className="mt-4 leading-7 text-zinc-400">
-                Speleum es un juego web multijugador donde cada partida te pone en una cueva
-                oscura, con criaturas subterraneas, lectura de ecos y enfrentamientos por supervivencia.
+                Speleum integra exploracion tensa, lectura parcial del entorno y enfrentamientos
+                en cuevas oscuras donde cada desplazamiento deja senales detectables.
               </p>
             </motion.div>
 
@@ -238,8 +257,8 @@ export default function Home() {
               <p className="mb-3 text-xs tracking-[0.25em] text-zinc-500">IDEA PRINCIPAL</p>
               <h2 className="text-2xl font-semibold text-white">Leer la cueva, cazar y sobrevivir mas que los demas</h2>
               <p className="mt-4 leading-7 text-zinc-400">
-                El proyecto combina una identidad visual oscura con mecanicas de vision limitada,
-                movimiento por tiles, combate y competencia por score y eliminaciones dentro de la cueva.
+                La base funcional del proyecto combina vision limitada, radar de senales,
+                ataque, defensa, ranking persistente y un modo multijugador preparado para seguir ampliandose.
               </p>
             </motion.div>
           </div>
@@ -277,7 +296,7 @@ export default function Home() {
                 <p className="mt-4 leading-7 text-zinc-400">
                   Speleum toma inspiracion de animales adaptados a cuevas: baja vision, cuerpos palidos,
                   sensibilidad al movimiento y orientacion por vibraciones. El juego convierte esas ideas en radar,
-                  vision limitada y combate de supervivencia.
+                  senales parciales, criaturas hostiles y decisiones de combate.
                 </p>
               </div>
               <div className="flex items-end md:justify-end">
@@ -296,15 +315,25 @@ export default function Home() {
               <p className="text-xs tracking-[0.25em] text-zinc-500">ULTIMA INCURSION</p>
               <h3 className="mt-3 text-3xl font-semibold text-white">Entra a Speleum</h3>
               <p className="mt-4 max-w-md leading-7 text-zinc-400">
-                Explora la oscuridad, detecta ecos hostiles y sobrevive con vision limitada dentro de la cueva.
+                Entra a la cueva, detecta actividad cercana y protege tu puntuacion en partidas locales o en tiempo real.
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
                 <Link href={primaryHref} className="inline-flex min-h-11 items-center justify-center rounded-full bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200">
                   {primaryLabel}
                 </Link>
-                <Link href="/login" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-white/5 px-6 py-3 text-sm text-white transition hover:bg-white/10">
-                  Login
-                </Link>
+                {hasSession ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleLogout()}
+                    className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-white/5 px-6 py-3 text-sm text-white transition hover:bg-white/10"
+                  >
+                    Cerrar sesion
+                  </button>
+                ) : (
+                  <Link href="/login" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-white/5 px-6 py-3 text-sm text-white transition hover:bg-white/10">
+                    Acceder
+                  </Link>
+                )}
                 <Link href="/How-to-play" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-white/5 px-6 py-3 text-sm text-white transition hover:bg-white/10">
                   Como jugar
                 </Link>
@@ -316,11 +345,11 @@ export default function Home() {
               <div className="flex flex-col gap-3 text-sm text-zinc-400">
                 <Link href="/" className="transition hover:text-white">Inicio</Link>
                 <Link href="/play" className="transition hover:text-white">Jugar</Link>
-                <Link href="/login" className="transition hover:text-white">Login</Link>
+                {!hasSession && <Link href="/login" className="transition hover:text-white">Acceder</Link>}
                 <Link href="/ranking" className="transition hover:text-white">Ranking</Link>
                 <Link href="/How-to-play" className="transition hover:text-white">Como jugar</Link>
                 <Link href="/world" className="transition hover:text-white">Mundo</Link>
-                <Link href="/profile" className="transition hover:text-white">Usuario</Link>
+                <Link href="/profile" className="transition hover:text-white">Perfil</Link>
               </div>
             </div>
 
@@ -335,7 +364,7 @@ export default function Home() {
 
           <div className="relative mx-auto mt-12 flex max-w-7xl flex-col items-center justify-between gap-3 border-t border-white/5 pt-6 text-center text-sm text-zinc-500 sm:flex-row sm:text-left">
             <p>Speleum · supervivencia en cuevas</p>
-            <p>Oscuridad, ecos y competencia subterranea</p>
+            <p>Oscuridad, senales parciales y competencia subterranea</p>
           </div>
         </motion.footer>
       </div>

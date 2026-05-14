@@ -1,187 +1,170 @@
 # Speleum
 
-Speleum es un juego web multijugador de supervivencia en cuevas. Controlas criaturas subterraneas, te mueves con vision limitada, lees ecos en el radar, atacas, te defiendes y compites por score y ranking.
+Speleum es un juego web de supervivencia en cuevas con vision limitada. El jugador controla una criatura subterranea, detecta actividad cercana mediante radar, se desplaza por un mapa oscuro, ataca, se defiende y compite por resultados persistidos en ranking.
 
-## Stack
+## Objetivo del proyecto
 
-- Next.js App Router
+Desarrollar una experiencia web jugable que combine exploracion, tension espacial y competencia, integrando autenticacion de usuarios, persistencia de datos, ranking y una base funcional de partidas en tiempo real.
+
+## Tecnologias utilizadas
+
+- Next.js
 - React
 - TypeScript
 - Tailwind CSS
-- Socket.IO
-- PostgreSQL
 - Prisma
+- PostgreSQL
+- Socket.IO
+- Vercel (para despliegue del frontend, si aplica)
 
-## Estado actual
+## Estado actual del sistema
 
-- Registro con verificacion de correo
-- Inicio de sesion con 2FA por codigo enviado al correo
-- Cookie de sesion creada solo despues de validar el codigo
-- Perfil y ranking conectados a PostgreSQL
-- Guardado de resultados y estadisticas con Prisma
-- Modo local funcional con:
-  - vision limitada de 8 tiles
-  - movimiento por seleccion de celdas
-  - combate por tiles
-  - radar de ecos
-  - defensa y cooldowns
-- Base multijugador existente con Socket.IO, mantenida compatible
+Speleum se encuentra en una etapa de avance estructurado con una base funcional integrada. Ya dispone de autenticacion, perfil, ranking, guardado de resultados, partida local completa y un modo multijugador en evolucion con salas en tiempo real.
 
-## Ejecutar
+## Funcionalidades implementadas
 
-1. Instala dependencias:
+- Landing y pantallas informativas alineadas con la tematica de supervivencia en cuevas.
+- Registro de usuarios con verificacion por codigo enviado al correo.
+- Inicio de sesion con validacion por codigo temporal.
+- Gestion de sesion y perfil de usuario.
+- Seleccion y persistencia de criatura activa.
+- Ranking persistido en base de datos.
+- Registro de resultados de partida local y multijugador.
+- Partida local con:
+  - vision limitada
+  - movimiento por tiles
+  - ataque y defensa
+  - radar de senales
+  - criaturas hostiles de cueva
+- Modo multijugador con salas privadas, sincronizacion por Socket.IO y soporte inicial de combate en tiempo real.
+
+## Funcionalidades pendientes o ampliables
+
+- Mayor variedad de criaturas jugables y amenazas de cueva.
+- Ajustes de balance en combate, deteccion y tiempos de recuperacion.
+- Persistencia adicional de salas o historiales de partidas multijugador.
+- Mejoras visuales y de retroalimentacion para eventos de radar y combate.
+- Automatizacion de pruebas y cobertura de escenarios multijugador.
+
+## Estructura de documentacion tecnica
+
+- [Arquitectura](docs/ARQUITECTURA.md)
+- [Base de datos](docs/BASE_DE_DATOS.md)
+- [Servicios y modulos](docs/SERVICIOS.md)
+- [Ejecucion del proyecto](docs/EJECUCION.md)
+- [Mejoras futuras](docs/MEJORAS_FUTURAS.md)
+- [Uso de IA](docs/USO_IA.md)
+
+## Requisitos previos
+
+- Node.js 20 o superior
+- npm
+- PostgreSQL disponible localmente o en la nube
+
+## Variables de entorno necesarias
+
+### Requeridas
+
+- `DATABASE_URL`
+- `DIRECT_URL`
+- `SESSION_SECRET`
+
+### Recomendadas o segun el entorno
+
+- `AUTH_CODE_SECRET`
+- `RESEND_API_KEY`
+- `EMAIL_FROM`
+- `NEXT_PUBLIC_SOCKET_URL`
+- `FRONTEND_URL`
+- `NEXT_PUBLIC_APP_URL`
+
+### Opcionales para desarrollo o demostracion
+
+- `DEMO_AUTH_CODES`
+- `DEMO_AUTH_CODES_PUBLIC`
+- `AUTH_RESEND_COOLDOWN_SECONDS`
+- `AUTH_MAX_VERIFY_ATTEMPTS`
+- `AUTH_MAX_RESENDS`
+- `AUTH_RATE_LIMIT_WINDOW_MINUTES`
+- `AUTH_RATE_LIMIT_PER_EMAIL`
+- `AUTH_RATE_LIMIT_PER_IP`
+- `ALLOWED_ORIGINS`
+
+## Instrucciones para ejecutar el sistema
+
+1. Instalar dependencias:
 
 ```bash
 npm install
 ```
 
-2. Asegura estas variables en `.env`:
-
-- `DATABASE_URL`
-- `DIRECT_URL`
-- `SESSION_SECRET`
-- `AUTH_CODE_SECRET` opcional, recomendado para separar la firma de codigos
-- `RESEND_API_KEY` para intentar envio real con Resend
-- `EMAIL_FROM` remitente de correo. Para demo en Vercel gratis puedes usar `Speleum <onboarding@resend.dev>`
-- `DEMO_AUTH_CODES` opcional. Usa `true` solo en casos puntuales de demo o desarrollo
-- `DEMO_AUTH_CODES_PUBLIC` opcional. Usa `true` solo cuando quieras mostrar el codigo demo en el frontend para una presentacion
-
-3. Genera Prisma y aplica migraciones en desarrollo:
+2. Generar cliente de Prisma:
 
 ```bash
 npx prisma generate
+```
+
+3. Aplicar migraciones en desarrollo:
+
+```bash
 npx prisma migrate dev
 ```
 
-4. Inicia la app:
+4. Iniciar el frontend:
 
 ```bash
 npm run dev
 ```
 
-5. Configura multiplayer local:
+5. Si se desea probar el modo multijugador, configurar la URL del socket y levantar el servidor:
 
 ```bash
 NEXT_PUBLIC_SOCKET_URL=http://localhost:4001
-```
-
-6. Si quieres levantar tambien el servidor de sockets:
-
-```bash
 npm run socket
 ```
 
-7. Si quieres levantar frontend + socket al mismo tiempo:
+6. Para ejecutar frontend y socket al mismo tiempo:
 
 ```bash
 npm run dev:full
 ```
 
-8. El script anterior `dev:all` sigue disponible:
+## Comandos principales
 
 ```bash
-npm run dev:all
-```
-
-## Validacion
-
-```bash
-npm run lint
-npx tsc --noEmit
+npm install
+npx prisma generate
+npx prisma migrate dev
+npx prisma migrate deploy
+npm run dev
 npm run build
 ```
 
-## Deploy y migraciones
+## Build y despliegue
 
-- El build de produccion ejecuta `prisma generate` y `next build`.
-- El deploy normal no ejecuta `prisma migrate deploy`.
-- El flujo de auth por correo requiere que las migraciones de Prisma esten aplicadas antes de desplegar.
-- Corre las migraciones manualmente solo cuando cambie la base de datos:
+Para compilar el proyecto:
+
+```bash
+npm run build
+```
+
+En entornos productivos con cambios de esquema aplicados manualmente:
 
 ```bash
 npx prisma migrate deploy
 ```
 
-- Si prefieres usar el script del proyecto:
+## Evidencia visual
 
-```bash
-npm run db:migrate:deploy
-```
+- Agregar captura de landing
+- Agregar captura de login
+- Agregar captura de perfil
+- Agregar captura de partida
+- Agregar captura de ranking
+- Agregar captura de multijugador
 
-## Correo de autenticacion en Vercel
+## Uso de inteligencia artificial en el desarrollo
 
-- Si estas desplegando en un dominio gratuito `*.vercel.app`, no controlas el DNS del subdominio y no puedes verificar SPF/DKIM para enviar como `noreply@tu-app.vercel.app`.
-- Para demo o presentacion puedes configurar:
+Durante el desarrollo de Speleum se utilizo inteligencia artificial como apoyo en tareas de generacion de codigo, revision de errores, documentacion, diseno de componentes y mejora de estructura general del proyecto.
 
-```bash
-EMAIL_FROM="Speleum <onboarding@resend.dev>"
-```
-
-- `onboarding@resend.dev` solo sirve de forma practica para probar con el correo dueno o verificado en la cuenta de Resend.
-- Para correo real profesional necesitas un dominio propio verificado en Resend.
-- Variables recomendadas en Vercel sin dominio propio:
-
-```bash
-RESEND_API_KEY=...
-EMAIL_FROM="Speleum <onboarding@resend.dev>"
-```
-
-- Si necesitas una presentacion en Vercel para cualquier companero sin depender del correo real, activa temporalmente:
-
-```bash
-DEMO_AUTH_CODES=true
-DEMO_AUTH_CODES_PUBLIC=true
-```
-
-- Si `DEMO_AUTH_CODES=true` y `DEMO_AUTH_CODES_PUBLIC=true`, el backend devolvera `demoCode` al frontend y la UI mostrara una tarjeta discreta `Codigo demo`.
-- Si `DEMO_AUTH_CODES_PUBLIC` no esta activo, el frontend no recibira `demoCode` para mostrarlo en produccion.
-- Si `DEMO_AUTH_CODES=false`, nunca se devuelve el codigo al frontend.
-
-## Deploy del socket
-
-- El frontend se despliega en Vercel.
-- El servidor multiplayer de Socket.IO se despliega por separado en Render o Railway.
-- En Render usa:
-
-```bash
-Build Command: npm ci
-Start Command: npm run socket
-```
-
-- Tambien sigue siendo compatible con:
-
-```bash
-npx tsx server/socketServer.ts
-```
-
-- Render debe usar `process.env.PORT` automaticamente.
-- CORS permite:
-  - `localhost`
-  - `127.0.0.1`
-  - el dominio configurado en `FRONTEND_URL` o `NEXT_PUBLIC_APP_URL`
-  - previews y produccion de `*.vercel.app`
-
-## Variables de entorno para multiplayer
-
-### Local
-
-```bash
-NEXT_PUBLIC_SOCKET_URL=http://localhost:4001
-```
-
-### Produccion
-
-```bash
-NEXT_PUBLIC_SOCKET_URL=https://URL_DEL_SOCKET.onrender.com
-```
-
-- Vercel necesita `NEXT_PUBLIC_SOCKET_URL` para activar multiplayer.
-- En Render pon:
-
-```bash
-FRONTEND_URL=https://URL_DE_VERCEL.vercel.app
-```
-
-- La partida inicia con minimo 2 jugadores y soporta hasta 6.
-- El multiplayer sigue siendo experimental.
-- Si `NEXT_PUBLIC_SOCKET_URL` no esta configurado, el multiplayer queda deshabilitado sin afectar `/play` local.
+La implementacion final fue revisada, adaptada y probada por el estudiante, por lo que la IA se utilizo como herramienta de asistencia y no como reemplazo del proceso de desarrollo.

@@ -22,10 +22,23 @@ function signalClass(type: RadarSignal["type"]) {
   }
 
   if (type === "defend") {
-    return "h-3.5 w-3.5 border-amber-100 bg-amber-200/35 shadow-[0_0_14px_rgba(253,230,138,0.45)]";
+    return "h-3 w-3 border-amber-100/80 bg-amber-200/20 shadow-[0_0_10px_rgba(253,230,138,0.28)]";
   }
 
   return "h-3 w-3 border-zinc-100 bg-white/30 shadow-[0_0_12px_rgba(255,255,255,0.35)]";
+}
+
+function signalLabel(type: RadarSignal["type"]) {
+  switch (type) {
+    case "move":
+      return "movimiento";
+    case "attack":
+      return "ataque";
+    case "defend":
+      return "defensa";
+    default:
+      return "alerta";
+  }
 }
 
 export function RadarPanel({
@@ -84,7 +97,7 @@ export function RadarPanel({
           <span>Ultima senal</span>
           <span className="text-zinc-300">
             {latestSignal
-              ? `${latestSignal.type} · ${latestSignal.strength}`
+              ? `${signalLabel(latestSignal.type)} · ${latestSignal.strength}`
               : "ninguna"}
           </span>
         </div>

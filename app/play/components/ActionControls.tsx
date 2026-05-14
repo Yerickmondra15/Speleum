@@ -66,7 +66,7 @@ export function ActionControls({
                 <Swords className="h-4 w-4 text-rose-100" />
               <div>
                 <p className="text-[0.7rem] uppercase tracking-[0.22em] text-zinc-500">Ataque</p>
-                <p className="mt-1 text-sm text-zinc-100">{label(cooldownRemaining)}</p>
+                <p className="mt-1 text-sm text-zinc-100">{label(cooldownRemaining)} · E</p>
               </div>
             </div>
           </button>
@@ -86,7 +86,7 @@ export function ActionControls({
               <div>
                 <p className="text-[0.7rem] uppercase tracking-[0.22em] text-zinc-500">Parry</p>
                 <p className="mt-1 text-sm text-zinc-100">
-                  {isParrying ? "activo" : label(parryCooldownRemaining)}
+                  {isParrying ? "activo · Q" : `${label(parryCooldownRemaining)} · Q`}
                 </p>
               </div>
             </div>

@@ -40,6 +40,7 @@ import type {
 } from "../app/play/types";
 import { buildTileMap, createTileLookup } from "../app/play/tileMap";
 import { createCaveLayout, type CaveLayout } from "../app/play/proceduralCave";
+import { createRadarSignal, upsertRadarSignal } from "../app/play/signalUtils";
 
 type ServerPlayerState = MultiplayerPlayerState & {
   socketId: string;
@@ -411,18 +412,16 @@ function addSignal(
   ownerId?: string,
 ) {
   const profile = RADAR_SIGNAL_PROFILES[type];
-
-  room.signals.push({
-    id: Date.now() + room.signals.length,
+  const nextSignal = createRadarSignal({
     type,
     strength: profile.strength,
-    x: position.x,
-    y: position.y,
-    createdAt: Date.now(),
+    position,
     duration: profile.duration,
     radarJitter: profile.radarJitter,
     ownerId,
   });
+
+  room.signals = upsertRadarSignal(room.signals, nextSignal);
 }
 
 function addNoise(
@@ -526,6 +525,16 @@ function evaluateRoom(room: ServerRoomState, io: Server) {
         player.position = nextStep;
         player.lastMoveAt = now;
         addSignal(room, "move", player.position, player.id);
+        const moveMultiplier =
+          characterOptions.find((option) => option.id === player.characterId)?.moveSignalMultiplier ?? 1;
+        addNoise(
+          room,
+          "move",
+          player.position,
+          4 + Math.round(moveMultiplier * 2),
+          0.45 * moveMultiplier,
+          player.id,
+        );
       }
     }
   }
