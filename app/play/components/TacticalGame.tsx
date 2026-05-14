@@ -829,7 +829,7 @@ export function TacticalGame({
       </div>
 
       {combatFlash && (
-        <div className="pointer-events-none absolute left-1/2 top-[12.75rem] z-[85] w-max max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-full border border-rose-200/15 bg-black/70 px-4 py-2 text-center text-xs tracking-[0.12em] text-rose-100 shadow-[0_0_28px_rgba(251,113,133,0.18)] sm:top-24 sm:px-5 sm:text-sm sm:tracking-[0.18em]">
+        <div className="pointer-events-none absolute left-1/2 top-51 z-85 w-max max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-full border border-rose-200/15 bg-black/70 px-4 py-2 text-center text-xs tracking-[0.12em] text-rose-100 shadow-[0_0_28px_rgba(251,113,133,0.18)] sm:top-24 sm:px-5 sm:text-sm sm:tracking-[0.18em]">
           {combatFlash}
         </div>
       )}

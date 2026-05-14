@@ -48,7 +48,7 @@ export function CharacterSelect({
           </h1>
           <p className="mt-5 max-w-xl text-sm leading-7 text-zinc-400">
             Cada criatura cambia la forma de moverte y la senal que dejas en el
-            radar. Elige una entrada antes de buscar partida o registrar nuevos resultados.
+            radar. Elige una antes de buscar partida o lograr nuevos resultados.
           </p>
 
           <div className="mt-8 overflow-hidden rounded-[1.6rem] border border-white/10 bg-white/[0.035]">
@@ -109,7 +109,7 @@ export function CharacterSelect({
                 className={`grid items-center gap-4 rounded-[1.25rem] border p-4 text-left transition sm:grid-cols-[4rem_1fr_auto] ${
                   isSelected
                     ? "border-white/35 bg-white/10"
-                    : "border-white/10 bg-white/[0.035] hover:bg-white/[0.06]"
+                    : "border-white/10 bg-white/[0.035] hover:bg-white/6"
                 }`}
               >
                 <div className="relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-zinc-100/80">
@@ -127,7 +127,7 @@ export function CharacterSelect({
                   <p className="mt-1 text-sm text-zinc-500">
                     {character.role}
                   </p>
-                  <p className="mt-2 break-words text-xs leading-5 text-zinc-500">
+                  <p className="mt-2 wrap-break-word text-xs leading-5 text-zinc-500">
                     {character.ability}
                   </p>
                 </div>

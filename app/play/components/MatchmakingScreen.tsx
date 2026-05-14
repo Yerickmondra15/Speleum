@@ -49,7 +49,7 @@ export function MatchmakingScreen({
             />
           </div>
           <p className="mt-7 text-xs tracking-[0.36em] text-zinc-500">
-            ENLACE SUBTERRANEO
+            Bajando a las profundidades
           </p>
           <h1 className="mt-4 text-2xl font-semibold tracking-[0.12em] text-white sm:text-3xl sm:tracking-[0.18em]">
             Buscando partida

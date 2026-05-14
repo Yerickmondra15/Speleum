@@ -277,7 +277,7 @@ export function MultiplayerMenu({
             </div>
 
             <p className="mt-8 text-xs tracking-[0.35em] text-zinc-500">SPELEUM</p>
-            <h1 className="mt-3 text-3xl font-semibold tracking-[0.1em] text-white sm:text-4xl sm:tracking-[0.12em]">
+            <h1 className="mt-3 text-3xl font-semibold tracking-widest text-white sm:text-4xl sm:tracking-[0.12em]">
               SALA PRIVADA
             </h1>
             <p className="mt-4 max-w-xl text-sm leading-7 text-zinc-400">

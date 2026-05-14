@@ -93,7 +93,7 @@ export function ProfilePanel() {
       <section className="relative z-10 mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl content-center gap-8 px-4 py-10 sm:px-6 sm:py-12 lg:grid-cols-[0.9fr_1.1fr]">
         <div>
           <p className="text-xs tracking-[0.35em] text-zinc-500">SPELEUM ID</p>
-          <h1 className="mt-4 break-words text-3xl font-semibold tracking-[0.12em] text-white sm:text-5xl sm:tracking-[0.18em]">
+          <h1 className="mt-4 wrap-break-word text-3xl font-semibold tracking-[0.12em] text-white sm:text-5xl sm:tracking-[0.18em]">
             {profile.username}
           </h1>
           <p className="mt-5 max-w-xl text-sm leading-7 text-zinc-400">
@@ -125,7 +125,7 @@ export function ProfilePanel() {
           <div className="mt-7 grid gap-3 text-sm">
             <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-zinc-500">Nombre de usuario</span>
-              <span className="break-words text-zinc-200 sm:text-right">{profile.username}</span>
+              <span className="wrap-break-word text-zinc-200 sm:text-right">{profile.username}</span>
             </div>
             <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-zinc-500">Correo</span>
@@ -141,7 +141,7 @@ export function ProfilePanel() {
             </div>
             <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-zinc-500">Habilidad</span>
-              <span className="max-w-full break-words text-zinc-200 sm:max-w-52 sm:text-right">{activeCreature.habilidad}</span>
+              <span className="max-w-full wrap-break-word text-zinc-200 sm:max-w-52 sm:text-right">{activeCreature.habilidad}</span>
             </div>
             <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-zinc-500">Partidas jugadas</span>
@@ -161,7 +161,7 @@ export function ProfilePanel() {
             </div>
             <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-zinc-500">Ultima partida</span>
-              <span className="break-words text-zinc-200 sm:max-w-56 sm:text-right">
+              <span className="wrap-break-word text-zinc-200 sm:max-w-56 sm:text-right">
                 {profile.lastMatchAt
                   ? new Date(profile.lastMatchAt).toLocaleString("es-CR")
                   : "Sin partidas"}

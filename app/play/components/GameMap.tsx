@@ -238,13 +238,13 @@ export function GameMap({
                 style={tileStyle(tile.x, tile.y)}
               >
                 {visible && tile.type === "floor" && (
-                  <div className="absolute inset-0 opacity-14 [background-image:radial-gradient(rgba(255,255,255,0.09)_1px,transparent_1px)] [background-size:18px_18px]" />
+                  <div className="absolute inset-0 opacity-14 bg-[radial-gradient(rgba(255,255,255,0.09)_1px,transparent_1px)] bg-size-[18px_18px]" />
                 )}
                 {reachable && tile.type !== "wall" && tile.type !== "obstacle" && (
-                  <div className="absolute inset-[6px] rounded-[0.9rem] border border-zinc-100/8 shadow-[0_0_12px_rgba(255,255,255,0.06)] transition hover:border-rose-200/18 hover:bg-white/[0.03]" />
+                  <div className="absolute inset-1.5 rounded-[0.9rem] border border-zinc-100/8 shadow-[0_0_12px_rgba(255,255,255,0.06)] transition hover:border-rose-200/18 hover:bg-white/3" />
                 )}
                 {inPath && (
-                  <div className="absolute inset-[8px] rounded-[0.8rem] border border-rose-200/18 bg-rose-200/[0.03] shadow-[0_0_16px_rgba(251,113,133,0.08)]" />
+                  <div className="absolute inset-2 rounded-[0.8rem] border border-rose-200/18 bg-rose-200/3 shadow-[0_0_16px_rgba(251,113,133,0.08)]" />
                 )}
               </div>
             );

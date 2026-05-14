@@ -91,7 +91,7 @@ function StalactiteBackground() {
         <path
           filter="url(#blur-far)"
           d="M0,0 L0,40 L80,50 L100,180 L120,60 L200,55 L230,280 L260,70 L340,45 L380,220 L400,55 L500,65 L540,320 L580,80 L680,50 L720,260 L760,65 L860,55 L900,350 L940,75 L1040,50 L1080,240 L1120,60 L1200,70 L1240,300 L1280,55 L1360,45 L1400,50 L1400,0 Z"
-          className="fill-zinc-950"
+          className="fill-zinc-650"
         />
       </svg>
 
@@ -108,7 +108,7 @@ function StalactiteBackground() {
         <path
           filter="url(#blur-mid)"
           d="M0,0 L0,30 L60,40 L80,150 L100,50 L160,45 L190,200 L220,55 L300,50 L340,250 L380,60 L460,45 L500,180 L540,55 L620,50 L660,280 L700,65 L780,55 L820,220 L860,60 L940,45 L980,260 L1020,55 L1100,50 L1140,190 L1180,60 L1260,55 L1300,230 L1340,50 L1400,45 L1400,0 Z"
-          className="fill-zinc-900"
+          className="fill-zinc-700"
         />
       </svg>
 
@@ -119,7 +119,7 @@ function StalactiteBackground() {
       >
         <path
           d="M0,0 L0,25 L40,30 L55,90 L70,35 L120,40 L140,140 L160,45 L210,35 L240,180 L270,50 L330,40 L360,120 L390,45 L450,38 L480,200 L510,50 L570,42 L600,150 L630,48 L690,35 L720,170 L750,45 L810,40 L850,220 L890,50 L950,38 L980,130 L1010,45 L1070,42 L1110,190 L1150,48 L1210,35 L1250,160 L1290,45 L1350,40 L1380,110 L1400,45 L1400,0 Z"
-          className="fill-zinc-950"
+          className="fill-zinc-850"
         />
       </svg>
     </div>
@@ -758,9 +758,8 @@ export default function LoginPage() {
                 : "Inicia sesion o registra tu cuenta para guardar perfil, ranking y progreso de partida."}
             </p>
             <p className="mx-auto mt-4 max-w-xs text-xs uppercase tracking-[0.22em] text-rose-300/70">
-              {step === "verify"
-                ? "Confirmacion segura, codigo temporal y acceso protegido"
-                : "Seguridad reforzada, acceso rapido y experiencia inmersiva"}
+              step === "verify"
+                ? "Confirmacion segura, codigo temporal y acceso protegido" 
             </p>
           </div>
 

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import Image from "next/image";
@@ -363,8 +363,8 @@ export default function Home() {
           </div>
 
           <div className="relative mx-auto mt-12 flex max-w-7xl flex-col items-center justify-between gap-3 border-t border-white/5 pt-6 text-center text-sm text-zinc-500 sm:flex-row sm:text-left">
-            <p>Speleum · supervivencia en cuevas</p>
-            <p>Oscuridad, senales parciales y competencia subterranea</p>
+            <p>Speleum · 2026</p>
+            <p>Proyecto personal hecho por Yerick M.</p>
           </div>
         </motion.footer>
       </div>

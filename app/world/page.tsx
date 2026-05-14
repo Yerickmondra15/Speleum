@@ -25,7 +25,7 @@ export default function WorldPage() {
   return (
     <main className="relative min-h-screen overflow-hidden bg-black text-white">
       <div className="pointer-events-none fixed inset-0">
-        <div className="absolute left-1/2 top-24 h-[34rem] w-[34rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.08),transparent_70%)] blur-3xl" />
+        <div className="absolute left-1/2 top-24 h-136 w-136 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.08),transparent_70%)] blur-3xl" />
         <div className="absolute inset-x-0 bottom-0 h-72 bg-[linear-gradient(to_top,rgba(82,9,20,0.24),transparent)]" />
       </div>
 
@@ -107,7 +107,7 @@ export default function WorldPage() {
                   <h3 className="text-xl font-semibold text-white">
                     {creature.nombre}
                   </h3>
-                  <p className="mt-1 break-words text-sm text-zinc-500">{creature.rol}</p>
+                  <p className="mt-1 wrap-break-word text-sm text-zinc-500">{creature.rol}</p>
                 </div>
               </div>
               <p className="mt-4 text-sm leading-7 text-zinc-400">
