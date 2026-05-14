@@ -67,6 +67,7 @@ const AUTH_RATE_LIMIT_PER_IP = Number.parseInt(
   10,
 );
 const DEMO_AUTH_CODES = process.env.DEMO_AUTH_CODES === "true";
+const DEMO_AUTH_CODES_PUBLIC = process.env.DEMO_AUTH_CODES_PUBLIC === "true";
 
 function now() {
   return new Date();
@@ -144,6 +145,10 @@ export function toPendingAuthResponse({
 
 export function isDemoAuthCodesEnabled() {
   return DEMO_AUTH_CODES;
+}
+
+export function isDemoAuthCodesPublicEnabled() {
+  return DEMO_AUTH_CODES_PUBLIC;
 }
 
 async function enforceChallengeRateLimit({
@@ -237,7 +242,7 @@ export async function issueAuthChallenge(input: IssueChallengeInput) {
       lastSentAt: challenge.lastSentAt,
       type: input.type,
       message: input.message,
-      demoCode: DEMO_AUTH_CODES ? code : undefined,
+      demoCode: DEMO_AUTH_CODES && DEMO_AUTH_CODES_PUBLIC ? code : undefined,
     }),
   };
 }

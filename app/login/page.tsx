@@ -503,9 +503,7 @@ export default function LoginPage() {
     formData.confirmPassword.length > 0 &&
     formData.password !== formData.confirmPassword;
 
-  const isDemoCodeVisible = Boolean(
-    pendingAuth?.demoCode && typeof window !== "undefined" && window.location.hostname === "localhost",
-  );
+  const isDemoCodeVisible = Boolean(pendingAuth?.demoCode);
 
   function handleInputChange(field: keyof typeof formData, value: string) {
     setFormData((current) => ({
@@ -999,10 +997,10 @@ export default function LoginPage() {
               {isDemoCodeVisible && (
                 <details className="rounded-2xl border border-amber-300/15 bg-amber-950/15 p-4 text-amber-100">
                   <summary className="cursor-pointer text-sm font-medium">
-                    Herramienta puntual de presentacion
+                    Codigo demo
                   </summary>
                   <p className="mt-3 text-xs uppercase tracking-[0.18em] text-amber-200/70">
-                    Codigo disponible localmente
+                    Visible porque el modo demo publico esta activo
                   </p>
                   <p className="mt-2 text-2xl font-semibold tracking-[0.34em]">
                     {pendingAuth?.demoCode}

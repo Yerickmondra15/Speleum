@@ -44,6 +44,7 @@ npm install
 - `RESEND_API_KEY` para intentar envio real con Resend
 - `EMAIL_FROM` remitente de correo. Para demo en Vercel gratis puedes usar `Speleum <onboarding@resend.dev>`
 - `DEMO_AUTH_CODES` opcional. Usa `true` solo en casos puntuales de demo o desarrollo
+- `DEMO_AUTH_CODES_PUBLIC` opcional. Usa `true` solo cuando quieras mostrar el codigo demo en el frontend para una presentacion
 
 3. Genera Prisma y aplica migraciones en desarrollo:
 
@@ -116,9 +117,8 @@ npm run db:migrate:deploy
 EMAIL_FROM="Speleum <onboarding@resend.dev>"
 ```
 
+- `onboarding@resend.dev` solo sirve de forma practica para probar con el correo dueno o verificado en la cuenta de Resend.
 - Para correo real profesional necesitas un dominio propio verificado en Resend.
-- Variables recomendadas en Vercel:
-
 - Variables recomendadas en Vercel sin dominio propio:
 
 ```bash
@@ -126,14 +126,16 @@ RESEND_API_KEY=...
 EMAIL_FROM="Speleum <onboarding@resend.dev>"
 ```
 
-- Si necesitas una presentacion puntual sin entrega real de correo, puedes activar temporalmente:
+- Si necesitas una presentacion en Vercel para cualquier companero sin depender del correo real, activa temporalmente:
 
 ```bash
 DEMO_AUTH_CODES=true
+DEMO_AUTH_CODES_PUBLIC=true
 ```
 
-- Si `DEMO_AUTH_CODES=true`, el backend devolvera el codigo en la respuesta solo para ese uso puntual.
-- Si `DEMO_AUTH_CODES` no esta activo, nunca se devuelve el codigo al frontend.
+- Si `DEMO_AUTH_CODES=true` y `DEMO_AUTH_CODES_PUBLIC=true`, el backend devolvera `demoCode` al frontend y la UI mostrara una tarjeta discreta `Codigo demo`.
+- Si `DEMO_AUTH_CODES_PUBLIC` no esta activo, el frontend no recibira `demoCode` para mostrarlo en produccion.
+- Si `DEMO_AUTH_CODES=false`, nunca se devuelve el codigo al frontend.
 
 ## Deploy del socket
 
