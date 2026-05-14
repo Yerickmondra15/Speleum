@@ -757,10 +757,6 @@ export default function LoginPage() {
                   "Revisa tu correo y escribe el codigo de 6 digitos para continuar."
                 : "Inicia sesion o registra tu cuenta para guardar perfil, ranking y progreso de partida."}
             </p>
-            <p className="mx-auto mt-4 max-w-xs text-xs uppercase tracking-[0.22em] text-rose-300/70">
-              step === "verify"
-                ? "Confirmacion segura, codigo temporal y acceso protegido" 
-            </p>
           </div>
 
           <div className="mb-6 flex justify-center">

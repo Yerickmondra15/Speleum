@@ -56,13 +56,13 @@ export function RadarPanel({
   ).length;
 
   return (
-    <div className="rounded-[1.2rem] border border-white/10 bg-black/28 p-3 backdrop-blur-md">
+    <div className="rounded-[1rem] border border-white/10 bg-black/28 p-2.5 backdrop-blur-md sm:rounded-[1.2rem] sm:p-3">
       <div className="flex items-center justify-between">
-        <p className="text-[0.68rem] tracking-[0.25em] text-zinc-500">ECOS</p>
-        <Radio className="h-4 w-4 text-zinc-500" />
+        <p className="text-[0.58rem] tracking-[0.22em] text-zinc-500 sm:text-[0.68rem] sm:tracking-[0.25em]">ECOS</p>
+        <Radio className="h-3.5 w-3.5 text-zinc-500 sm:h-4 sm:w-4" />
       </div>
 
-      <div className="relative mt-3 aspect-square overflow-hidden rounded-full border border-white/10 bg-[radial-gradient(circle,rgba(255,255,255,0.04),transparent_28%),#050505] sm:mt-4">
+      <div className="relative mt-2 aspect-square overflow-hidden rounded-full border border-white/10 bg-[radial-gradient(circle,rgba(255,255,255,0.04),transparent_28%),#050505] sm:mt-4">
         <div className="absolute inset-1/2 h-px w-full -translate-x-1/2 bg-white/10" />
         <div className="absolute left-1/2 top-0 h-full w-px bg-white/10" />
         <div className="absolute inset-[18%] rounded-full border border-white/10" />
@@ -92,12 +92,12 @@ export function RadarPanel({
         </div>
       </div>
 
-      <div className="mt-3 grid gap-1.5 text-[0.7rem] text-zinc-500 sm:mt-4 sm:gap-2 sm:text-xs">
-        <div className="flex justify-between">
+      <div className="mt-2 grid gap-1 text-[0.6rem] text-zinc-500 sm:mt-4 sm:gap-2 sm:text-xs">
+        <div className="flex justify-between gap-2">
           <span>Ultima senal</span>
-          <span className="text-zinc-300">
+          <span className="truncate text-right text-zinc-300">
             {latestSignal
-              ? `${signalLabel(latestSignal.type)} · ${latestSignal.strength}`
+              ? `${signalLabel(latestSignal.type)} / ${latestSignal.strength}`
               : "ninguna"}
           </span>
         </div>

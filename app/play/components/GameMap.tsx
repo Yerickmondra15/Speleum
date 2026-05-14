@@ -205,7 +205,7 @@ export function GameMap({
   );
 
   return (
-    <div className="relative h-full min-h-screen w-full">
+    <div className="relative h-full min-h-0 w-full overflow-hidden">
       <div
         ref={viewportRef}
         role="presentation"
@@ -238,7 +238,7 @@ export function GameMap({
                 style={tileStyle(tile.x, tile.y)}
               >
                 {visible && tile.type === "floor" && (
-                  <div className="absolute inset-0 opacity-14 bg-[radial-gradient(rgba(255,255,255,0.09)_1px,transparent_1px)] bg-size-[18px_18px]" />
+                  <div className="absolute inset-0 opacity-14 bg-[radial-gradient(rgba(255,255,255,0.09)_1px,transparent_1px)] bg-size-[clamp(12px,2vw,18px)_clamp(12px,2vw,18px)]" />
                 )}
                 {reachable && tile.type !== "wall" && tile.type !== "obstacle" && (
                   <div className="absolute inset-1.5 rounded-[0.9rem] border border-zinc-100/8 shadow-[0_0_12px_rgba(255,255,255,0.06)] transition hover:border-rose-200/18 hover:bg-white/3" />
