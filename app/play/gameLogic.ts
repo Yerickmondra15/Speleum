@@ -10,31 +10,20 @@ import type {
   Zone,
 } from "./gameConfig";
 import {
-  CHASE_SANITY_DRAIN,
   CAVE_HEIGHT,
   CAVE_WIDTH,
-  FEAR_CRITICAL_THRESHOLD,
-  FEAR_WARNING_THRESHOLD,
-  IDLE_SANITY_DRAIN,
   MAP_COLS,
   MAP_ROWS,
   MOVE_BASE_COOLDOWN,
   MOVE_BURST_IDLE_MS,
   MOVE_DISTANCE_COOLDOWN,
   MOVE_MAX_COOLDOWN,
-  MOVING_SANITY_RECOVERY,
   PLAYER_RADIUS,
   PLAYER_SPAWN_MIN_DISTANCE_TILES,
-  SAFE_ZONE_SANITY_RECOVERY,
-  SANITY_IDLE_GRACE_MS,
-  SANITY_DAMAGE_PER_TICK,
-  SANITY_DAMAGE_THRESHOLD,
   SPAWN_ENEMY_BUFFER_TILES,
   SPAWN_HAZARD_BUFFER_TILES,
   STUN_DURATION_MS,
   TILE_SIZE,
-  THREAT_HUNT_MS,
-  THREAT_WARNING_MS,
   caveWalls,
 } from "./gameConfig";
 import {
@@ -62,8 +51,6 @@ export type EnemyBehaviorState =
   | "attacking"
   | "stunned"
   | "dead";
-export type ThreatLevel = "calm" | "uneasy" | "hunted" | "doomed";
-
 export type EnemyTarget = {
   id: string;
   position: PlayerPosition;
@@ -526,85 +513,6 @@ export function getTileStepTowardPosition(from: PlayerPosition, target: PlayerPo
 
 export function shouldFinalizeMoveBurst(lastMoveAt: number, now: number) {
   return now - lastMoveAt >= MOVE_BURST_IDLE_MS;
-}
-
-export function getThreatLevel(idleMs: number): ThreatLevel {
-  if (idleMs >= THREAT_HUNT_MS) {
-    return "doomed";
-  }
-
-  if (idleMs >= THREAT_WARNING_MS) {
-    return "hunted";
-  }
-
-  if (idleMs >= Math.max(1000, THREAT_WARNING_MS - 60_000)) {
-    return "uneasy";
-  }
-
-  return "calm";
-}
-
-export function getSanityStateLabel(sanity: number) {
-  if (sanity <= FEAR_CRITICAL_THRESHOLD) {
-    return "critico";
-  }
-
-  if (sanity <= FEAR_WARNING_THRESHOLD) {
-    return "inestable";
-  }
-
-  return "estable";
-}
-
-export function updateSanity(
-  sanity: number,
-  deltaSeconds: number,
-  zone: Zone,
-  isMoving: boolean,
-  threatLevel: ThreatLevel,
-  enemyState: EnemyBehaviorState,
-  idleMs: number,
-  darknessDrainPerSecond: number,
-) {
-  let delta = 0;
-
-  if (zone.tone === "safe") {
-    delta += SAFE_ZONE_SANITY_RECOVERY * deltaSeconds;
-  } else if (isMoving) {
-    delta += MOVING_SANITY_RECOVERY * deltaSeconds;
-  } else if (idleMs >= SANITY_IDLE_GRACE_MS) {
-    delta -= (darknessDrainPerSecond + zone.pressure) * deltaSeconds;
-  }
-
-  if (idleMs >= SANITY_IDLE_GRACE_MS) {
-    delta -= IDLE_SANITY_DRAIN * deltaSeconds;
-  }
-
-  if (threatLevel === "uneasy") {
-    delta -= 0.35 * deltaSeconds;
-  } else if (threatLevel === "hunted") {
-    delta -= 0.7 * deltaSeconds;
-  } else if (threatLevel === "doomed") {
-    delta -= 1.15 * deltaSeconds;
-  }
-
-  if (
-    enemyState === "chasing" ||
-    enemyState === "investigating" ||
-    enemyState === "attacking"
-  ) {
-    delta -= CHASE_SANITY_DRAIN * deltaSeconds;
-  }
-
-  return clamp(Math.round((sanity + delta) * 100) / 100, 0, 100);
-}
-
-export function sanityHealthPenalty(sanity: number, deltaSeconds: number) {
-  if (sanity > SANITY_DAMAGE_THRESHOLD) {
-    return 0;
-  }
-
-  return Math.max(0, Math.round(SANITY_DAMAGE_PER_TICK * deltaSeconds));
 }
 
 export function createEnemyState(config: EnemyConfig): EnemyState {

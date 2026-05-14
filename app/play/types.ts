@@ -4,7 +4,7 @@ import type {
   PlayerPosition,
   RadarSignalStrength,
 } from "./gameConfig";
-import type { EnemyState, ThreatLevel } from "./gameLogic";
+import type { EnemyState } from "./gameLogic";
 import type { CaveLayout } from "./proceduralCave";
 
 export type SignalType = "move" | "attack" | "defend" | "danger";
@@ -51,12 +51,8 @@ export type MultiplayerRoomStatus =
 export type PlayerCombatState = {
   health: number;
   maxHealth: number;
-  sanity: number;
-  maxSanity: number;
   isParrying: boolean;
   isStunned: boolean;
-  threatLevel: ThreatLevel;
-  idleMs: number;
   moveCooldownRemaining: number;
   attackCooldownRemaining: number;
   parryCooldownRemaining: number;

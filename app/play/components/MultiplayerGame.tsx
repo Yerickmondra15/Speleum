@@ -5,13 +5,13 @@ import { ArrowLeft, Radio, Skull, Users } from "lucide-react";
 import type { CharacterOption, GameStatus, PlayerPosition } from "../gameConfig";
 import {
   MAX_HEALTH,
-  MAX_SANITY,
   PLAYER_ATTACK_RANGE_TILES,
+  PLAYER_MOVE_RANGE_TILES,
   TILE_SIZE,
   VISION_RADIUS,
   characterOptions,
 } from "../gameConfig";
-import { distanceBetween, getZoneForPosition } from "../gameLogic";
+import { distanceBetween, getZoneForPosition, planMovementPath } from "../gameLogic";
 import type { MatchResultEntry, MultiplayerStatePayload } from "../types";
 import { getCharacterName } from "../types";
 import { ensureSocketConnection, getSocket, isSocketMultiplayerAvailable } from "@/lib/socket";
@@ -22,7 +22,7 @@ import { GameHud } from "./GameHud";
 import { GameMap } from "./GameMap";
 import { GameOverlay } from "./GameOverlay";
 import { RadarPanel } from "./RadarPanel";
-import { buildTileMap, tileToWorld, worldToTile } from "../tileMap";
+import { buildTileMap, createTileLookup, findReachableTiles, tileToWorld, worldToTile } from "../tileMap";
 
 type MultiplayerGameProps = {
   matchId: string;
@@ -74,6 +74,7 @@ export function MultiplayerGame({
   const [activeAction, setActiveAction] = useState<"move" | "attack" | "defend">("move");
   const [disconnectedMessage, setDisconnectedMessage] = useState<string | null>(null);
   const [pendingMoveTarget, setPendingMoveTarget] = useState<PlayerPosition | null>(null);
+  const [pathPreview, setPathPreview] = useState<PlayerPosition[]>([]);
   const rankingStoredRef = useRef(false);
   const resultSavedRef = useRef(false);
 
@@ -103,6 +104,7 @@ export function MultiplayerGame({
       setMessage(state.message ?? "La cueva escucha todos tus movimientos.");
       if (pendingMoveTarget && distanceBetween(state.self.position, pendingMoveTarget) <= TILE_SIZE * 0.35) {
         setPendingMoveTarget(null);
+        setPathPreview([]);
       }
     };
     const handlePlayerLeft = (payload: { roomCode?: string; message?: string }) => {
@@ -117,6 +119,8 @@ export function MultiplayerGame({
       setMessage(payload.message ?? "La partida termino.");
     };
     const handleError = (nextMessage: string) => {
+      setPendingMoveTarget(null);
+      setPathPreview([]);
       setMessage(nextMessage);
     };
     const handleConnectError = () => {
@@ -218,6 +222,7 @@ export function MultiplayerGame({
   const player = useMemo(() => self?.position ?? { x: 0, y: 0 }, [self?.position]);
   const enemy = gameState?.enemy ?? null;
   const caveTiles = useMemo(() => (gameState ? buildTileMap(gameState.cave) : []), [gameState]);
+  const tileLookup = useMemo(() => createTileLookup(caveTiles), [caveTiles]);
   const currentZone = useMemo(() => {
     if (!gameState) {
       return {
@@ -249,15 +254,19 @@ export function MultiplayerGame({
       ? "Eres la ultima criatura viva."
       : gameStatus === "lost"
         ? "La cadena de la vida continuo sin ti."
-        : "Sobrevive, conserva la cordura y conviertete en la ultima criatura viva.";
+        : "Sobrevive y conviertete en la ultima criatura viva.";
 
   const health = self?.combat.health ?? MAX_HEALTH;
-  const sanity = self?.combat.sanity ?? MAX_SANITY;
   const moveCooldownRemaining = self?.combat.moveCooldownRemaining ?? 0;
   const attackCooldownRemaining = self?.combat.attackCooldownRemaining ?? 0;
   const parryCooldownRemaining = self?.combat.parryCooldownRemaining ?? 0;
   const isParrying = Boolean(self?.combat.isParrying);
   const isStunned = Boolean(self?.combat.isStunned);
+  const reachableTiles = useMemo(
+    () => (self ? findReachableTiles(worldToTile(self.position), PLAYER_MOVE_RANGE_TILES, tileLookup) : new Map()),
+    [self, tileLookup],
+  );
+  const isMoveReady = gameStatus === "playing" && moveCooldownRemaining <= 0 && !isStunned;
   const nearestThreatTiles = enemy
     ? Math.max(1, Math.round(distanceBetween(player, enemy) / TILE_SIZE))
     : null;
@@ -292,6 +301,35 @@ export function MultiplayerGame({
     setActiveAction("move");
   };
 
+  const queueMovementTo = (target: PlayerPosition) => {
+    if (!self || !isMoveReady) {
+      setMessage(isStunned ? "Estas aturdido." : "Tu criatura aun recupera el impulso.");
+      return;
+    }
+
+    const movePlan = planMovementPath(
+      self.position,
+      target,
+      PLAYER_MOVE_RANGE_TILES,
+      tileLookup,
+      selectedCharacter.moveCooldownMultiplier,
+    );
+
+    if (!movePlan) {
+      setPathPreview([]);
+      setMessage("No hay una ruta caminable hacia esa celda.");
+      return;
+    }
+
+    setPathPreview(movePlan.worldPath);
+    emitMoveTarget(tileToWorld(movePlan.targetTile));
+    setMessage(
+      movePlan.distanceTiles === 1
+        ? "Avanzas con cuidado una casilla."
+        : `Te deslizas ${movePlan.distanceTiles} casillas por la cueva.`,
+    );
+  };
+
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
     if (event.repeat || !self || gameStatus !== "playing" || moveCooldownRemaining > 0 || isStunned) {
       return;
@@ -321,7 +359,7 @@ export function MultiplayerGame({
     }
 
     if (target) {
-      emitMoveTarget(target);
+      queueMovementTo(target);
     }
   });
 
@@ -332,13 +370,7 @@ export function MultiplayerGame({
   }, []);
 
   const handleMoveIntent = (target: PlayerPosition) => {
-    if (moveCooldownRemaining > 0 || isStunned) {
-      setMessage(isStunned ? "Estas aturdido." : "Tu criatura aun recupera el impulso.");
-      return;
-    }
-
-    emitMoveTarget(target);
-    setMessage("Avanzas por tiles con el mismo pulso del modo local.");
+    queueMovementTo(target);
   };
 
   function handleAttack() {
@@ -440,6 +472,9 @@ export function MultiplayerGame({
         gameStatus={gameStatus}
         visionRadius={VISION_RADIUS}
         tiles={caveTiles}
+        reachableTiles={reachableTiles}
+        selectedPath={pathPreview}
+        isMoveReady={isMoveReady}
         onChooseDestination={handleMoveIntent}
       />
 
@@ -451,8 +486,6 @@ export function MultiplayerGame({
         zoneMessage={disconnectedMessage}
         health={health}
         maxHealth={MAX_HEALTH}
-        sanity={sanity}
-        maxSanity={MAX_SANITY}
         aliveCount={gameState.aliveCount}
         enemyStateLabel={`rivales ${gameState.otherPlayers.length} · ecos ${gameState.enemies.length}`}
         isPaused={false}
@@ -491,7 +524,6 @@ export function MultiplayerGame({
         <p className="mt-2">Ultimos vivos: {gameState.aliveCount}</p>
         <p className="mt-2">Punto cercano: {nearestPoint?.label ?? currentZone.name}</p>
         <p className="mt-2">Vision: 8 casillas alrededor.</p>
-        <p className="mt-2">Quietud: {self.combat.threatLevel}</p>
         <div className="mt-3 inline-flex items-center gap-2 text-xs tracking-[0.2em] text-cyan-100">
           <Radio className="h-4 w-4" />
           {self.combat.kills} bajas

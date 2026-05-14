@@ -4,13 +4,10 @@ import type { PlayerPosition } from "../app/play/gameConfig";
 import {
   ATTACK_COOLDOWN,
   CAVE_ATTACK_DAMAGE,
-  DARKNESS_SANITY_DRAIN,
   MAX_HEALTH,
   MAX_ROOM_PLAYERS,
-  MAX_SANITY,
   MOVEMENT_STEP_INTERVAL_MS,
   MIN_ROOM_PLAYERS,
-  MOVE_BURST_IDLE_MS,
   PARRY_COOLDOWN_MS,
   PARRY_WINDOW_MS,
   PLAYER_ATTACK_DAMAGE,
@@ -21,23 +18,18 @@ import {
   characterOptions,
 } from "../app/play/gameConfig";
 import {
-  applyDamage,
   canTakeTurn,
   createEnemyState,
   distanceBetween,
-  getThreatLevel,
-  getZoneForPosition,
   hitHazard,
   isAttackReachableByTiles,
   isWithinVision,
   planMovementPath,
   pickSeparatedSpawns,
   resolveCombatHit,
-  sanityHealthPenalty,
   updateEnemyState,
-  updateSanity,
 } from "../app/play/gameLogic";
-import type { EnemyState, ThreatLevel } from "../app/play/gameLogic";
+import type { EnemyState } from "../app/play/gameLogic";
 import type {
   MatchResultEntry,
   MultiplayerPlayerState,
@@ -55,7 +47,6 @@ type ServerPlayerState = MultiplayerPlayerState & {
   lastAttackAt: number;
   lastMoveAt: number;
   lastParryAt: number;
-  lastMeaningfulActionAt: number;
   moveCooldownUntil: number;
   movementPath: PlayerPosition[];
   parryUntil: number;
@@ -188,12 +179,8 @@ function createInitialCombatState() {
   return {
     health: MAX_HEALTH,
     maxHealth: MAX_HEALTH,
-    sanity: MAX_SANITY,
-    maxSanity: MAX_SANITY,
     isParrying: false,
     isStunned: false,
-    threatLevel: "calm" as ThreatLevel,
-    idleMs: 0,
     moveCooldownRemaining: 0,
     attackCooldownRemaining: 0,
     parryCooldownRemaining: 0,
@@ -304,7 +291,6 @@ function startRoom(room: ServerRoomState) {
     entry.lastAttackAt = 0;
     entry.lastMoveAt = room.startedAt ?? Date.now();
     entry.lastParryAt = 0;
-    entry.lastMeaningfulActionAt = room.startedAt ?? Date.now();
     entry.moveCooldownUntil = 0;
     entry.movementPath = [];
     entry.parryUntil = 0;
@@ -539,7 +525,6 @@ function evaluateRoom(room: ServerRoomState, io: Server) {
       if (nextStep) {
         player.position = nextStep;
         player.lastMoveAt = now;
-        player.lastMeaningfulActionAt = now;
         addSignal(room, "move", player.position, player.id);
       }
     }
@@ -561,56 +546,9 @@ function evaluateRoom(room: ServerRoomState, io: Server) {
   }
 
   for (const player of alivePlayers) {
-    player.combat.idleMs = now - player.lastMeaningfulActionAt;
-    const previousThreat = player.combat.threatLevel;
-    player.combat.threatLevel = getThreatLevel(player.combat.idleMs);
-
-    if (player.combat.threatLevel !== previousThreat && player.combat.threatLevel !== "calm") {
-      addSignal(room, "danger", player.position, player.id);
-    }
-
     if (hitHazard(player.position, room.cave.hazardAreas)) {
       eliminatePlayer(room, player, `${player.name} fue tragado por la cueva.`);
       continue;
-    }
-
-    const zone = getZoneForPosition(player.position, room.cave.zones);
-    const dominantEnemyState =
-      room.enemies.find(
-        (enemy) =>
-          enemy.state === "chasing" ||
-          enemy.state === "investigating" ||
-          enemy.state === "attacking",
-      )?.state ?? "idle";
-    player.combat.sanity = updateSanity(
-      player.combat.sanity,
-      MOVE_INTERVAL_MS / 1000,
-      zone,
-      now - player.lastMoveAt < MOVE_BURST_IDLE_MS || player.movementPath.length > 0,
-      player.combat.threatLevel,
-      dominantEnemyState,
-      player.combat.idleMs,
-      DARKNESS_SANITY_DRAIN,
-    );
-
-    const sanityDamage = sanityHealthPenalty(
-      player.combat.sanity,
-      MOVE_INTERVAL_MS / 1000,
-    );
-
-    if (sanityDamage > 0) {
-      player.combat.health = applyDamage(
-        player.combat.health,
-        sanityDamage,
-      );
-
-      if (player.combat.health <= 0) {
-        eliminatePlayer(
-          room,
-          player,
-          `${player.name} perdio la cordura y la oscuridad lo devoro.`,
-        );
-      }
     }
   }
 
@@ -834,7 +772,6 @@ io.on("connection", (socket: Socket) => {
       lastAttackAt: 0,
       lastMoveAt: Date.now(),
       lastParryAt: 0,
-      lastMeaningfulActionAt: Date.now(),
       moveCooldownUntil: 0,
       movementPath: [],
       parryUntil: 0,
@@ -885,7 +822,6 @@ io.on("connection", (socket: Socket) => {
         lastAttackAt: 0,
         lastMoveAt: Date.now(),
         lastParryAt: 0,
-        lastMeaningfulActionAt: Date.now(),
         moveCooldownUntil: 0,
         movementPath: [],
         parryUntil: 0,
@@ -988,8 +924,6 @@ io.on("connection", (socket: Socket) => {
       player.lastAction = "move";
       player.movementPath = movePlan.worldPath;
       player.moveCooldownUntil = now + movePlan.cooldownMs;
-      player.combat.idleMs = 0;
-      player.combat.threatLevel = "calm";
       const moveMultiplier =
         characterOptions.find((option) => option.id === player.characterId)?.moveSignalMultiplier ?? 1;
       addNoise(room, "move", player.position, 4 + Math.round(moveMultiplier * 2), 0.45 * moveMultiplier, player.id);
@@ -1030,7 +964,6 @@ io.on("connection", (socket: Socket) => {
 
     attacker.lastAttackAt = now;
     attacker.lastAction = "attack";
-    attacker.lastMeaningfulActionAt = now;
     attacker.combat.attackCooldownRemaining = ATTACK_COOLDOWN;
     addSignal(room, "attack", attacker.position, attacker.id);
     addNoise(room, "attack", attacker.position, 9, 1.2, attacker.id);
@@ -1142,7 +1075,6 @@ io.on("connection", (socket: Socket) => {
 
     player.lastAction = "defend";
     player.lastParryAt = now;
-    player.lastMeaningfulActionAt = now;
     player.parryUntil = now + PARRY_WINDOW_MS;
     player.combat.isParrying = true;
     player.combat.parryCooldownRemaining = PARRY_COOLDOWN_MS;

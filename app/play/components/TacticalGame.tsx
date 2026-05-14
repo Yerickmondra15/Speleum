@@ -7,7 +7,6 @@ import {
   ATTACK_COOLDOWN,
   ENEMY_CLOSE_DANGER_TILES,
   ENEMY_MOVE_INTERVAL,
-  MAX_SANITY,
   MOVEMENT_STEP_INTERVAL_MS,
   PARRY_COOLDOWN_MS,
   PARRY_WINDOW_MS,
@@ -20,11 +19,8 @@ import {
   SCORE_PER_KILL_FALLBACK,
   SCORE_PER_LOCAL_VICTORY,
   TILE_SIZE,
-  DARKNESS_SANITY_DRAIN,
 } from "../gameConfig";
 import {
-  applyDamage,
-  getThreatLevel,
   isAttackReachableByTiles,
   isStunned,
   planMovementPath,
@@ -32,11 +28,9 @@ import {
   distanceBetween,
   getZoneForPosition,
   resolveCombatHit,
-  sanityHealthPenalty,
   updateEnemyState,
-  updateSanity,
 } from "../gameLogic";
-import type { EnemyState, ThreatLevel } from "../gameLogic";
+import type { EnemyState } from "../gameLogic";
 import type { NoiseEvent, RadarSignal, SignalType } from "../types";
 import { GameHud } from "./GameHud";
 import { GameMap } from "./GameMap";
@@ -124,7 +118,6 @@ export function TacticalGame({
   const [activeAction, setActiveAction] = useState<"move" | "attack" | "defend">("move");
   const [gameStatus, setGameStatus] = useState<GameStatus>("playing");
   const [health, setHealth] = useState(PLAYER_MAX_HEALTH);
-  const [sanity, setSanity] = useState(MAX_SANITY);
   const [moveCooldownEndsAt, setMoveCooldownEndsAt] = useState(0);
   const [attackCooldownEndsAt, setAttackCooldownEndsAt] = useState(0);
   const [parryUntil, setParryUntil] = useState(0);
@@ -145,19 +138,16 @@ export function TacticalGame({
   const [pathPreview, setPathPreview] = useState<PlayerPosition[]>([]);
   const [movementPath, setMovementPath] = useState<PlayerPosition[]>([]);
   const [isTraversing, setIsTraversing] = useState(false);
-  const [threatLevel, setThreatLevel] = useState<ThreatLevel>("calm");
 
   const healthRef = useRef(health);
   const playerRef = useRef(player);
   const enemiesRef = useRef(enemies);
   const noisesRef = useRef(noises);
   const gameStatusRef = useRef(gameStatus);
-  const isTraversingRef = useRef(isTraversing);
   const moveCooldownEndsAtRef = useRef(moveCooldownEndsAt);
   const attackCooldownEndsAtRef = useRef(attackCooldownEndsAt);
   const parryUntilRef = useRef(parryUntil);
   const stunnedUntilRef = useRef(stunnedUntil);
-  const lastMeaningfulActionAtRef = useRef(Date.now());
   const resultSavedRef = useRef(false);
   const lastZoneIdRef = useRef(getZoneForPosition(caveSession.layout.startPosition, caveSession.layout.zones).id);
   const combatFlashTimeoutRef = useRef<number | null>(null);
@@ -181,10 +171,6 @@ export function TacticalGame({
   useEffect(() => {
     gameStatusRef.current = gameStatus;
   }, [gameStatus]);
-
-  useEffect(() => {
-    isTraversingRef.current = isTraversing;
-  }, [isTraversing]);
 
   useEffect(() => {
     moveCooldownEndsAtRef.current = moveCooldownEndsAt;
@@ -231,53 +217,15 @@ export function TacticalGame({
   useEffect(() => {
     const interval = window.setInterval(() => {
       const tickNow = Date.now();
-      const idleMs = tickNow - lastMeaningfulActionAtRef.current;
-      const nextThreatLevel = getThreatLevel(idleMs);
-      const dominantEnemyState =
-        enemiesRef.current.find(
-          (enemy) =>
-            enemy.state === "chasing" ||
-            enemy.state === "investigating" ||
-            enemy.state === "attacking",
-        )?.state ?? "idle";
-
       setNow(tickNow);
-      setThreatLevel(nextThreatLevel);
       setSignals((current) =>
         current.filter((signal) => tickNow - signal.createdAt < signal.duration),
       );
       setNoises((current) => current.filter((noise) => tickNow - noise.createdAt < 3200));
-      setSanity((currentSanity) => {
-        const nextSanity = updateSanity(
-          currentSanity,
-          0.1,
-          getZoneForPosition(playerRef.current, caveSession.layout.zones),
-          isTraversingRef.current,
-          nextThreatLevel,
-          dominantEnemyState,
-          idleMs,
-          DARKNESS_SANITY_DRAIN,
-        );
-        const sanityDamage = sanityHealthPenalty(nextSanity, 0.1);
-
-        if (sanityDamage > 0) {
-          setHealth((currentHealth) => {
-            const nextHealth = applyDamage(currentHealth, sanityDamage);
-
-            if (nextHealth <= 0) {
-              endAsLoss("La cordura colapso y la cueva cerro la partida.");
-            }
-
-            return nextHealth;
-          });
-        }
-
-        return nextSanity;
-      });
     }, 100);
 
     return () => window.clearInterval(interval);
-  }, [caveSession.layout.zones]);
+  }, []);
 
   const aliveEnemies = useMemo(
     () => enemies.filter((enemy) => enemy.alive && enemy.state !== "dead"),
@@ -535,7 +483,6 @@ export function TacticalGame({
       }
 
       setPlayer(nextStep);
-      lastMeaningfulActionAtRef.current = Date.now();
       addSignal("move", nextStep, "player");
       addNoise(
         "move",
@@ -636,7 +583,6 @@ export function TacticalGame({
 
     setAttackCooldownEndsAt(Date.now() + ATTACK_COOLDOWN);
     setActiveAction("attack");
-    lastMeaningfulActionAtRef.current = Date.now();
     addSignal("attack", playerRef.current, "player");
     addNoise("attack", playerRef.current, 9, 1.2, "player");
 
@@ -708,7 +654,6 @@ export function TacticalGame({
     }
 
     const activatedAt = Date.now();
-    lastMeaningfulActionAtRef.current = activatedAt;
     setParryUntil(activatedAt + PARRY_WINDOW_MS);
     setParryCooldownEndsAt(activatedAt + PARRY_COOLDOWN_MS);
     setActiveAction("defend");
@@ -764,13 +709,11 @@ export function TacticalGame({
     setActiveAction("move");
     setGameStatus("playing");
     setHealth(PLAYER_MAX_HEALTH);
-    setSanity(MAX_SANITY);
     setMoveCooldownEndsAt(0);
     setAttackCooldownEndsAt(0);
     setParryUntil(0);
     setParryCooldownEndsAt(0);
     setStunnedUntil(0);
-    setThreatLevel("calm");
     setMessage("Marca una celda dentro de tu alcance y sobrevive a los ecos de la cueva.");
     setZoneMessage("Solo ves 8 bloques alrededor. Todo lo demas es oscuridad.");
     setScore(0);
@@ -781,7 +724,6 @@ export function TacticalGame({
     setPathPreview([]);
     setMovementPath([]);
     setIsTraversing(false);
-    lastMeaningfulActionAtRef.current = Date.now();
     lastZoneIdRef.current = getZoneForPosition(
       nextSession.layout.startPosition,
       nextSession.layout.zones,
@@ -864,10 +806,8 @@ export function TacticalGame({
         zoneMessage={zoneMessage}
         health={health}
         maxHealth={PLAYER_MAX_HEALTH}
-        sanity={sanity}
-        maxSanity={MAX_SANITY}
         aliveCount={aliveEnemies.length + (gameStatus === "lost" ? 0 : 1)}
-        enemyStateLabel={`${threatSummary} · quietud ${threatLevel}`}
+        enemyStateLabel={threatSummary}
         isPaused={false}
         score={score}
         kills={kills}
