@@ -1,9 +1,10 @@
 import { hash } from "bcryptjs";
-import { NextResponse } from "next/server";
 
-import { createUserSession } from "@/lib/auth-session";
+import { jsonError, authChallengeErrorResponse } from "@/lib/auth-api";
+import { isDemoAuthCodesEnabled } from "@/lib/auth-challenge";
+import { AUTH_CHALLENGE_TYPES, issueAuthChallenge } from "@/lib/auth-challenge";
+import { sendAuthCodeEmail } from "@/lib/auth-email";
 import { prisma } from "@/lib/prisma";
-import { toSessionUser } from "@/lib/auth";
 
 type RegisterBody = {
   username?: string;
@@ -22,24 +23,15 @@ export async function POST(request: Request) {
   const password = body.password ?? "";
 
   if (username.length < 3) {
-    return NextResponse.json(
-      { error: "El nombre debe tener al menos 3 caracteres." },
-      { status: 400 },
-    );
+    return jsonError("El nombre debe tener al menos 3 caracteres.", 400);
   }
 
   if (!validateEmail(email)) {
-    return NextResponse.json(
-      { error: "Ingresa un correo valido." },
-      { status: 400 },
-    );
+    return jsonError("Ingresa un correo valido.", 400);
   }
 
   if (password.length < 6) {
-    return NextResponse.json(
-      { error: "La contrasena debe tener al menos 6 caracteres." },
-      { status: 400 },
-    );
+    return jsonError("La contrasena debe tener al menos 6 caracteres.", 400);
   }
 
   const existingUser = await prisma.user.findFirst({
@@ -49,14 +41,11 @@ export async function POST(request: Request) {
   });
 
   if (existingUser) {
-    return NextResponse.json(
-      {
-        error:
-          existingUser.email === email
-            ? "Ese correo ya existe."
-            : "Ese nombre de usuario ya existe.",
-      },
-      { status: 409 },
+    return jsonError(
+      existingUser.email === email
+        ? "Ese correo ya existe."
+        : "Ese nombre de usuario ya existe.",
+      409,
     );
   }
 
@@ -73,7 +62,29 @@ export async function POST(request: Request) {
     },
   });
 
-  await createUserSession(user.id);
+  try {
+    const { pending, code } = await issueAuthChallenge({
+      recipient: {
+        email: user.email,
+        userId: user.id,
+      },
+      type: AUTH_CHALLENGE_TYPES.emailVerification,
+      ttlMinutes: 15,
+      message: "Te enviamos un codigo para verificar tu correo.",
+    });
 
-  return NextResponse.json({ user: toSessionUser(user) }, { status: 201 });
+    const delivery = await sendAuthCodeEmail({
+      email: user.email,
+      code,
+      type: AUTH_CHALLENGE_TYPES.emailVerification,
+    });
+
+    if (!delivery.ok && !isDemoAuthCodesEnabled()) {
+      return jsonError(delivery.error, 502);
+    }
+
+    return Response.json(pending, { status: 201 });
+  } catch (error) {
+    return authChallengeErrorResponse(error);
+  }
 }

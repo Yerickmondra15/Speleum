@@ -1,8 +1,12 @@
 import { compare } from "bcryptjs";
-import { NextResponse } from "next/server";
 
-import { toSessionUser } from "@/lib/auth";
-import { createUserSession } from "@/lib/auth-session";
+import { authChallengeErrorResponse, jsonError } from "@/lib/auth-api";
+import {
+  AUTH_CHALLENGE_TYPES,
+  isDemoAuthCodesEnabled,
+  issueAuthChallenge,
+} from "@/lib/auth-challenge";
+import { sendAuthCodeEmail } from "@/lib/auth-email";
 import { prisma } from "@/lib/prisma";
 
 type LoginBody = {
@@ -16,24 +20,82 @@ export async function POST(request: Request) {
   const password = body.password ?? "";
 
   if (!email || !password) {
-    return NextResponse.json(
-      { error: "Completa correo y contrasena." },
-      { status: 400 },
-    );
+    return jsonError("Completa correo y contrasena.", 400);
   }
 
   const user = await prisma.user.findUnique({
     where: { email },
   });
 
-  if (!user || !(await compare(password, user.passwordHash))) {
-    return NextResponse.json(
-      { error: "Credenciales invalidas." },
-      { status: 401 },
-    );
+  if (!user) {
+    return jsonError("Credenciales invalidas.", 401);
   }
 
-  await createUserSession(user.id);
+  const passwordMatches = await compare(password, user.passwordHash);
 
-  return NextResponse.json({ user: toSessionUser(user) });
+  if (!passwordMatches) {
+    await prisma.user.update({
+      where: {
+        id: user.id,
+      },
+      data: {
+        failedLoginAttempts: {
+          increment: 1,
+        },
+      },
+    });
+
+    return jsonError("Credenciales invalidas.", 401);
+  }
+
+  try {
+    if (!user.emailVerified) {
+      const { pending, code } = await issueAuthChallenge({
+        recipient: {
+          email: user.email,
+          userId: user.id,
+        },
+        type: AUTH_CHALLENGE_TYPES.emailVerification,
+        ttlMinutes: 15,
+        message:
+          "Tu correo aun no esta verificado. Te enviamos un nuevo codigo para activarlo.",
+      });
+
+      const delivery = await sendAuthCodeEmail({
+        email: user.email,
+        code,
+        type: AUTH_CHALLENGE_TYPES.emailVerification,
+      });
+
+      if (!delivery.ok && !isDemoAuthCodesEnabled()) {
+        return jsonError(delivery.error, 502);
+      }
+
+      return Response.json(pending);
+    }
+
+    const { pending, code } = await issueAuthChallenge({
+      recipient: {
+        email: user.email,
+        userId: user.id,
+      },
+      type: AUTH_CHALLENGE_TYPES.login2fa,
+      ttlMinutes: 10,
+      message: "Te enviamos un codigo para completar tu inicio de sesion.",
+    });
+
+    const delivery = await sendAuthCodeEmail({
+      email: user.email,
+      code,
+      type: AUTH_CHALLENGE_TYPES.login2fa,
+    });
+
+    if (!delivery.ok && !isDemoAuthCodesEnabled()) {
+      return jsonError(delivery.error, 502);
+    }
+
+    return Response.json(pending);
+  } catch (error) {
+    return authChallengeErrorResponse(error);
+  }
 }

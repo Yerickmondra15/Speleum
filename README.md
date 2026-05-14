@@ -14,7 +14,9 @@ Speleum es un juego web multijugador de supervivencia en cuevas. Controlas criat
 
 ## Estado actual
 
-- Registro e inicio de sesion con cookie de sesion
+- Registro con verificacion de correo
+- Inicio de sesion con 2FA por codigo enviado al correo
+- Cookie de sesion creada solo despues de validar el codigo
 - Perfil y ranking conectados a PostgreSQL
 - Guardado de resultados y estadisticas con Prisma
 - Modo local funcional con:
@@ -37,12 +39,17 @@ npm install
 
 - `DATABASE_URL`
 - `DIRECT_URL`
+- `SESSION_SECRET`
+- `AUTH_CODE_SECRET` opcional, recomendado para separar la firma de codigos
+- `RESEND_API_KEY` para intentar envio real con Resend
+- `EMAIL_FROM` remitente de correo. Para demo en Vercel gratis puedes usar `Speleum <onboarding@resend.dev>`
+- `DEMO_AUTH_CODES` opcional. Usa `true` solo para demo o desarrollo para exponer el codigo al frontend
 
 3. Genera Prisma y aplica migraciones en desarrollo:
 
 ```bash
 npx prisma generate
-npx prisma migrate dev --name init
+npx prisma migrate dev
 ```
 
 4. Inicia la app:
@@ -87,6 +94,7 @@ npm run build
 
 - El build de produccion ejecuta `prisma generate` y `next build`.
 - El deploy normal no ejecuta `prisma migrate deploy`.
+- El flujo de auth por correo requiere que las migraciones de Prisma esten aplicadas antes de desplegar.
 - Corre las migraciones manualmente solo cuando cambie la base de datos:
 
 ```bash
@@ -98,6 +106,27 @@ npx prisma migrate deploy
 ```bash
 npm run db:migrate:deploy
 ```
+
+## Correo de autenticacion en Vercel
+
+- Si estas desplegando en un dominio gratuito `*.vercel.app`, no controlas el DNS del subdominio y no puedes verificar SPF/DKIM para enviar como `noreply@tu-app.vercel.app`.
+- Para demo o presentacion puedes configurar:
+
+```bash
+EMAIL_FROM="Speleum <onboarding@resend.dev>"
+```
+
+- Para correo real profesional necesitas un dominio propio verificado en Resend.
+- Variables recomendadas en Vercel:
+
+```bash
+RESEND_API_KEY=...
+EMAIL_FROM="Speleum <onboarding@resend.dev>"
+DEMO_AUTH_CODES=true
+```
+
+- Si `DEMO_AUTH_CODES=true`, el backend devolvera el codigo en la respuesta y la UI mostrara una tarjeta `Codigo demo`.
+- Si `DEMO_AUTH_CODES` no esta activo, nunca se devuelve el codigo al frontend.
 
 ## Deploy del socket
 

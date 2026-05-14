@@ -1,66 +1,62 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
   CheckCircle2,
   Eye,
   EyeOff,
+  KeyRound,
   Lock,
   Mail,
+  RefreshCcw,
+  ShieldCheck,
   User,
 } from "lucide-react";
-import { AnimatePresence, motion } from "framer-motion";
-import { useAuth } from "../auth/AuthProvider";
+import { useEffect, useMemo, useState } from "react";
+
+import { type PendingAuthState, useAuth } from "@/app/auth/AuthProvider";
 
 type AuthMode = "login" | "register";
-type FocusedField =
-  | "none"
-  | "email"
-  | "password"
-  | "confirmPassword"
-  | "username";
+type AuthStep = "credentials" | "verify";
 
 type FormErrors = {
   username?: string;
   email?: string;
   password?: string;
   confirmPassword?: string;
+  code?: string;
 };
 
 function validateEmail(email: string) {
-  const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return regex.test(email);
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-function CaveParticles() {
-  const [particles] = useState(() =>
-    Array.from({ length: 40 }, (_, index) => ({
-      id: index,
-      width: `${1 + Math.random() * 3}px`,
-      height: `${1 + Math.random() * 3}px`,
-      left: `${Math.random() * 100}%`,
-      top: `${Math.random() * 100}%`,
-      animation: `float ${10 + Math.random() * 15}s ease-in-out infinite`,
-      animationDelay: `${Math.random() * 5}s`,
-    })),
-  );
+const DUST_PARTICLES = Array.from({ length: 28 }, (_, index) => ({
+  id: index,
+  left: `${(index * 17) % 100}%`,
+  top: `${(index * 29) % 100}%`,
+  size: `${1 + (index % 3)}px`,
+  delay: `${(index % 5) * 0.7}s`,
+  duration: `${10 + (index % 7) * 2}s`,
+}));
 
+function FloatingDust() {
   return (
-    <div className="pointer-events-none fixed inset-0 overflow-hidden">
-      {particles.map((particle) => (
-        <div
+    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      {DUST_PARTICLES.map((particle) => (
+        <span
           key={particle.id}
-          className="absolute rounded-full bg-zinc-400/15"
+          className="absolute rounded-full bg-rose-200/10"
           style={{
-            width: particle.width,
-            height: particle.height,
             left: particle.left,
             top: particle.top,
-            animation: particle.animation,
-            animationDelay: particle.animationDelay,
+            width: particle.size,
+            height: particle.size,
+            animation: `floatDust ${particle.duration} ease-in-out infinite`,
+            animationDelay: particle.delay,
           }}
         />
       ))}
@@ -68,390 +64,96 @@ function CaveParticles() {
   );
 }
 
-function StalactiteBackground() {
+function CaveBackdrop() {
   return (
-    <div className="pointer-events-none fixed inset-0 overflow-hidden">
-      <svg
-        className="absolute -top-4 left-0 h-[45vh] w-full opacity-30"
-        viewBox="0 0 1400 400"
-        preserveAspectRatio="none"
-      >
-        <defs>
-          <filter id="blur-far">
-            <feGaussianBlur stdDeviation="3" />
-          </filter>
-        </defs>
-        <path
-          filter="url(#blur-far)"
-          d="M0,0 L0,40 L80,50 L100,180 L120,60 L200,55 L230,280 L260,70 L340,45 L380,220 L400,55 L500,65 L540,320 L580,80 L680,50 L720,260 L760,65 L860,55 L900,350 L940,75 L1040,50 L1080,240 L1120,60 L1200,70 L1240,300 L1280,55 L1360,45 L1400,50 L1400,0 Z"
-          className="fill-zinc-950"
-        />
-      </svg>
+    <>
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(136,19,55,0.18),transparent_30%),radial-gradient(circle_at_bottom,rgba(190,24,93,0.1),transparent_24%),linear-gradient(180deg,#020202_0%,#070707_45%,#000_100%)]" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-[radial-gradient(circle_at_top,rgba(251,113,133,0.22),transparent_55%)]" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-56 opacity-60">
+        <svg viewBox="0 0 1440 320" className="h-full w-full fill-zinc-950">
+          <path d="M0,0L0,48L70,60L115,185L165,74L242,56L299,250L358,74L444,49L497,198L544,67L630,60L688,292L751,75L841,51L898,208L959,74L1043,61L1098,305L1154,80L1239,56L1298,214L1343,73L1401,63L1440,68L1440,0Z" />
+        </svg>
+      </div>
+      <div className="pointer-events-none absolute bottom-[-8rem] left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-rose-500/10 blur-3xl" />
+      <FloatingDust />
+    </>
+  );
+}
 
-      <svg
-        className="absolute -top-2 left-0 h-[35vh] w-full opacity-50"
-        viewBox="0 0 1400 350"
-        preserveAspectRatio="none"
-      >
-        <defs>
-          <filter id="blur-mid">
-            <feGaussianBlur stdDeviation="1.5" />
-          </filter>
-        </defs>
-        <path
-          filter="url(#blur-mid)"
-          d="M0,0 L0,30 L60,40 L80,150 L100,50 L160,45 L190,200 L220,55 L300,50 L340,250 L380,60 L460,45 L500,180 L540,55 L620,50 L660,280 L700,65 L780,55 L820,220 L860,60 L940,45 L980,260 L1020,55 L1100,50 L1140,190 L1180,60 L1260,55 L1300,230 L1340,50 L1400,45 L1400,0 Z"
-          className="fill-zinc-900"
-        />
-      </svg>
-
-      <svg
-        className="absolute top-0 left-0 h-[25vh] w-full"
-        viewBox="0 0 1400 250"
-        preserveAspectRatio="none"
-      >
-        <path
-          d="M0,0 L0,25 L40,30 L55,90 L70,35 L120,40 L140,140 L160,45 L210,35 L240,180 L270,50 L330,40 L360,120 L390,45 L450,38 L480,200 L510,50 L570,42 L600,150 L630,48 L690,35 L720,170 L750,45 L810,40 L850,220 L890,50 L950,38 L980,130 L1010,45 L1070,42 L1110,190 L1150,48 L1210,35 L1250,160 L1290,45 L1350,40 L1380,110 L1400,45 L1400,0 Z"
-          className="fill-zinc-950"
-        />
-      </svg>
+function ShellIcon({ step }: { step: AuthStep }) {
+  return (
+    <div className="relative mx-auto mb-6 flex h-28 w-28 items-center justify-center">
+      <div className="absolute inset-0 rounded-full bg-rose-500/10 blur-2xl" />
+      <div className="absolute inset-2 rounded-full border border-rose-300/15 bg-zinc-950/90" />
+      <div className="absolute inset-[22px] rounded-full border border-white/10 bg-[radial-gradient(circle_at_top,rgba(251,113,133,0.22),rgba(9,9,11,0.9)_70%)]" />
+      <div className="relative flex h-16 w-16 items-center justify-center rounded-full border border-rose-300/20 bg-black/70 text-rose-200 shadow-[0_0_40px_rgba(244,63,94,0.16)]">
+        {step === "verify" ? (
+          <ShieldCheck className="h-8 w-8" />
+        ) : (
+          <KeyRound className="h-8 w-8" />
+        )}
+      </div>
     </div>
   );
 }
 
-function CaveAxolotl({
-  focusedField,
-  showAlert,
-}: {
-  focusedField: FocusedField;
-  showAlert: boolean;
-}) {
-  const eyePosition =
-    focusedField === "password" || focusedField === "confirmPassword"
-      ? "closed"
-      : focusedField === "email"
-        ? "right"
-        : focusedField === "username"
-          ? "left"
-          : "center";
-
-  const isCoveringEyes = eyePosition === "closed";
-
-  const pupilOffset =
-    eyePosition === "left" ? -2.5 : eyePosition === "right" ? 2.5 : 0;
-
-  const eyeColor = showAlert ? "#ffe0ea" : "#f4f4f5";
-  const eyeGlow = showAlert ? "0.9" : "0.45";
-
-  return (
-    <div className="relative flex items-center justify-center py-1">
-      <svg
-        viewBox="0 0 220 125"
-        className="relative h-28 w-44 overflow-visible"
-        aria-hidden="true"
-      >
-        <defs>
-          <radialGradient id="crabEyeGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#ffe4ec" />
-            <stop offset="55%" stopColor="#fb7185" />
-            <stop offset="100%" stopColor="#fb718500" />
-          </radialGradient>
-
-          <linearGradient id="crabShell" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor={showAlert ? "#30272d" : "#29292e"} />
-            <stop offset="100%" stopColor="#111113" />
-          </linearGradient>
-
-          <linearGradient id="crabClaw" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor={showAlert ? "#9b5c6b" : "#6b4a55"} />
-            <stop offset="100%" stopColor={showAlert ? "#4a222d" : "#32242a"} />
-          </linearGradient>
-
-          <linearGradient id="crabLeg" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#27272c" />
-            <stop offset="100%" stopColor="#09090b" />
-          </linearGradient>
-        </defs>
-
-        {/* sombra */}
-        <ellipse cx="110" cy="100" rx="70" ry="12" className="fill-black/45" />
-
-        {/* criatura */}
-        <g>
-          <animateTransform
-            attributeName="transform"
-            type="translate"
-            values="0 0; 0 -2; 0 0"
-            dur="4.5s"
-            repeatCount="indefinite"
-          />
-
-          {/* patas traseras */}
-          <g fill="url(#crabLeg)" stroke="#18181b" strokeWidth="1.4">
-            <path d="M60 64 C42 55 26 58 19 70 C31 72 46 70 61 66 Z" />
-            <path d="M61 76 C43 76 29 84 25 97 C39 95 52 89 65 80 Z" />
-            <path d="M160 64 C178 55 194 58 201 70 C189 72 174 70 159 66 Z" />
-            <path d="M159 76 C177 76 191 84 195 97 C181 95 168 89 155 80 Z" />
-          </g>
-
-          {/* pinza izquierda */}
-          <g
-            className="transition-all duration-300"
-            transform={
-              isCoveringEyes
-                ? "translate(15 -8) rotate(13 70 76)"
-                : showAlert
-                  ? "translate(-2 -5) rotate(-8 70 76)"
-                  : "rotate(-2 70 76)"
-            }
-          >
-            <path
-              d="M52 76 C36 61 17 63 11 79 C7 93 23 105 42 98 C55 94 64 84 72 72 Z"
-              fill="url(#crabClaw)"
-              stroke="#111113"
-              strokeWidth="1.8"
-            />
-            <path
-              d="M72 72 C55 68 42 73 36 88 C51 88 63 82 75 73 Z"
-              className="fill-zinc-950"
-            />
-            <path
-              d="M25 77 C38 69 56 71 70 76"
-              className="fill-none stroke-rose-100/25"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-            />
-            <circle cx="45" cy="82" r="2.2" className="fill-rose-100/20" />
-          </g>
-
-          {/* pinza derecha */}
-          <g
-            className="transition-all duration-300"
-            transform={
-              isCoveringEyes
-                ? "translate(-15 -8) rotate(-13 150 76)"
-                : showAlert
-                  ? "translate(2 -5) rotate(8 150 76)"
-                  : "rotate(2 150 76)"
-            }
-          >
-            <path
-              d="M168 76 C184 61 203 63 209 79 C213 93 197 105 178 98 C165 94 156 84 148 72 Z"
-              fill="url(#crabClaw)"
-              stroke="#111113"
-              strokeWidth="1.8"
-            />
-            <path
-              d="M148 72 C165 68 178 73 184 88 C169 88 157 82 145 73 Z"
-              className="fill-zinc-950"
-            />
-            <path
-              d="M195 77 C182 69 164 71 150 76"
-              className="fill-none stroke-rose-100/25"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-            />
-            <circle cx="175" cy="82" r="2.2" className="fill-rose-100/20" />
-          </g>
-
-          {/* caparazón */}
-          <path
-            d="M48 58 C51 32 74 19 110 19 C146 19 169 32 172 58 C169 83 145 95 110 95 C75 95 51 83 48 58 Z"
-            fill="url(#crabShell)"
-            stroke={showAlert ? "#fb7185" : "#27272a"}
-            strokeWidth={showAlert ? "1.4" : "1"}
-            className="transition-all duration-300"
-          />
-
-          {/* borde frontal */}
-          <path
-            d="M61 72 C76 85 91 89 110 89 C129 89 144 85 159 72 C145 79 126 82 110 82 C94 82 75 79 61 72 Z"
-            className="fill-black/25"
-          />
-
-          {/* picos */}
-          <g className={showAlert ? "fill-rose-200/45" : "fill-zinc-600/70"}>
-            <path d="M67 38 L76 21 L85 40 Z" />
-            <path d="M100 28 L110 8 L121 29 Z" />
-            <path d="M136 38 L146 22 L154 41 Z" />
-            <path d="M52 59 L61 48 L68 61 Z" />
-            <path d="M152 61 L160 48 L168 60 Z" />
-          </g>
-
-          {/* textura de roca */}
-          <g className="fill-zinc-700/30">
-            <circle cx="82" cy="49" r="3" />
-            <circle cx="101" cy="39" r="2.4" />
-            <circle cx="121" cy="44" r="3.2" />
-            <circle cx="139" cy="58" r="2.8" />
-            <circle cx="72" cy="64" r="2.5" />
-            <circle cx="110" cy="61" r="4" />
-          </g>
-
-          {/* brillo suave detrás */}
-          <ellipse
-            cx="110"
-            cy="63"
-            rx="58"
-            ry="38"
-            className={showAlert ? "fill-rose-500/10" : "fill-rose-400/5"}
-          />
-
-          {/* ojos */}
-          <g>
-            <circle
-              cx="88"
-              cy="60"
-              r="15"
-              fill="url(#crabEyeGlow)"
-              opacity={eyeGlow}
-            />
-            <circle
-              cx="132"
-              cy="60"
-              r="15"
-              fill="url(#crabEyeGlow)"
-              opacity={eyeGlow}
-            />
-
-            {isCoveringEyes ? (
-              <g
-                className="fill-none stroke-rose-100/70"
-                strokeWidth="2"
-                strokeLinecap="round"
-              >
-                <path d="M79 61 C84 65 92 65 97 61" />
-                <path d="M123 61 C128 65 136 65 141 61" />
-              </g>
-            ) : (
-              <>
-                <circle cx="88" cy="60" r="7.3" fill={eyeColor} />
-                <circle cx="132" cy="60" r="7.3" fill={eyeColor} />
-
-                <circle
-                  cx={88 + pupilOffset}
-                  cy="61"
-                  r="3"
-                  className={showAlert ? "fill-rose-500" : "fill-zinc-950"}
-                />
-                <circle
-                  cx={132 + pupilOffset}
-                  cy="61"
-                  r="3"
-                  className={showAlert ? "fill-rose-500" : "fill-zinc-950"}
-                />
-
-                <circle cx="85" cy="57" r="1.4" className="fill-white/70" />
-                <circle cx="129" cy="57" r="1.4" className="fill-white/70" />
-              </>
-            )}
-          </g>
-
-          {/* boca */}
-          <path
-            d={showAlert ? "M99 75 Q110 72 121 75" : "M97 73 Q110 80 123 73"}
-            className="fill-none stroke-zinc-400/70"
-            strokeWidth="1.7"
-            strokeLinecap="round"
-          />
-
-          {/* alerta */}
-          {showAlert && (
-            <g className="stroke-rose-300/80" strokeWidth="1.8" strokeLinecap="round">
-              <path d="M48 35 L39 26" />
-              <path d="M172 35 L181 26" />
-              <path d="M110 12 L110 3" />
-            </g>
-          )}
-        </g>
-      </svg>
-    </div>
-  );
-}
-
-function SuccessMessage({ message }: { message: string }) {
+function SuccessOverlay({ message }: { message: string }) {
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="absolute inset-0 z-20 flex items-center justify-center rounded-3xl bg-black/90 backdrop-blur-sm"
+      className="absolute inset-0 z-20 flex items-center justify-center rounded-[2rem] bg-black/85 backdrop-blur-md"
     >
       <div className="text-center">
         <motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ type: "spring", stiffness: 200, damping: 15 }}
-          className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-rose-400/20"
+          initial={{ scale: 0.7, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: "spring", stiffness: 180, damping: 16 }}
+          className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-rose-400/15 text-rose-300"
         >
-          <CheckCircle2 className="h-8 w-8 text-rose-400" />
+          <CheckCircle2 className="h-8 w-8" />
         </motion.div>
-        <p className="text-lg font-medium text-white">{message}</p>
+        <p className="text-lg font-semibold text-white">{message}</p>
       </div>
     </motion.div>
   );
 }
 
-const formVariants = {
-  hidden: {
-    opacity: 0,
-    y: 20,
-    filter: "blur(4px)",
-  },
-  visible: {
-    opacity: 1,
-    y: 0,
-    filter: "blur(0px)",
-    transition: { duration: 0.4 },
-  },
-  exit: {
-    opacity: 0,
-    y: -20,
-    filter: "blur(4px)",
-    transition: { duration: 0.3 },
-  },
-};
-
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.08,
-      delayChildren: 0.1,
-    },
-  },
-  exit: {
-    opacity: 0,
-    transition: {
-      staggerChildren: 0.05,
-      staggerDirection: -1 as const,
-    },
-  },
-};
-
 export default function LoginPage() {
   const router = useRouter();
-  const { login, register, status } = useAuth();
-  const typingTimeoutRef = useRef<number | null>(null);
+  const {
+    login,
+    register,
+    resendCode,
+    status,
+    verifyEmailCode,
+    verifyLoginCode,
+  } = useAuth();
+
   const [mode, setMode] = useState<AuthMode>("login");
-  const [focusedField, setFocusedField] = useState<FocusedField>("none");
+  const [step, setStep] = useState<AuthStep>("credentials");
+  const [pendingAuth, setPendingAuth] = useState<PendingAuthState | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+  const [countdownNow, setCountdownNow] = useState(() => Date.now());
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     username: "",
     email: "",
     password: "",
     confirmPassword: "",
+    code: "",
   });
   const [touched, setTouched] = useState({
     username: false,
     email: false,
     password: false,
     confirmPassword: false,
+    code: false,
   });
 
   useEffect(() => {
@@ -460,19 +162,44 @@ export default function LoginPage() {
     }
   }, [router, status]);
 
-  const validateForm = useMemo(() => {
+  useEffect(() => {
+    if (!pendingAuth) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setCountdownNow(Date.now());
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [pendingAuth]);
+
+  const resendSeconds = pendingAuth
+    ? Math.max(
+        0,
+        Math.ceil((new Date(pendingAuth.resendAvailableAt).getTime() - countdownNow) / 1000),
+      )
+    : 0;
+
+  const errors = useMemo(() => {
     const nextErrors: FormErrors = {};
+
+    if (step === "verify") {
+      if (touched.code && !/^\d{6}$/.test(formData.code.trim())) {
+        nextErrors.code = "Ingresa un codigo valido de 6 digitos.";
+      }
+      return nextErrors;
+    }
 
     if (mode === "register" && touched.username && formData.username.trim().length < 3) {
       nextErrors.username = "El nombre debe tener al menos 3 caracteres.";
     }
 
-    if (touched.email && !validateEmail(formData.email)) {
+    if (touched.email && !validateEmail(formData.email.trim())) {
       nextErrors.email = "Ingresa un correo valido.";
     }
 
     if (touched.password && formData.password.length < 6) {
-      nextErrors.password = "La contraseña debe tener al menos 6 caracteres.";
+      nextErrors.password = "La contrasena debe tener al menos 6 caracteres.";
     }
 
     if (
@@ -480,140 +207,192 @@ export default function LoginPage() {
       touched.confirmPassword &&
       formData.password !== formData.confirmPassword
     ) {
-      nextErrors.confirmPassword = "Las contraseñas no coinciden.";
+      nextErrors.confirmPassword = "Las contrasenas no coinciden.";
     }
 
     return nextErrors;
-  }, [formData, mode, touched]);
+  }, [formData, mode, step, touched]);
 
-  const currentErrors = validateForm;
-
-  const isFormReady =
-    validateEmail(formData.email) &&
+  const credentialFormReady =
+    validateEmail(formData.email.trim()) &&
     formData.password.length >= 6 &&
     (mode === "login"
       ? true
       : formData.username.trim().length >= 3 &&
-        formData.confirmPassword.length > 0 &&
-        formData.password === formData.confirmPassword);
+        formData.password === formData.confirmPassword &&
+        formData.confirmPassword.length >= 6);
 
-  const passwordsMatch =
-    formData.confirmPassword === "" || formData.password === formData.confirmPassword;
-  const showAlert =
-    mode === "register" && touched.confirmPassword && !passwordsMatch;
+  const codeReady = /^\d{6}$/.test(formData.code.trim());
 
-  const handleInputChange = (field: keyof typeof formData, value: string) => {
-    setFormData((current) => ({
-      ...current,
-      [field]: value,
-    }));
-
-    if (typingTimeoutRef.current !== null) {
-      window.clearTimeout(typingTimeoutRef.current);
-    }
-
-    typingTimeoutRef.current = window.setTimeout(() => {
-      typingTimeoutRef.current = null;
-    }, 500);
-  };
-
-  const handleBlur = (field: keyof typeof touched) => {
-    setTouched((current) => ({
-      ...current,
-      [field]: true,
-    }));
-    setFocusedField("none");
-  };
-
-  const handleModeChange = (nextMode: AuthMode) => {
-    if (nextMode === mode) {
-      return;
-    }
-
-    setMode(nextMode);
+  function resetCredentialForm(nextMode?: AuthMode) {
+    setMode(nextMode ?? mode);
+    setStep("credentials");
+    setPendingAuth(null);
     setSubmitError(null);
     setTouched({
       username: false,
       email: false,
       password: false,
       confirmPassword: false,
+      code: false,
     });
     setFormData({
       username: "",
       email: "",
       password: "",
       confirmPassword: "",
+      code: "",
     });
-  };
+  }
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  function handleInputChange(field: keyof typeof formData, value: string) {
+    setFormData((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  async function handleCredentialsSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitError(null);
-
-    const nextTouched = {
+    setTouched((current) => ({
+      ...current,
       username: true,
       email: true,
       password: true,
       confirmPassword: true,
-    };
-    setTouched(nextTouched);
+    }));
 
-    const submitErrors = (() => {
-      const nextErrors: FormErrors = {};
+    if (!credentialFormReady) {
+      return;
+    }
 
-      if (mode === "register" && formData.username.trim().length < 3) {
-        nextErrors.username = "El nombre debe tener al menos 3 caracteres.";
+    try {
+      setIsSubmitting(true);
+      const result =
+        mode === "login"
+          ? await login(formData.email.trim(), formData.password)
+          : await register(
+              formData.username.trim(),
+              formData.email.trim(),
+              formData.password,
+            );
+
+      if (result.status === "authenticated") {
+        setSuccess(mode === "login" ? "Sesion iniciada" : "Cuenta creada");
+        window.setTimeout(() => router.replace("/"), 1000);
+        return;
       }
 
-      if (!validateEmail(formData.email)) {
-        nextErrors.email = "Ingresa un correo valido.";
-      }
+      setPendingAuth(result);
+      setStep("verify");
+      setFormData((current) => ({
+        ...current,
+        code: "",
+      }));
+      setTouched((current) => ({
+        ...current,
+        code: false,
+      }));
+    } catch (error) {
+      setSubmitError(
+        error instanceof Error
+          ? error.message
+          : "No se pudo completar la autenticacion.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
 
-      if (formData.password.length < 6) {
-        nextErrors.password = "La contraseña debe tener al menos 6 caracteres.";
-      }
+  async function handleVerifySubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitError(null);
+    setTouched((current) => ({
+      ...current,
+      code: true,
+    }));
 
-      if (mode === "register" && formData.password !== formData.confirmPassword) {
-        nextErrors.confirmPassword = "Las contraseñas no coinciden.";
-      }
-
-      return nextErrors;
-    })();
-
-    if (Object.keys(submitErrors).length > 0) {
+    if (!pendingAuth || !codeReady) {
       return;
     }
 
     try {
       setIsSubmitting(true);
 
-      if (mode === "login") {
-        await login(formData.email.trim(), formData.password);
-      } else {
-        await register(
-          formData.username.trim(),
-          formData.email.trim(),
-          formData.password,
+      if (pendingAuth.status === "pending_email_verification") {
+        await verifyEmailCode(
+          pendingAuth.challengeId,
+          pendingAuth.email,
+          formData.code.trim(),
         );
+        setSuccess("Correo verificado. Bienvenido a Speleum.");
+      } else {
+        await verifyLoginCode(
+          pendingAuth.challengeId,
+          pendingAuth.email,
+          formData.code.trim(),
+        );
+        setSuccess("Acceso confirmado.");
       }
 
-      setSuccess(
-        mode === "login"
-          ? "Sesión iniciada correctamente"
-          : "Cuenta creada correctamente",
-      );
-
-      window.setTimeout(() => {
-        router.replace("/");
-      }, 1200);
+      window.setTimeout(() => router.replace("/"), 1000);
     } catch (error) {
       setSubmitError(
-        error instanceof Error ? error.message : "No se pudo completar la autenticación.",
+        error instanceof Error ? error.message : "No se pudo validar el codigo.",
       );
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }
+
+  async function handleResendCode() {
+    if (!pendingAuth || resendSeconds > 0) {
+      return;
+    }
+
+    try {
+      setIsResending(true);
+      setSubmitError(null);
+      const nextPending = await resendCode(pendingAuth.challengeId, pendingAuth.email);
+      setPendingAuth(nextPending);
+      setFormData((current) => ({
+        ...current,
+        code: "",
+      }));
+      setTouched((current) => ({
+        ...current,
+        code: false,
+      }));
+    } catch (error) {
+      const retryAfterSeconds =
+        typeof error === "object" &&
+        error !== null &&
+        "retryAfterSeconds" in error &&
+        typeof error.retryAfterSeconds === "number"
+          ? error.retryAfterSeconds
+          : undefined;
+
+      if (typeof retryAfterSeconds === "number") {
+        setPendingAuth((current) =>
+          current
+            ? {
+                ...current,
+                resendAvailableAt: new Date(
+                  Date.now() + retryAfterSeconds * 1000,
+                ).toISOString(),
+              }
+            : current,
+        );
+      }
+
+      setSubmitError(
+        error instanceof Error ? error.message : "No se pudo reenviar el codigo.",
+      );
+    } finally {
+      setIsResending(false);
+    }
+  }
 
   if (status === "signed-in") {
     return (
@@ -624,164 +403,155 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-black px-4 py-20 sm:py-12">
-      <CaveParticles />
-      <StalactiteBackground />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_20%,rgba(0,0,0,0.8)_80%)]" />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(30,30,30,0.4),transparent_60%)]" />
-      <div className="pointer-events-none absolute bottom-0 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-rose-500/5 blur-3xl" />
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-black px-4 py-16">
+      <CaveBackdrop />
 
       <div className="absolute left-4 top-4 z-20 sm:left-6 sm:top-6">
         <Link
           href="/"
-          className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/10 bg-black/40 px-4 py-2 text-sm text-zinc-300 transition hover:text-white"
+          className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/10 bg-black/45 px-4 py-2 text-sm text-zinc-300 transition hover:border-rose-300/20 hover:text-white"
         >
           <ArrowLeft className="h-4 w-4" />
           Volver al inicio
         </Link>
       </div>
 
-      <motion.div
-        initial={{ opacity: 0, y: 30, filter: "blur(10px)" }}
+      <motion.section
+        initial={{ opacity: 0, y: 24, filter: "blur(10px)" }}
         animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-        transition={{ duration: 0.8, ease: "easeOut" }}
-        className="relative z-10 w-full max-w-md pt-10 sm:pt-0"
+        transition={{ duration: 0.7, ease: "easeOut" }}
+        className="relative z-10 w-full max-w-md"
       >
-        <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-zinc-900/70 p-5 shadow-2xl shadow-black/50 backdrop-blur-xl sm:p-8">
+        <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-zinc-950/80 p-6 shadow-[0_30px_120px_rgba(0,0,0,0.65)] backdrop-blur-xl sm:p-8">
           <AnimatePresence>
-            {success && <SuccessMessage message={success} />}
+            {success ? <SuccessOverlay message={success} /> : null}
           </AnimatePresence>
 
+          <ShellIcon step={step} />
+
           <div className="mb-8 text-center">
-            <h1 className="text-2xl font-semibold tracking-wide text-white sm:text-3xl">
-              Entrar a Speleum
+            <p className="mb-3 text-xs uppercase tracking-[0.28em] text-rose-300/70">
+              {step === "verify" ? "Verificacion segura" : "Acceso Speleum"}
+            </p>
+            <h1 className="text-3xl font-semibold tracking-tight text-white">
+              {step === "verify"
+                ? "Confirma tu codigo"
+                : mode === "login"
+                  ? "Entrar a la cueva"
+                  : "Crear tu acceso"}
             </h1>
-            <p className="mt-2 text-sm text-zinc-400">
-              Inicia sesión o registra tu criatura para volver a la cueva.
+            <p className="mt-3 text-sm leading-6 text-zinc-400">
+              {step === "verify"
+                ? pendingAuth?.message ??
+                  "Revisa tu correo y escribe el codigo de 6 digitos para continuar."
+                : "Protegimos el acceso con verificacion por correo y 2FA en cada inicio de sesion."}
             </p>
-            <p className="mx-auto mt-4 max-w-xs text-xs uppercase tracking-[0.22em] text-rose-300/70">
-              Seguridad reforzada, acceso rápido y experiencia inmersiva
-            </p>
           </div>
 
-          <div className="mb-6 flex justify-center">
-            <CaveAxolotl focusedField={focusedField} showAlert={showAlert} />
-          </div>
+          {step === "credentials" ? (
+            <>
+              <div className="relative mb-6 flex gap-2 rounded-2xl border border-white/5 bg-black/35 p-1">
+                <motion.div
+                  className="absolute inset-y-1 rounded-[1rem] bg-rose-400/18"
+                  initial={false}
+                  animate={{
+                    left: mode === "login" ? "4px" : "50%",
+                    right: mode === "login" ? "50%" : "4px",
+                  }}
+                  transition={{ type: "spring", stiffness: 260, damping: 28 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => resetCredentialForm("login")}
+                  className={`relative z-10 flex-1 rounded-[1rem] px-4 py-3 text-sm font-medium transition ${
+                    mode === "login" ? "text-rose-200" : "text-zinc-400 hover:text-zinc-200"
+                  }`}
+                >
+                  Iniciar sesion
+                </button>
+                <button
+                  type="button"
+                  onClick={() => resetCredentialForm("register")}
+                  className={`relative z-10 flex-1 rounded-[1rem] px-4 py-3 text-sm font-medium transition ${
+                    mode === "register"
+                      ? "text-rose-200"
+                      : "text-zinc-400 hover:text-zinc-200"
+                  }`}
+                >
+                  Registro
+                </button>
+              </div>
 
-          <div className="relative mb-6 flex gap-2 rounded-xl bg-black/30 p-1">
-            <motion.div
-              className="absolute inset-y-1 rounded-lg bg-rose-400/20"
-              initial={false}
-              animate={{
-                left: mode === "login" ? "4px" : "50%",
-                right: mode === "login" ? "50%" : "4px",
-              }}
-              transition={{
-                type: "spring",
-                stiffness: 300,
-                damping: 30,
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => handleModeChange("login")}
-              aria-pressed={mode === "login"}
-              className={`relative z-10 flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
-                mode === "login"
-                  ? "text-rose-300"
-                  : "text-zinc-400 hover:text-zinc-300"
-              }`}
-            >
-              Iniciar sesión
-            </button>
-            <button
-              type="button"
-              onClick={() => handleModeChange("register")}
-              aria-pressed={mode === "register"}
-              className={`relative z-10 flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
-                mode === "register"
-                  ? "text-rose-300"
-                  : "text-zinc-400 hover:text-zinc-300"
-              }`}
-            >
-              Registro
-            </button>
-          </div>
-
-          <form onSubmit={handleSubmit} noValidate>
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={mode}
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
-                exit="exit"
-                className="space-y-4"
-              >
-                {mode === "register" && (
-                  <motion.div variants={formVariants}>
+              <form onSubmit={handleCredentialsSubmit} noValidate className="space-y-4">
+                {mode === "register" ? (
+                  <div>
+                    <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-zinc-500">
+                      Usuario
+                    </label>
                     <div className="relative">
                       <User className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
                       <input
-                        type="text"
-                        placeholder="Nombre de usuario"
-                        autoComplete="username"
-                        minLength={3}
                         value={formData.username}
                         onChange={(event) =>
                           handleInputChange("username", event.target.value)
                         }
-                        onFocus={() => setFocusedField("username")}
-                        onBlur={() => handleBlur("username")}
-                        className="min-h-12 w-full rounded-xl border border-white/10 bg-black/40 py-3 pl-11 pr-4 text-white placeholder-zinc-500 outline-none transition-all focus:border-rose-400/50 focus:bg-black/50"
+                        onBlur={() =>
+                          setTouched((current) => ({ ...current, username: true }))
+                        }
+                        autoComplete="username"
+                        placeholder="Nombre de usuario"
+                        className="min-h-12 w-full rounded-2xl border border-white/10 bg-black/40 py-3 pl-11 pr-4 text-white placeholder:text-zinc-600 outline-none transition focus:border-rose-300/40 focus:bg-black/55"
                       />
                     </div>
-                    {currentErrors.username && (
-                      <p className="mt-1.5 text-xs text-rose-400">{currentErrors.username}</p>
-                    )}
-                  </motion.div>
-                )}
+                    {errors.username ? (
+                      <p className="mt-2 text-xs text-rose-300">{errors.username}</p>
+                    ) : null}
+                  </div>
+                ) : null}
 
-                <motion.div variants={formVariants}>
+                <div>
+                  <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-zinc-500">
+                    Correo
+                  </label>
                   <div className="relative">
                     <Mail className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
                     <input
-                      type="email"
-                      placeholder="Correo electrónico"
-                      autoComplete="email"
                       value={formData.email}
                       onChange={(event) => handleInputChange("email", event.target.value)}
-                      onFocus={() => setFocusedField("email")}
-                      onBlur={() => handleBlur("email")}
-                      className="min-h-12 w-full rounded-xl border border-white/10 bg-black/40 py-3 pl-11 pr-4 text-white placeholder-zinc-500 outline-none transition-all focus:border-rose-400/50 focus:bg-black/50"
+                      onBlur={() => setTouched((current) => ({ ...current, email: true }))}
+                      autoComplete="email"
+                      inputMode="email"
+                      placeholder="Correo electronico"
+                      className="min-h-12 w-full rounded-2xl border border-white/10 bg-black/40 py-3 pl-11 pr-4 text-white placeholder:text-zinc-600 outline-none transition focus:border-rose-300/40 focus:bg-black/55"
                     />
                   </div>
-                  {currentErrors.email && (
-                    <p className="mt-1.5 text-xs text-rose-400">{currentErrors.email}</p>
-                  )}
-                </motion.div>
+                  {errors.email ? (
+                    <p className="mt-2 text-xs text-rose-300">{errors.email}</p>
+                  ) : null}
+                </div>
 
-                <motion.div variants={formVariants}>
+                <div>
+                  <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-zinc-500">
+                    Contrasena
+                  </label>
                   <div className="relative">
                     <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
                     <input
                       type={showPassword ? "text" : "password"}
-                      placeholder="Contraseña"
-                      autoComplete={mode === "login" ? "current-password" : "new-password"}
-                      minLength={6}
                       value={formData.password}
                       onChange={(event) =>
                         handleInputChange("password", event.target.value)
                       }
-                      onFocus={() => setFocusedField("password")}
-                      onBlur={() => handleBlur("password")}
-                      className="min-h-12 w-full rounded-xl border border-white/10 bg-black/40 py-3 pl-11 pr-11 text-white placeholder-zinc-500 outline-none transition-all focus:border-rose-400/50 focus:bg-black/50"
+                      onBlur={() => setTouched((current) => ({ ...current, password: true }))}
+                      autoComplete={mode === "login" ? "current-password" : "new-password"}
+                      placeholder="Contrasena"
+                      className="min-h-12 w-full rounded-2xl border border-white/10 bg-black/40 py-3 pl-11 pr-11 text-white placeholder:text-zinc-600 outline-none transition focus:border-rose-300/40 focus:bg-black/55"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword((current) => !current)}
-                      aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 transition-colors hover:text-zinc-300"
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 transition hover:text-zinc-300"
+                      aria-label={showPassword ? "Ocultar contrasena" : "Mostrar contrasena"}
                     >
                       {showPassword ? (
                         <EyeOff className="h-4 w-4" />
@@ -790,33 +560,43 @@ export default function LoginPage() {
                       )}
                     </button>
                   </div>
-                  {currentErrors.password && (
-                    <p className="mt-1.5 text-xs text-rose-400">{currentErrors.password}</p>
-                  )}
-                </motion.div>
+                  {errors.password ? (
+                    <p className="mt-2 text-xs text-rose-300">{errors.password}</p>
+                  ) : null}
+                </div>
 
-                {mode === "register" && (
-                  <motion.div variants={formVariants}>
+                {mode === "register" ? (
+                  <div>
+                    <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-zinc-500">
+                      Confirmar contrasena
+                    </label>
                     <div className="relative">
                       <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
                       <input
                         type={showConfirmPassword ? "text" : "password"}
-                        placeholder="Confirmar contraseña"
-                        autoComplete="new-password"
-                        minLength={6}
                         value={formData.confirmPassword}
                         onChange={(event) =>
                           handleInputChange("confirmPassword", event.target.value)
                         }
-                        onFocus={() => setFocusedField("confirmPassword")}
-                        onBlur={() => handleBlur("confirmPassword")}
-                        className="min-h-12 w-full rounded-xl border border-white/10 bg-black/40 py-3 pl-11 pr-11 text-white placeholder-zinc-500 outline-none transition-all focus:border-rose-400/50 focus:bg-black/50"
+                        onBlur={() =>
+                          setTouched((current) => ({
+                            ...current,
+                            confirmPassword: true,
+                          }))
+                        }
+                        autoComplete="new-password"
+                        placeholder="Confirmar contrasena"
+                        className="min-h-12 w-full rounded-2xl border border-white/10 bg-black/40 py-3 pl-11 pr-11 text-white placeholder:text-zinc-600 outline-none transition focus:border-rose-300/40 focus:bg-black/55"
                       />
                       <button
                         type="button"
                         onClick={() => setShowConfirmPassword((current) => !current)}
-                        aria-label={showConfirmPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 transition-colors hover:text-zinc-300"
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 transition hover:text-zinc-300"
+                        aria-label={
+                          showConfirmPassword
+                            ? "Ocultar confirmacion de contrasena"
+                            : "Mostrar confirmacion de contrasena"
+                        }
                       >
                         {showConfirmPassword ? (
                           <EyeOff className="h-4 w-4" />
@@ -825,68 +605,149 @@ export default function LoginPage() {
                         )}
                       </button>
                     </div>
-                    {currentErrors.confirmPassword && (
-                      <p className="mt-1.5 text-xs text-rose-400">
-                        {currentErrors.confirmPassword}
+                    {errors.confirmPassword ? (
+                      <p className="mt-2 text-xs text-rose-300">
+                        {errors.confirmPassword}
                       </p>
-                    )}
-                  </motion.div>
-                )}
+                    ) : null}
+                  </div>
+                ) : null}
 
-                <motion.div variants={formVariants}>
-                  {submitError && (
-                    <div
-                      role="alert"
-                      className="rounded-xl border border-rose-400/20 bg-rose-950/30 px-4 py-3 text-sm text-rose-200"
-                    >
-                      {submitError}
-                    </div>
-                  )}
-                </motion.div>
+                {submitError ? (
+                  <div className="rounded-2xl border border-rose-300/15 bg-rose-950/25 px-4 py-3 text-sm text-rose-100">
+                    {submitError}
+                  </div>
+                ) : null}
 
-                <motion.div variants={formVariants}>
-                  <button
-                    type="submit"
-                    disabled={isSubmitting || !isFormReady}
-                    aria-disabled={isSubmitting || !isFormReady}
-                    aria-busy={isSubmitting}
-                    className={`min-h-12 w-full rounded-xl py-3 text-sm font-semibold text-white shadow-lg transition-all active:scale-[0.98] ${
-                      isSubmitting || !isFormReady
-                        ? "bg-rose-500/25 text-zinc-400 shadow-none"
-                        : "bg-rose-400/80 shadow-rose-500/20 hover:bg-rose-400 hover:shadow-rose-500/30"
-                    }`}
-                  >
-                    {isSubmitting
-                      ? "Procesando..."
-                      : mode === "login"
-                        ? "Entrar"
-                        : "Crear cuenta"}
-                  </button>
-                </motion.div>
-              </motion.div>
-            </AnimatePresence>
-          </form>
+                <button
+                  type="submit"
+                  disabled={isSubmitting || !credentialFormReady}
+                  className={`min-h-12 w-full rounded-2xl px-4 py-3 text-sm font-semibold text-white transition ${
+                    isSubmitting || !credentialFormReady
+                      ? "bg-rose-400/20 text-zinc-500"
+                      : "bg-rose-400/85 shadow-[0_16px_35px_rgba(244,63,94,0.22)] hover:bg-rose-400"
+                  }`}
+                >
+                  {isSubmitting
+                    ? "Procesando..."
+                    : mode === "login"
+                      ? "Continuar con seguridad"
+                      : "Crear cuenta y verificar"}
+                </button>
+              </form>
+            </>
+          ) : (
+            <form onSubmit={handleVerifySubmit} noValidate className="space-y-5">
+              <div className="rounded-[1.75rem] border border-white/10 bg-black/35 p-5">
+                <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                  Correo destino
+                </p>
+                <p className="mt-2 text-sm text-zinc-200">{pendingAuth?.email}</p>
+                <p className="mt-3 text-xs leading-5 text-zinc-500">
+                  {pendingAuth?.status === "pending_email_verification"
+                    ? "Debes verificar este correo antes de poder usar tu cuenta."
+                    : "Cada inicio de sesion requiere un codigo temporal enviado a tu correo."}
+                </p>
+              </div>
+
+              {pendingAuth?.demoCode ? (
+                <div className="rounded-[1.75rem] border border-amber-300/20 bg-amber-950/20 p-5">
+                  <p className="text-xs uppercase tracking-[0.18em] text-amber-300/80">
+                    Codigo demo
+                  </p>
+                  <p className="mt-2 text-3xl font-semibold tracking-[0.34em] text-amber-100">
+                    {pendingAuth.demoCode}
+                  </p>
+                  <p className="mt-3 text-xs leading-5 text-amber-100/70">
+                    Visible solo porque `DEMO_AUTH_CODES=true`. Desactivalo para un flujo normal.
+                  </p>
+                </div>
+              ) : null}
+
+              <div>
+                <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-zinc-500">
+                  Codigo de verificacion
+                </label>
+                <div className="relative">
+                  <KeyRound className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                  <input
+                    value={formData.code}
+                    onChange={(event) =>
+                      handleInputChange("code", event.target.value.replace(/\D/g, "").slice(0, 6))
+                    }
+                    onBlur={() => setTouched((current) => ({ ...current, code: true }))}
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    placeholder="000000"
+                    className="min-h-14 w-full rounded-2xl border border-white/10 bg-black/40 py-3 pl-11 pr-4 text-center text-2xl font-semibold tracking-[0.45em] text-white placeholder:text-zinc-600 outline-none transition focus:border-rose-300/40 focus:bg-black/55"
+                  />
+                </div>
+                {errors.code ? (
+                  <p className="mt-2 text-xs text-rose-300">{errors.code}</p>
+                ) : null}
+              </div>
+
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/6 bg-white/[0.03] px-4 py-3 text-sm">
+                <span className="text-zinc-400">
+                  {resendSeconds > 0
+                    ? `Puedes reenviar en ${resendSeconds}s`
+                    : "No recibiste el codigo?"}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleResendCode}
+                  disabled={isResending || resendSeconds > 0}
+                  className={`inline-flex items-center gap-2 rounded-full px-3 py-2 transition ${
+                    isResending || resendSeconds > 0
+                      ? "text-zinc-600"
+                      : "text-rose-200 hover:bg-rose-400/10"
+                  }`}
+                >
+                  <RefreshCcw className="h-4 w-4" />
+                  {isResending ? "Reenviando..." : "Reenviar"}
+                </button>
+              </div>
+
+              {submitError ? (
+                <div className="rounded-2xl border border-rose-300/15 bg-rose-950/25 px-4 py-3 text-sm text-rose-100">
+                  {submitError}
+                </div>
+              ) : null}
+
+              <button
+                type="submit"
+                disabled={isSubmitting || !codeReady}
+                className={`min-h-12 w-full rounded-2xl px-4 py-3 text-sm font-semibold text-white transition ${
+                  isSubmitting || !codeReady
+                    ? "bg-rose-400/20 text-zinc-500"
+                    : "bg-rose-400/85 shadow-[0_16px_35px_rgba(244,63,94,0.22)] hover:bg-rose-400"
+                }`}
+              >
+                {isSubmitting ? "Verificando..." : "Validar codigo"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => resetCredentialForm(mode)}
+                className="w-full text-sm text-zinc-500 transition hover:text-zinc-300"
+              >
+                Volver y editar credenciales
+              </button>
+            </form>
+          )}
         </div>
-      </motion.div>
+      </motion.section>
 
       <style jsx global>{`
-        @keyframes float {
+        @keyframes floatDust {
           0%,
           100% {
-            transform: translateY(0) translateX(0);
-            opacity: 0.15;
-          }
-          25% {
-            transform: translateY(-30px) translateX(15px);
-            opacity: 0.25;
+            transform: translate3d(0, 0, 0);
+            opacity: 0.18;
           }
           50% {
-            transform: translateY(-15px) translateX(-10px);
-            opacity: 0.1;
-          }
-          75% {
-            transform: translateY(-40px) translateX(5px);
-            opacity: 0.2;
+            transform: translate3d(10px, -24px, 0);
+            opacity: 0.3;
           }
         }
       `}</style>

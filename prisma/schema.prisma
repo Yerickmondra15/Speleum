@@ -13,12 +13,41 @@ model User {
   username       String        @unique
   email          String        @unique
   passwordHash   String
+  emailVerified  Boolean       @default(false)
+  emailVerifiedAt DateTime?
+  twoFactorEnabled Boolean     @default(true)
+  lastLoginAt    DateTime?
+  failedLoginAttempts Int      @default(0)
   activeCreature String        @default("cave-axolotl")
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   stats          UserStats?
   matchResults   MatchResult[]
   matchesWon     Match[]       @relation("MatchWinner")
+  authChallenges AuthChallenge[]
+}
+
+model AuthChallenge {
+  id           String   @id @default(cuid())
+  userId       String?
+  email        String
+  type         String
+  codeHash     String
+  expiresAt    DateTime
+  consumedAt   DateTime?
+  attemptCount Int      @default(0)
+  maxAttempts  Int      @default(5)
+  resendCount  Int      @default(0)
+  lastSentAt   DateTime
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+  user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([userId])
+  @@index([type, email, consumedAt])
+  @@index([expiresAt])
 }
 
 model UserStats {
