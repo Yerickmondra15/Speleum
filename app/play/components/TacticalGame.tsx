@@ -5,10 +5,12 @@ import { ArrowLeft, Shield } from "lucide-react";
 import type { CharacterOption, GameStatus, PlayerPosition } from "../gameConfig";
 import {
   ATTACK_COOLDOWN,
-  DEFEND_ACTIVE_DURATION,
-  DEFEND_COOLDOWN,
   ENEMY_CLOSE_DANGER_TILES,
   ENEMY_MOVE_INTERVAL,
+  MAX_SANITY,
+  MOVEMENT_STEP_INTERVAL_MS,
+  PARRY_COOLDOWN_MS,
+  PARRY_WINDOW_MS,
   PLAYER_ATTACK_DAMAGE,
   PLAYER_ATTACK_RANGE_TILES,
   PLAYER_MAX_HEALTH,
@@ -18,16 +20,23 @@ import {
   SCORE_PER_KILL_FALLBACK,
   SCORE_PER_LOCAL_VICTORY,
   TILE_SIZE,
+  DARKNESS_SANITY_DRAIN,
 } from "../gameConfig";
 import {
   applyDamage,
-  calculateMoveCooldown,
+  getThreatLevel,
+  isAttackReachableByTiles,
+  isStunned,
+  planMovementPath,
   createEnemyState,
   distanceBetween,
   getZoneForPosition,
+  resolveCombatHit,
+  sanityHealthPenalty,
   updateEnemyState,
+  updateSanity,
 } from "../gameLogic";
-import type { EnemyState } from "../gameLogic";
+import type { EnemyState, ThreatLevel } from "../gameLogic";
 import type { NoiseEvent, RadarSignal, SignalType } from "../types";
 import { GameHud } from "./GameHud";
 import { GameMap } from "./GameMap";
@@ -36,7 +45,6 @@ import { RadarPanel } from "./RadarPanel";
 import { GameOverlay } from "./GameOverlay";
 import { useAuth } from "../../auth/AuthProvider";
 import {
-  buildPathToTile,
   buildTileMap,
   createTileLookup,
   findReachableTiles,
@@ -116,10 +124,12 @@ export function TacticalGame({
   const [activeAction, setActiveAction] = useState<"move" | "attack" | "defend">("move");
   const [gameStatus, setGameStatus] = useState<GameStatus>("playing");
   const [health, setHealth] = useState(PLAYER_MAX_HEALTH);
+  const [sanity, setSanity] = useState(MAX_SANITY);
   const [moveCooldownEndsAt, setMoveCooldownEndsAt] = useState(0);
   const [attackCooldownEndsAt, setAttackCooldownEndsAt] = useState(0);
-  const [defendingUntil, setDefendingUntil] = useState(0);
-  const [defenseCooldownEndsAt, setDefenseCooldownEndsAt] = useState(0);
+  const [parryUntil, setParryUntil] = useState(0);
+  const [parryCooldownEndsAt, setParryCooldownEndsAt] = useState(0);
+  const [stunnedUntil, setStunnedUntil] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const [message, setMessage] = useState(
     "Marca una celda dentro de tu pulso visible y sobrevive a los ecos de la cueva.",
@@ -135,14 +145,19 @@ export function TacticalGame({
   const [pathPreview, setPathPreview] = useState<PlayerPosition[]>([]);
   const [movementPath, setMovementPath] = useState<PlayerPosition[]>([]);
   const [isTraversing, setIsTraversing] = useState(false);
+  const [threatLevel, setThreatLevel] = useState<ThreatLevel>("calm");
 
+  const healthRef = useRef(health);
   const playerRef = useRef(player);
   const enemiesRef = useRef(enemies);
   const noisesRef = useRef(noises);
   const gameStatusRef = useRef(gameStatus);
+  const isTraversingRef = useRef(isTraversing);
   const moveCooldownEndsAtRef = useRef(moveCooldownEndsAt);
   const attackCooldownEndsAtRef = useRef(attackCooldownEndsAt);
-  const defendingUntilRef = useRef(defendingUntil);
+  const parryUntilRef = useRef(parryUntil);
+  const stunnedUntilRef = useRef(stunnedUntil);
+  const lastMeaningfulActionAtRef = useRef(Date.now());
   const resultSavedRef = useRef(false);
   const lastZoneIdRef = useRef(getZoneForPosition(caveSession.layout.startPosition, caveSession.layout.zones).id);
   const combatFlashTimeoutRef = useRef<number | null>(null);
@@ -150,6 +165,10 @@ export function TacticalGame({
   useEffect(() => {
     playerRef.current = player;
   }, [player]);
+
+  useEffect(() => {
+    healthRef.current = health;
+  }, [health]);
 
   useEffect(() => {
     enemiesRef.current = enemies;
@@ -164,6 +183,10 @@ export function TacticalGame({
   }, [gameStatus]);
 
   useEffect(() => {
+    isTraversingRef.current = isTraversing;
+  }, [isTraversing]);
+
+  useEffect(() => {
     moveCooldownEndsAtRef.current = moveCooldownEndsAt;
   }, [moveCooldownEndsAt]);
 
@@ -172,8 +195,12 @@ export function TacticalGame({
   }, [attackCooldownEndsAt]);
 
   useEffect(() => {
-    defendingUntilRef.current = defendingUntil;
-  }, [defendingUntil]);
+    parryUntilRef.current = parryUntil;
+  }, [parryUntil]);
+
+  useEffect(() => {
+    stunnedUntilRef.current = stunnedUntil;
+  }, [stunnedUntil]);
 
   useEffect(() => {
     if ((gameStatus !== "won" && gameStatus !== "lost") || resultSavedRef.current) {
@@ -204,15 +231,53 @@ export function TacticalGame({
   useEffect(() => {
     const interval = window.setInterval(() => {
       const tickNow = Date.now();
+      const idleMs = tickNow - lastMeaningfulActionAtRef.current;
+      const nextThreatLevel = getThreatLevel(idleMs);
+      const dominantEnemyState =
+        enemiesRef.current.find(
+          (enemy) =>
+            enemy.state === "chasing" ||
+            enemy.state === "investigating" ||
+            enemy.state === "attacking",
+        )?.state ?? "idle";
+
       setNow(tickNow);
+      setThreatLevel(nextThreatLevel);
       setSignals((current) =>
         current.filter((signal) => tickNow - signal.createdAt < signal.duration),
       );
       setNoises((current) => current.filter((noise) => tickNow - noise.createdAt < 3200));
+      setSanity((currentSanity) => {
+        const nextSanity = updateSanity(
+          currentSanity,
+          0.1,
+          getZoneForPosition(playerRef.current, caveSession.layout.zones),
+          isTraversingRef.current,
+          nextThreatLevel,
+          dominantEnemyState,
+          idleMs,
+          DARKNESS_SANITY_DRAIN,
+        );
+        const sanityDamage = sanityHealthPenalty(nextSanity, 0.1);
+
+        if (sanityDamage > 0) {
+          setHealth((currentHealth) => {
+            const nextHealth = applyDamage(currentHealth, sanityDamage);
+
+            if (nextHealth <= 0) {
+              endAsLoss("La cordura colapso y la cueva cerro la partida.");
+            }
+
+            return nextHealth;
+          });
+        }
+
+        return nextSanity;
+      });
     }, 100);
 
     return () => window.clearInterval(interval);
-  }, []);
+  }, [caveSession.layout.zones]);
 
   const aliveEnemies = useMemo(
     () => enemies.filter((enemy) => enemy.alive && enemy.state !== "dead"),
@@ -222,10 +287,11 @@ export function TacticalGame({
     () => getZoneForPosition(player, caveSession.layout.zones),
     [caveSession.layout.zones, player],
   );
-  const isDefending = defendingUntil > now && gameStatus === "playing";
+  const isParrying = parryUntil > now && gameStatus === "playing";
+  const isPlayerStunned = stunnedUntil > now && gameStatus === "playing";
   const moveCooldownRemaining = Math.max(0, moveCooldownEndsAt - now);
   const attackCooldownRemaining = Math.max(0, attackCooldownEndsAt - now);
-  const defenseCooldownRemaining = Math.max(0, defenseCooldownEndsAt - now);
+  const parryCooldownRemaining = Math.max(0, parryCooldownEndsAt - now);
   const reachableTiles = useMemo(
     () => findReachableTiles(worldToTile(player), PLAYER_MOVE_RANGE_TILES, caveSession.lookup),
     [caveSession.lookup, player],
@@ -321,7 +387,8 @@ export function TacticalGame({
       return;
     }
 
-    let pendingDamage = 0;
+    const turnNow = Date.now();
+    let nextPlayerHealth = healthRef.current;
     let hostileCount = 0;
     let lastEnemyMessage: string | null = null;
 
@@ -339,7 +406,7 @@ export function TacticalGame({
         ENEMY_MOVE_INTERVAL / 1000,
         gameStatusRef.current,
         noisesRef.current,
-        Date.now(),
+        turnNow,
         caveSession.lookup,
       );
 
@@ -359,11 +426,36 @@ export function TacticalGame({
       }
 
       if (nextEnemy.state === "attacking") {
-        pendingDamage += nextEnemy.damage;
         addSignal("attack", nextEnemy, nextEnemy.id);
         addNoise("attack", nextEnemy, 8, 1.15, nextEnemy.id);
+        if (turnNow - nextEnemy.lastAttackAt < ATTACK_COOLDOWN) {
+          return nextEnemy;
+        }
+
+        const resolution = resolveCombatHit({
+          targetHealth: nextPlayerHealth,
+          damage: nextEnemy.damage,
+          now: turnNow,
+          targetParryUntil: parryUntilRef.current,
+        });
+
+        if (resolution.wasParried) {
+          setParryUntil(resolution.nextParryUntil);
+          lastEnemyMessage = `Parry perfecto: ${nextEnemy.name} queda aturdida.`;
+          showCombatFlash("Parry");
+          return {
+            ...nextEnemy,
+            lastAttackAt: turnNow,
+            stunnedUntil: resolution.attackerStunnedUntil,
+          };
+        }
+
+        nextPlayerHealth = resolution.nextHealth;
         lastEnemyMessage = `${nextEnemy.name} entra en rango y golpea.`;
-        return nextEnemy;
+        return {
+          ...nextEnemy,
+          lastAttackAt: turnNow,
+        };
       }
 
       if (enemyMoved) {
@@ -383,13 +475,10 @@ export function TacticalGame({
       return nextEnemy;
     });
 
-    if (pendingDamage > 0) {
-      const blocked = Date.now() < defendingUntilRef.current;
-      const nextHealth = applyDamage(health, pendingDamage, blocked);
-      setHealth(nextHealth);
-      showCombatFlash(blocked ? `Bloqueaste ${pendingDamage}` : `-${pendingDamage} HP`);
-
-      if (nextHealth <= 0) {
+    if (nextPlayerHealth !== healthRef.current) {
+      setHealth(nextPlayerHealth);
+      showCombatFlash(`-${Math.max(0, healthRef.current - nextPlayerHealth)} HP`);
+      if (nextPlayerHealth <= 0) {
         setEnemies(updatedEnemies);
         endAsLoss("Tu vida llego a cero. La cueva cerro el combate a su favor.");
         return;
@@ -437,7 +526,16 @@ export function TacticalGame({
         return;
       }
 
+      if (isStunned(stunnedUntilRef.current, Date.now())) {
+        window.clearInterval(interval);
+        setMovementPath([]);
+        setPathPreview([]);
+        setIsTraversing(false);
+        return;
+      }
+
       setPlayer(nextStep);
+      lastMeaningfulActionAtRef.current = Date.now();
       addSignal("move", nextStep, "player");
       addNoise(
         "move",
@@ -454,7 +552,7 @@ export function TacticalGame({
         setPathPreview([]);
         setIsTraversing(false);
       }
-    }, 78);
+    }, MOVEMENT_STEP_INTERVAL_MS);
 
     return () => window.clearInterval(interval);
   }, [gameStatus, movementPath, selectedCharacter.moveSignalMultiplier]);
@@ -464,50 +562,39 @@ export function TacticalGame({
       return;
     }
 
+    if (isStunned(stunnedUntilRef.current, Date.now())) {
+      setMessage("Estas aturdido y no puedes moverte.");
+      return;
+    }
+
     if (moveCooldownEndsAtRef.current > Date.now() || isTraversing) {
       setMessage("Tu pulso aun no se estabiliza para otro desplazamiento.");
       return;
     }
 
-    const originTile = worldToTile(playerRef.current);
-    const targetTile = worldToTile(target);
-    const reachable = reachableTiles.get(`${targetTile.col},${targetTile.row}`);
-
-    if (
-      !reachable ||
-      (targetTile.col === originTile.col && targetTile.row === originTile.row)
-    ) {
-      setMessage("Esa celda no esta disponible dentro de tu alcance.");
-      setPathPreview([]);
-      return;
-    }
-
-    const path = buildPathToTile(
-      originTile,
-      targetTile,
+    const movePlan = planMovementPath(
+      playerRef.current,
+      target,
       PLAYER_MOVE_RANGE_TILES,
       caveSession.lookup,
+      selectedCharacter.moveCooldownMultiplier,
     );
 
-    if (!path || path.length <= 1) {
+    if (!movePlan) {
       setMessage("No hay una ruta caminable hacia esa celda.");
       setPathPreview([]);
       return;
     }
 
-    const worldPath = path.slice(1).map(tileToWorld);
-    const travelDistanceTiles = path.length - 1;
-    const moveCooldown = calculateMoveCooldown(travelDistanceTiles);
-
     setIsTraversing(true);
-    setMovementPath(worldPath);
-    setPathPreview(worldPath);
-    setMoveCooldownEndsAt(Date.now() + moveCooldown);
+    setMovementPath(movePlan.worldPath);
+    setPathPreview(movePlan.worldPath);
+    setMoveCooldownEndsAt(Date.now() + movePlan.cooldownMs);
     setActiveAction("move");
     setMessage(
-      travelDistanceTiles === 1
+      movePlan.distanceTiles === 1
         ? "Avanzas con cuidado una casilla."
-        : `Te deslizas ${travelDistanceTiles} casillas por la cueva.`,
+        : `Te deslizas ${movePlan.distanceTiles} casillas por la cueva.`,
     );
   }
 
@@ -517,6 +604,16 @@ export function TacticalGame({
 
   function handleAttack() {
     if (gameStatus !== "playing") {
+      return;
+    }
+
+    if (isStunned(stunnedUntilRef.current, Date.now())) {
+      setMessage("Estas aturdido y no puedes atacar.");
+      return;
+    }
+
+    if (moveCooldownEndsAtRef.current > Date.now()) {
+      setMessage("Tu pulso aun no se estabiliza para atacar.");
       return;
     }
 
@@ -533,10 +630,13 @@ export function TacticalGame({
           tileDistance(playerTile, worldToTile(left)) -
           tileDistance(playerTile, worldToTile(right)),
       )
-      .find((enemy) => tileDistance(playerTile, worldToTile(enemy)) <= PLAYER_ATTACK_RANGE_TILES);
+      .find((enemy) =>
+        isAttackReachableByTiles(playerRef.current, enemy, PLAYER_ATTACK_RANGE_TILES, caveSession.lookup),
+      );
 
     setAttackCooldownEndsAt(Date.now() + ATTACK_COOLDOWN);
     setActiveAction("attack");
+    lastMeaningfulActionAtRef.current = Date.now();
     addSignal("attack", playerRef.current, "player");
     addNoise("attack", playerRef.current, 9, 1.2, "player");
 
@@ -592,19 +692,30 @@ export function TacticalGame({
       return;
     }
 
-    if (defenseCooldownRemaining > 0) {
-      setMessage("Tu coraza aun no esta lista para otro bloqueo.");
+    if (isStunned(stunnedUntilRef.current, Date.now())) {
+      setMessage("Estas aturdido y no puedes hacer parry.");
+      return;
+    }
+
+    if (moveCooldownEndsAtRef.current > Date.now()) {
+      setMessage("Tu pulso aun no se estabiliza para hacer parry.");
+      return;
+    }
+
+    if (parryCooldownRemaining > 0) {
+      setMessage("Tu parry aun no esta listo.");
       return;
     }
 
     const activatedAt = Date.now();
-    setDefendingUntil(activatedAt + DEFEND_ACTIVE_DURATION);
-    setDefenseCooldownEndsAt(activatedAt + DEFEND_COOLDOWN);
+    lastMeaningfulActionAtRef.current = activatedAt;
+    setParryUntil(activatedAt + PARRY_WINDOW_MS);
+    setParryCooldownEndsAt(activatedAt + PARRY_COOLDOWN_MS);
     setActiveAction("defend");
     addSignal("defend", playerRef.current, "player");
     addNoise("defend", playerRef.current, 6, 0.65, "player");
-    setMessage("Endureces el cuerpo y amortiguas el siguiente intercambio.");
-    showCombatFlash("Defensa activa");
+    setMessage("Abres una ventana corta de parry.");
+    showCombatFlash("Parry activo");
   }
 
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
@@ -653,10 +764,13 @@ export function TacticalGame({
     setActiveAction("move");
     setGameStatus("playing");
     setHealth(PLAYER_MAX_HEALTH);
+    setSanity(MAX_SANITY);
     setMoveCooldownEndsAt(0);
     setAttackCooldownEndsAt(0);
-    setDefendingUntil(0);
-    setDefenseCooldownEndsAt(0);
+    setParryUntil(0);
+    setParryCooldownEndsAt(0);
+    setStunnedUntil(0);
+    setThreatLevel("calm");
     setMessage("Marca una celda dentro de tu alcance y sobrevive a los ecos de la cueva.");
     setZoneMessage("Solo ves 8 bloques alrededor. Todo lo demas es oscuridad.");
     setScore(0);
@@ -667,6 +781,7 @@ export function TacticalGame({
     setPathPreview([]);
     setMovementPath([]);
     setIsTraversing(false);
+    lastMeaningfulActionAtRef.current = Date.now();
     lastZoneIdRef.current = getZoneForPosition(
       nextSession.layout.startPosition,
       nextSession.layout.zones,
@@ -731,7 +846,7 @@ export function TacticalGame({
         enemies={enemies}
         signals={signals}
         activeAction={activeAction}
-        isDefending={isDefending}
+        isDefending={isParrying}
         currentZone={currentZone}
         gameStatus={gameStatus}
         tiles={caveSession.tiles}
@@ -749,16 +864,20 @@ export function TacticalGame({
         zoneMessage={zoneMessage}
         health={health}
         maxHealth={PLAYER_MAX_HEALTH}
+        sanity={sanity}
+        maxSanity={MAX_SANITY}
         aliveCount={aliveEnemies.length + (gameStatus === "lost" ? 0 : 1)}
-        enemyStateLabel={threatSummary}
+        enemyStateLabel={`${threatSummary} · quietud ${threatLevel}`}
         isPaused={false}
         score={score}
         kills={kills}
-        defenseActive={isDefending}
+        parryActive={isParrying}
+        isStunned={isPlayerStunned}
         moveCooldownRemaining={moveCooldownRemaining}
         attackCooldownRemaining={attackCooldownRemaining}
-        defenseCooldownRemaining={defenseCooldownRemaining}
-        defenseDurationRemaining={Math.max(0, defendingUntil - now)}
+        parryCooldownRemaining={parryCooldownRemaining}
+        parryWindowRemaining={Math.max(0, parryUntil - now)}
+        stunRemaining={Math.max(0, stunnedUntil - now)}
         nearestThreatTiles={nearestThreatTiles}
         nearbyDangerLabel={nearbyDangerLabel}
         detectedEnemies={detectedEnemies}
@@ -783,9 +902,9 @@ export function TacticalGame({
         activeAction={activeAction}
         cooldownRemaining={attackCooldownRemaining}
         moveCooldownRemaining={moveCooldownRemaining}
-        defenseCooldownRemaining={defenseCooldownRemaining}
+        parryCooldownRemaining={parryCooldownRemaining}
         isRecovering={attackCooldownRemaining > 0}
-        isDefending={isDefending}
+        isParrying={isParrying}
         onMove={() =>
           setMessage(
             moveCooldownRemaining > 0

@@ -21,19 +21,53 @@ type GameHudProps = {
   onTogglePause?: () => void;
   score?: number;
   kills?: number;
-  defenseActive?: boolean;
+  parryActive?: boolean;
+  isStunned?: boolean;
   moveCooldownRemaining?: number;
   attackCooldownRemaining?: number;
-  defenseCooldownRemaining?: number;
-  defenseDurationRemaining?: number;
+  parryCooldownRemaining?: number;
+  parryWindowRemaining?: number;
+  stunRemaining?: number;
   nearestThreatTiles?: number | null;
   nearbyDangerLabel?: string;
   detectedEnemies?: number;
   attackRangeLabel?: string;
+  otherPlayersSummary?: Array<{
+    id: string;
+    name: string;
+    health: number;
+    maxHealth: number;
+    isParrying: boolean;
+    isStunned: boolean;
+  }>;
 };
 
 function formatCooldown(value: number) {
   return value > 0 ? `${(value / 1000).toFixed(1)}s` : "listo";
+}
+
+function formatGuardState({
+  isStunned,
+  stunRemaining,
+  parryActive,
+  parryWindowRemaining,
+  parryCooldownRemaining,
+}: {
+  isStunned: boolean;
+  stunRemaining: number;
+  parryActive: boolean;
+  parryWindowRemaining: number;
+  parryCooldownRemaining: number;
+}) {
+  if (isStunned) {
+    return `stun · ${(stunRemaining / 1000).toFixed(1)}s`;
+  }
+
+  if (parryActive) {
+    return `activo · ${(parryWindowRemaining / 1000).toFixed(1)}s`;
+  }
+
+  return formatCooldown(parryCooldownRemaining);
 }
 
 export function GameHud({
@@ -52,19 +86,29 @@ export function GameHud({
   onTogglePause,
   score = 0,
   kills = 0,
-  defenseActive = false,
+  parryActive = false,
+  isStunned = false,
   moveCooldownRemaining = 0,
   attackCooldownRemaining = 0,
-  defenseCooldownRemaining = 0,
-  defenseDurationRemaining = 0,
+  parryCooldownRemaining = 0,
+  parryWindowRemaining = 0,
+  stunRemaining = 0,
   nearestThreatTiles = null,
   nearbyDangerLabel = "bajo",
   detectedEnemies = 0,
   attackRangeLabel = "3 casillas",
+  otherPlayersSummary = [],
 }: GameHudProps) {
   const sanityLabel =
     typeof sanity === "number" ? getSanityStateLabel(sanity) : null;
   const hpPercent = Math.max(0, Math.min(100, (health / maxHealth) * 100));
+  const guardState = formatGuardState({
+    isStunned,
+    stunRemaining,
+    parryActive,
+    parryWindowRemaining,
+    parryCooldownRemaining,
+  });
 
   return (
     <>
@@ -119,12 +163,8 @@ export function GameHud({
             <p className="mt-1 text-zinc-100">{formatCooldown(attackCooldownRemaining)}</p>
           </div>
           <div className="rounded-xl border border-white/8 bg-black/35 px-3 py-2">
-            <p className="text-zinc-500">Coraza</p>
-            <p className="mt-1 text-zinc-100">
-              {defenseActive
-                ? `activa · ${(defenseDurationRemaining / 1000).toFixed(1)}s`
-                : formatCooldown(defenseCooldownRemaining)}
-            </p>
+            <p className="text-zinc-500">Parry</p>
+            <p className="mt-1 text-zinc-100">{guardState}</p>
           </div>
           <div className="rounded-xl border border-white/8 bg-black/35 px-3 py-2">
             <p className="text-zinc-500">Score</p>
@@ -189,12 +229,8 @@ export function GameHud({
             <p className="mt-1 text-zinc-100">{formatCooldown(attackCooldownRemaining)}</p>
           </div>
           <div className="rounded-xl border border-white/8 bg-black/35 px-3 py-2">
-            <p className="text-zinc-500">Coraza</p>
-            <p className="mt-1 text-zinc-100">
-              {defenseActive
-                ? `activa · ${(defenseDurationRemaining / 1000).toFixed(1)}s`
-                : formatCooldown(defenseCooldownRemaining)}
-            </p>
+            <p className="text-zinc-500">Parry</p>
+            <p className="mt-1 text-zinc-100">{guardState}</p>
           </div>
           <div className="rounded-xl border border-white/8 bg-black/35 px-3 py-2">
             <p className="text-zinc-500">Peligro</p>
@@ -243,12 +279,8 @@ export function GameHud({
             <p className="mt-2 text-zinc-100">{kills}</p>
           </div>
           <div className="rounded-xl border border-white/8 bg-black/35 px-3 py-3">
-            <p className="text-zinc-500">Defensa</p>
-            <p className="mt-2 text-zinc-100">
-              {defenseActive
-                ? `activa · ${(defenseDurationRemaining / 1000).toFixed(1)}s`
-                : formatCooldown(defenseCooldownRemaining)}
-            </p>
+            <p className="text-zinc-500">Parry</p>
+            <p className="mt-2 text-zinc-100">{guardState}</p>
           </div>
           <div className="rounded-xl border border-white/8 bg-black/35 px-3 py-3">
             <p className="text-zinc-500">Eco cercano</p>
@@ -278,6 +310,27 @@ export function GameHud({
           <div className="mt-3 flex items-center justify-between text-xs text-zinc-400">
             <span>Ultimas presencias</span>
             <span className="text-zinc-200">{aliveCount}</span>
+          </div>
+        )}
+        {otherPlayersSummary.length > 0 && (
+          <div className="mt-4 space-y-2 border-t border-white/8 pt-3 text-xs text-zinc-400">
+            {otherPlayersSummary.map((otherPlayer) => (
+              <div key={otherPlayer.id} className="flex items-center justify-between gap-3 rounded-xl bg-black/25 px-3 py-2">
+                <div>
+                  <p className="text-zinc-100">{otherPlayer.name}</p>
+                  <p className="text-[0.65rem] text-zinc-500">
+                    {otherPlayer.isStunned
+                      ? "stunned"
+                      : otherPlayer.isParrying
+                        ? "parry"
+                        : "activo"}
+                  </p>
+                </div>
+                <p className="text-zinc-100">
+                  {otherPlayer.health}/{otherPlayer.maxHealth}
+                </p>
+              </div>
+            ))}
           </div>
         )}
       </div>

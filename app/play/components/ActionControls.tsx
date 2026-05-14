@@ -7,9 +7,9 @@ type ActionControlsProps = {
   activeAction: ActionKind;
   cooldownRemaining: number;
   moveCooldownRemaining: number;
-  defenseCooldownRemaining: number;
+  parryCooldownRemaining: number;
   isRecovering: boolean;
-  isDefending: boolean;
+  isParrying: boolean;
   onMove: () => void;
   onAttack: () => void;
   onDefend: () => void;
@@ -23,9 +23,9 @@ export function ActionControls({
   activeAction,
   cooldownRemaining,
   moveCooldownRemaining,
-  defenseCooldownRemaining,
+  parryCooldownRemaining,
   isRecovering,
-  isDefending,
+  isParrying,
   onMove,
   onAttack,
   onDefend,
@@ -74,9 +74,9 @@ export function ActionControls({
           <button
             type="button"
             onClick={onDefend}
-            disabled={defenseCooldownRemaining > 0}
+            disabled={parryCooldownRemaining > 0}
             className={`min-h-[4.4rem] rounded-[1rem] border px-2.5 py-3 text-center transition sm:px-4 sm:text-left ${
-              activeAction === "defend" || isDefending
+              activeAction === "defend" || isParrying
                 ? "border-amber-100/30 bg-amber-950/25"
                 : "border-white/8 bg-black/35 hover:bg-white/[0.04]"
             } disabled:opacity-45`}
@@ -84,9 +84,9 @@ export function ActionControls({
             <div className="flex flex-col items-center gap-2 sm:flex-row sm:items-center sm:gap-3">
               <Shield className="h-4 w-4 text-amber-100" />
               <div>
-                <p className="text-[0.7rem] uppercase tracking-[0.22em] text-zinc-500">Coraza</p>
+                <p className="text-[0.7rem] uppercase tracking-[0.22em] text-zinc-500">Parry</p>
                 <p className="mt-1 text-sm text-zinc-100">
-                  {isDefending ? "activa" : label(defenseCooldownRemaining)}
+                  {isParrying ? "activo" : label(parryCooldownRemaining)}
                 </p>
               </div>
             </div>

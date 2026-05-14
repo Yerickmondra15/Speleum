@@ -13,7 +13,6 @@ import {
   CHASE_SANITY_DRAIN,
   CAVE_HEIGHT,
   CAVE_WIDTH,
-  DEFEND_DAMAGE_REDUCTION,
   FEAR_CRITICAL_THRESHOLD,
   FEAR_WARNING_THRESHOLD,
   IDLE_SANITY_DRAIN,
@@ -25,11 +24,15 @@ import {
   MOVE_MAX_COOLDOWN,
   MOVING_SANITY_RECOVERY,
   PLAYER_RADIUS,
+  PLAYER_SPAWN_MIN_DISTANCE_TILES,
   SAFE_ZONE_SANITY_RECOVERY,
+  SANITY_IDLE_GRACE_MS,
   SANITY_DAMAGE_PER_TICK,
   SANITY_DAMAGE_THRESHOLD,
+  SPAWN_ENEMY_BUFFER_TILES,
+  SPAWN_HAZARD_BUFFER_TILES,
+  STUN_DURATION_MS,
   TILE_SIZE,
-  THREAT_DEATH_MS,
   THREAT_HUNT_MS,
   THREAT_WARNING_MS,
   caveWalls,
@@ -37,6 +40,7 @@ import {
 import {
   buildPathToTile,
   clampTile,
+  getTileAt,
   getTileNeighbors,
   isWalkableTile,
   stepTowardTile,
@@ -46,6 +50,7 @@ import {
   type TileLookup,
 } from "./tileMap";
 import type { NoiseEvent } from "./types";
+import type { CaveLayout } from "./proceduralCave";
 
 export type EnemyBehaviorState =
   | "idle"
@@ -55,6 +60,7 @@ export type EnemyBehaviorState =
   | "ambushing"
   | "chasing"
   | "attacking"
+  | "stunned"
   | "dead";
 export type ThreatLevel = "calm" | "uneasy" | "hunted" | "doomed";
 
@@ -86,6 +92,24 @@ export type EnemyState = {
   lastKnownTargetId: string | null;
   stateSince: number;
   lastPositions: string[];
+  lastAttackAt: number;
+  stunnedUntil: number;
+};
+
+export type CombatResolution = {
+  nextHealth: number;
+  damageApplied: number;
+  wasParried: boolean;
+  nextParryUntil: number;
+  attackerStunnedUntil: number;
+};
+
+export type PlannedMovement = {
+  path: TileCoordinate[];
+  worldPath: PlayerPosition[];
+  distanceTiles: number;
+  cooldownMs: number;
+  targetTile: TileCoordinate;
 };
 
 export function clamp(value: number, min: number, max: number) {
@@ -342,11 +366,63 @@ export function reachedGoal(position: PlayerPosition, goal: GoalArea | null) {
 export function applyDamage(
   health: number,
   damage: number,
-  isDefending: boolean,
 ) {
-  const mitigation = isDefending ? 1 - DEFEND_DAMAGE_REDUCTION : 1;
+  return Math.max(0, Math.round(health - damage));
+}
 
-  return Math.max(0, Math.round(health - damage * mitigation));
+export function isParryActive(parryUntil: number, now = Date.now()) {
+  return parryUntil > now;
+}
+
+export function isStunned(stunnedUntil: number, now = Date.now()) {
+  return stunnedUntil > now;
+}
+
+export function canTakeTurn({
+  now = Date.now(),
+  stunnedUntil = 0,
+  alive = true,
+}: {
+  now?: number;
+  stunnedUntil?: number;
+  alive?: boolean;
+}) {
+  return alive && !isStunned(stunnedUntil, now);
+}
+
+export function resolveCombatHit({
+  targetHealth,
+  damage,
+  now = Date.now(),
+  targetParryUntil = 0,
+  attackerStunnedUntil = 0,
+  stunDurationMs = STUN_DURATION_MS,
+}: {
+  targetHealth: number;
+  damage: number;
+  now?: number;
+  targetParryUntil?: number;
+  attackerStunnedUntil?: number;
+  stunDurationMs?: number;
+}): CombatResolution {
+  if (isParryActive(targetParryUntil, now)) {
+    return {
+      nextHealth: targetHealth,
+      damageApplied: 0,
+      wasParried: true,
+      nextParryUntil: now,
+      attackerStunnedUntil: Math.max(attackerStunnedUntil, now + stunDurationMs),
+    };
+  }
+
+  const nextHealth = applyDamage(targetHealth, damage);
+  return {
+    nextHealth,
+    damageApplied: Math.max(0, targetHealth - nextHealth),
+    wasParried: false,
+    nextParryUntil: targetParryUntil,
+    attackerStunnedUntil,
+  };
 }
 
 export function calculateMoveCooldown(
@@ -359,6 +435,54 @@ export function calculateMoveCooldown(
 
   const scaled = Math.round(distance * MOVE_DISTANCE_COOLDOWN * moveCooldownMultiplier);
   return clamp(Math.max(MOVE_BASE_COOLDOWN, scaled), MOVE_BASE_COOLDOWN, MOVE_MAX_COOLDOWN);
+}
+
+export function planMovementPath(
+  from: PlayerPosition,
+  target: PlayerPosition,
+  maxRangeTiles: number,
+  lookup?: TileLookup,
+  moveCooldownMultiplier = 1,
+): PlannedMovement | null {
+  const originTile = worldToTile(from);
+  const targetTile = worldToTile(target);
+
+  if (originTile.col === targetTile.col && originTile.row === targetTile.row) {
+    return null;
+  }
+
+  const path = buildPathToTile(originTile, targetTile, maxRangeTiles, lookup);
+
+  if (!path || path.length <= 1) {
+    return null;
+  }
+
+  const distanceTiles = path.length - 1;
+
+  return {
+    path,
+    worldPath: path.slice(1).map(tileToWorld),
+    distanceTiles,
+    cooldownMs: calculateMoveCooldown(distanceTiles, moveCooldownMultiplier),
+    targetTile,
+  };
+}
+
+export function isAttackReachableByTiles(
+  from: PlayerPosition,
+  target: PlayerPosition,
+  rangeTiles: number,
+  lookup?: TileLookup,
+) {
+  const fromTile = worldToTile(from);
+  const targetTile = worldToTile(target);
+
+  if (tileDistance(fromTile, targetTile) > rangeTiles) {
+    return false;
+  }
+
+  const path = buildPathToTile(fromTile, targetTile, rangeTiles, lookup);
+  return Boolean(path && path.length - 1 <= rangeTiles);
 }
 
 export function getAdjacentTilePosition(
@@ -405,15 +529,15 @@ export function shouldFinalizeMoveBurst(lastMoveAt: number, now: number) {
 }
 
 export function getThreatLevel(idleMs: number): ThreatLevel {
-  if (idleMs >= THREAT_DEATH_MS) {
+  if (idleMs >= THREAT_HUNT_MS) {
     return "doomed";
   }
 
-  if (idleMs >= THREAT_HUNT_MS) {
+  if (idleMs >= THREAT_WARNING_MS) {
     return "hunted";
   }
 
-  if (idleMs >= THREAT_WARNING_MS) {
+  if (idleMs >= Math.max(1000, THREAT_WARNING_MS - 60_000)) {
     return "uneasy";
   }
 
@@ -439,28 +563,29 @@ export function updateSanity(
   isMoving: boolean,
   threatLevel: ThreatLevel,
   enemyState: EnemyBehaviorState,
+  idleMs: number,
   darknessDrainPerSecond: number,
 ) {
   let delta = 0;
 
   if (zone.tone === "safe") {
     delta += SAFE_ZONE_SANITY_RECOVERY * deltaSeconds;
-  } else {
+  } else if (isMoving) {
+    delta += MOVING_SANITY_RECOVERY * deltaSeconds;
+  } else if (idleMs >= SANITY_IDLE_GRACE_MS) {
     delta -= (darknessDrainPerSecond + zone.pressure) * deltaSeconds;
   }
 
-  if (isMoving) {
-    delta += MOVING_SANITY_RECOVERY * deltaSeconds;
-  } else {
+  if (idleMs >= SANITY_IDLE_GRACE_MS) {
     delta -= IDLE_SANITY_DRAIN * deltaSeconds;
   }
 
   if (threatLevel === "uneasy") {
-    delta -= 3 * deltaSeconds;
+    delta -= 0.35 * deltaSeconds;
   } else if (threatLevel === "hunted") {
-    delta -= 7 * deltaSeconds;
+    delta -= 0.7 * deltaSeconds;
   } else if (threatLevel === "doomed") {
-    delta -= 12 * deltaSeconds;
+    delta -= 1.15 * deltaSeconds;
   }
 
   if (
@@ -510,6 +635,8 @@ export function createEnemyState(config: EnemyConfig): EnemyState {
     lastKnownTargetId: null,
     stateSince: Date.now(),
     lastPositions: [],
+    lastAttackAt: 0,
+    stunnedUntil: 0,
   };
 }
 
@@ -725,6 +852,10 @@ export function updateEnemyState(
     };
   }
 
+  if (isStunned(current.stunnedUntil, now)) {
+    return withEnemyState(current, "stunned", {});
+  }
+
   const enemyTile = worldToTile(current);
   const selectedTarget = targetForEnemy(current, targets);
   const homeTile = worldToTile(config.start);
@@ -852,4 +983,99 @@ export function updateEnemyState(
 
 export function getVisibleNeighbors(origin: PlayerPosition) {
   return getTileNeighbors(worldToTile(origin)).map(tileToWorld);
+}
+
+function tileIsSafeSpawn(
+  tile: TileCoordinate,
+  layout: CaveLayout,
+  lookup: TileLookup,
+) {
+  const cell = getTileAt(tile, lookup);
+
+  if (!cell || !cell.walkable || cell.type === "hazard" || cell.type === "wall" || cell.type === "obstacle") {
+    return false;
+  }
+
+  const tileWorld = tileToWorld(tile);
+
+  const nearHazard = layout.hazardAreas.some(
+    (hazard) =>
+      tileDistance(worldToTile(tileWorld), worldToTile({ x: hazard.x + hazard.width / 2, y: hazard.y + hazard.height / 2 })) <=
+      SPAWN_HAZARD_BUFFER_TILES,
+  );
+  const nearEnemy = layout.enemyConfigs.some(
+    (enemy) =>
+      tileDistance(tile, worldToTile(enemy.start)) <= SPAWN_ENEMY_BUFFER_TILES,
+  );
+
+  return !nearHazard && !nearEnemy;
+}
+
+export function pickSeparatedSpawns(
+  layout: CaveLayout,
+  lookup: TileLookup,
+  count: number,
+  minimumDistanceTiles = PLAYER_SPAWN_MIN_DISTANCE_TILES,
+) {
+  const preferredTiles = [
+    layout.startPosition,
+    ...layout.multiplayerSpawnPositions,
+  ]
+    .map(worldToTile)
+    .filter((tile, index, list) => list.findIndex((entry) => entry.col === tile.col && entry.row === tile.row) === index)
+    .filter((tile) => tileIsSafeSpawn(tile, layout, lookup));
+  const walkableCandidates = lookup.tiles
+    .filter((tile) => tile.walkable && tileIsSafeSpawn({ col: tile.col, row: tile.row }, layout, lookup))
+    .map((tile) => ({ col: tile.col, row: tile.row }));
+  const candidates = [...preferredTiles];
+
+  for (const candidate of walkableCandidates) {
+    if (!candidates.some((entry) => entry.col === candidate.col && entry.row === candidate.row)) {
+      candidates.push(candidate);
+    }
+  }
+
+  const selected: TileCoordinate[] = [];
+
+  while (selected.length < count && candidates.length > 0) {
+    const next =
+      selected.length === 0
+        ? candidates
+            .slice()
+            .sort((left, right) => {
+              const leftScore = layout.enemyConfigs.reduce(
+                (score, enemy) => score + tileDistance(left, worldToTile(enemy.start)),
+                0,
+              );
+              const rightScore = layout.enemyConfigs.reduce(
+                (score, enemy) => score + tileDistance(right, worldToTile(enemy.start)),
+                0,
+              );
+              return rightScore - leftScore;
+            })[0]
+        : candidates
+            .filter((candidate) =>
+              selected.every((taken) => tileDistance(candidate, taken) >= minimumDistanceTiles),
+            )
+            .sort((left, right) => {
+              const leftGap = Math.min(...selected.map((taken) => tileDistance(left, taken)));
+              const rightGap = Math.min(...selected.map((taken) => tileDistance(right, taken)));
+              return rightGap - leftGap;
+            })[0] ?? candidates[0];
+
+    if (!next) {
+      break;
+    }
+
+    selected.push(next);
+    const nextIndex = candidates.findIndex(
+      (candidate) => candidate.col === next.col && candidate.row === next.row,
+    );
+
+    if (nextIndex >= 0) {
+      candidates.splice(nextIndex, 1);
+    }
+  }
+
+  return selected.map(tileToWorld);
 }

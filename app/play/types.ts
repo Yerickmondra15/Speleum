@@ -53,13 +53,15 @@ export type PlayerCombatState = {
   maxHealth: number;
   sanity: number;
   maxSanity: number;
-  isDefending: boolean;
+  isParrying: boolean;
+  isStunned: boolean;
   threatLevel: ThreatLevel;
   idleMs: number;
   moveCooldownRemaining: number;
   attackCooldownRemaining: number;
-  defenseCooldownRemaining: number;
-  defenseDurationRemaining: number;
+  parryCooldownRemaining: number;
+  parryWindowRemaining: number;
+  stunRemaining: number;
   kills: number;
   damageDealt: number;
   eliminatedAt: number | null;

@@ -3,36 +3,37 @@ import { Server, type Socket } from "socket.io";
 import type { PlayerPosition } from "../app/play/gameConfig";
 import {
   ATTACK_COOLDOWN,
-  ATTACK_RADIUS,
   CAVE_ATTACK_DAMAGE,
   DARKNESS_SANITY_DRAIN,
-  DEFEND_ACTIVE_DURATION,
-  DEFEND_COOLDOWN,
   MAX_HEALTH,
   MAX_ROOM_PLAYERS,
   MAX_SANITY,
+  MOVEMENT_STEP_INTERVAL_MS,
   MIN_ROOM_PLAYERS,
   MOVE_BURST_IDLE_MS,
+  PARRY_COOLDOWN_MS,
+  PARRY_WINDOW_MS,
   PLAYER_ATTACK_DAMAGE,
-  PLAYER_SPEED,
+  PLAYER_ATTACK_RANGE_TILES,
+  PLAYER_MOVE_RANGE_TILES,
   RADAR_SIGNAL_PROFILES,
-  THREAT_DEATH_MS,
   VISION_RADIUS,
   characterOptions,
 } from "../app/play/gameConfig";
 import {
   applyDamage,
-  calculateMoveCooldown,
+  canTakeTurn,
   createEnemyState,
   distanceBetween,
   getThreatLevel,
   getZoneForPosition,
   hitHazard,
+  isAttackReachableByTiles,
   isWithinVision,
-  moveTowardPosition,
-  moveWithCollisions,
+  planMovementPath,
+  pickSeparatedSpawns,
+  resolveCombatHit,
   sanityHealthPenalty,
-  shouldFinalizeMoveBurst,
   updateEnemyState,
   updateSanity,
 } from "../app/play/gameLogic";
@@ -53,15 +54,15 @@ type ServerPlayerState = MultiplayerPlayerState & {
   connectedAt: number;
   lastAttackAt: number;
   lastMoveAt: number;
-  lastDefendAt: number;
+  lastParryAt: number;
+  lastMeaningfulActionAt: number;
   moveCooldownUntil: number;
-  movementBurstDistance: number;
-  defendingUntil: number;
+  movementPath: PlayerPosition[];
+  parryUntil: number;
+  stunnedUntil: number;
 };
 
-type ServerEnemyState = EnemyState & {
-  lastAttackAt: number;
-};
+type ServerEnemyState = EnemyState;
 
 type ServerRoomState = {
   matchId: string;
@@ -85,11 +86,10 @@ type ServerRoomState = {
 
 const PORT = Number(process.env.PORT) || 4001;
 const HOST = "0.0.0.0";
-const MOVE_INTERVAL_MS = 80;
+const MOVE_INTERVAL_MS = MOVEMENT_STEP_INTERVAL_MS;
 const READY_CONFIRMATION_WINDOW_MS = 30000;
 const START_COUNTDOWN_MS = 5000;
 const LOBBY_TICK_MS = 1000;
-const PLAYER_ATTACK_RANGE = ATTACK_RADIUS * 0.72;
 const rooms = new Map<string, ServerRoomState>();
 
 function normalizeOrigin(value: string) {
@@ -150,13 +150,6 @@ function sanitizeName(name: string | undefined, fallback: string) {
   return trimmed.slice(0, 18);
 }
 
-function getMoveSpeed(characterId: string) {
-  const character = characterOptions.find((option) => option.id === characterId);
-  const multiplier = character?.moveCooldownMultiplier ?? 1;
-
-  return PLAYER_SPEED / multiplier;
-}
-
 function getPlayerBySocket(socketId: string) {
   for (const room of rooms.values()) {
     for (const player of room.players.values()) {
@@ -197,13 +190,15 @@ function createInitialCombatState() {
     maxHealth: MAX_HEALTH,
     sanity: MAX_SANITY,
     maxSanity: MAX_SANITY,
-    isDefending: false,
+    isParrying: false,
+    isStunned: false,
     threatLevel: "calm" as ThreatLevel,
     idleMs: 0,
     moveCooldownRemaining: 0,
     attackCooldownRemaining: 0,
-    defenseCooldownRemaining: 0,
-    defenseDurationRemaining: 0,
+    parryCooldownRemaining: 0,
+    parryWindowRemaining: 0,
+    stunRemaining: 0,
     kills: 0,
     damageDealt: 0,
     eliminatedAt: null,
@@ -296,29 +291,29 @@ function startRoom(room: ServerRoomState) {
   room.finishedAt = null;
   room.winnerId = null;
   room.message = "La cueva se cierra. Sobrevive la ultima criatura.";
+  const playerEntries = [...room.players.values()];
+  const spawnPositions = pickSeparatedSpawns(room.cave, room.tileLookup, playerEntries.length);
 
-  for (const entry of room.players.values()) {
+  for (const entry of playerEntries) {
     entry.status = entry.connected ? "playing" : "left";
-    entry.position = roomSpawnAt(
-      room,
-      [...room.players.values()].findIndex((playerItem) => playerItem.id === entry.id),
-    );
+    entry.position =
+      spawnPositions[playerEntries.findIndex((playerItem) => playerItem.id === entry.id)] ??
+      room.cave.startPosition;
     entry.combat = createInitialCombatState();
     entry.lastAction = "move";
     entry.lastAttackAt = 0;
     entry.lastMoveAt = room.startedAt ?? Date.now();
-    entry.lastDefendAt = 0;
+    entry.lastParryAt = 0;
+    entry.lastMeaningfulActionAt = room.startedAt ?? Date.now();
     entry.moveCooldownUntil = 0;
-    entry.movementBurstDistance = 0;
-    entry.defendingUntil = 0;
+    entry.movementPath = [];
+    entry.parryUntil = 0;
+    entry.stunnedUntil = 0;
   }
 
   room.noises = [];
   room.signals = [];
-  room.enemies = room.cave.enemyConfigs.map((config) => ({
-    ...createEnemyState(config),
-    lastAttackAt: 0,
-  }));
+  room.enemies = room.cave.enemyConfigs.map((config) => createEnemyState(config));
 }
 
 function toPublicPlayer(player: ServerPlayerState): MultiplayerPlayerState {
@@ -464,11 +459,8 @@ function addNoise(
 }
 
 function roomSpawnAt(room: ServerRoomState, index: number) {
-  return (
-    room.cave.multiplayerSpawnPositions[
-      Math.min(index, room.cave.multiplayerSpawnPositions.length - 1)
-    ] ?? room.cave.startPosition
-  );
+  const spawns = pickSeparatedSpawns(room.cave, room.tileLookup, room.players.size);
+  return spawns[Math.min(index, spawns.length - 1)] ?? room.cave.startPosition;
 }
 
 function roomEnemyConfigs(room: ServerRoomState) {
@@ -488,8 +480,11 @@ function eliminatePlayer(
   player.status = "lost";
   player.combat.health = 0;
   player.combat.eliminatedAt = Date.now();
-  player.combat.isDefending = false;
-  player.defendingUntil = 0;
+  player.combat.isParrying = false;
+  player.combat.isStunned = false;
+  player.parryUntil = 0;
+  player.stunnedUntil = 0;
+  player.movementPath = [];
   room.message = reason;
 
   if (attacker && attacker.id !== player.id) {
@@ -530,11 +525,24 @@ function evaluateRoom(room: ServerRoomState, io: Server) {
   const now = Date.now();
 
   for (const player of room.players.values()) {
-    player.combat.isDefending = player.defendingUntil > now;
+    player.combat.isParrying = player.parryUntil > now;
+    player.combat.isStunned = player.stunnedUntil > now;
     player.combat.moveCooldownRemaining = Math.max(0, player.moveCooldownUntil - now);
     player.combat.attackCooldownRemaining = Math.max(0, player.lastAttackAt + ATTACK_COOLDOWN - now);
-    player.combat.defenseCooldownRemaining = Math.max(0, player.lastDefendAt + DEFEND_COOLDOWN - now);
-    player.combat.defenseDurationRemaining = Math.max(0, player.defendingUntil - now);
+    player.combat.parryCooldownRemaining = Math.max(0, player.lastParryAt + PARRY_COOLDOWN_MS - now);
+    player.combat.parryWindowRemaining = Math.max(0, player.parryUntil - now);
+    player.combat.stunRemaining = Math.max(0, player.stunnedUntil - now);
+
+    if (player.movementPath.length > 0 && canTakeTurn({ now, stunnedUntil: player.stunnedUntil })) {
+      const nextStep = player.movementPath.shift();
+
+      if (nextStep) {
+        player.position = nextStep;
+        player.lastMoveAt = now;
+        player.lastMeaningfulActionAt = now;
+        addSignal(room, "move", player.position, player.id);
+      }
+    }
   }
 
   const alivePlayers = getAlivePlayers(room);
@@ -553,37 +561,12 @@ function evaluateRoom(room: ServerRoomState, io: Server) {
   }
 
   for (const player of alivePlayers) {
-    if (
-      player.movementBurstDistance > 0 &&
-      shouldFinalizeMoveBurst(player.lastMoveAt, now) &&
-      now >= player.moveCooldownUntil
-    ) {
-      player.moveCooldownUntil =
-        now +
-        calculateMoveCooldown(
-          player.movementBurstDistance,
-          characterOptions.find((option) => option.id === player.characterId)
-            ?.moveCooldownMultiplier ?? 1,
-        );
-      player.movementBurstDistance = 0;
-      player.combat.moveCooldownRemaining = Math.max(0, player.moveCooldownUntil - now);
-    }
-
-    player.combat.idleMs = now - player.lastMoveAt;
+    player.combat.idleMs = now - player.lastMeaningfulActionAt;
     const previousThreat = player.combat.threatLevel;
     player.combat.threatLevel = getThreatLevel(player.combat.idleMs);
 
     if (player.combat.threatLevel !== previousThreat && player.combat.threatLevel !== "calm") {
       addSignal(room, "danger", player.position, player.id);
-    }
-
-    if (player.combat.idleMs >= THREAT_DEATH_MS) {
-      eliminatePlayer(
-        room,
-        player,
-        `${player.name} se quedo quieto demasiado tiempo y la cueva lo encontro.`,
-      );
-      continue;
     }
 
     if (hitHazard(player.position, room.cave.hazardAreas)) {
@@ -603,9 +586,10 @@ function evaluateRoom(room: ServerRoomState, io: Server) {
       player.combat.sanity,
       MOVE_INTERVAL_MS / 1000,
       zone,
-      now - player.lastMoveAt < MOVE_BURST_IDLE_MS,
+      now - player.lastMoveAt < MOVE_BURST_IDLE_MS || player.movementPath.length > 0,
       player.combat.threatLevel,
       dominantEnemyState,
+      player.combat.idleMs,
       DARKNESS_SANITY_DRAIN,
     );
 
@@ -618,7 +602,6 @@ function evaluateRoom(room: ServerRoomState, io: Server) {
       player.combat.health = applyDamage(
         player.combat.health,
         sanityDamage,
-        player.combat.isDefending,
       );
 
       if (player.combat.health <= 0) {
@@ -687,17 +670,29 @@ function evaluateRoom(room: ServerRoomState, io: Server) {
       closestTarget &&
       updatedEnemy.state === "attacking" &&
       now - enemy.lastAttackAt >= ATTACK_COOLDOWN &&
-      distanceBetween(updatedEnemy, closestTarget.position) <= config.touchRange + 20
+      isAttackReachableByTiles(updatedEnemy, closestTarget.position, 1, room.tileLookup)
     ) {
-      closestTarget.combat.health = applyDamage(
-        closestTarget.combat.health,
-        CAVE_ATTACK_DAMAGE,
-        closestTarget.combat.isDefending,
-      );
+      const resolution = resolveCombatHit({
+        targetHealth: closestTarget.combat.health,
+        damage: CAVE_ATTACK_DAMAGE,
+        now,
+        targetParryUntil: closestTarget.parryUntil,
+      });
+      closestTarget.combat.health = resolution.nextHealth;
+      closestTarget.parryUntil = resolution.nextParryUntil;
       addSignal(room, "attack", updatedEnemy, enemy.id);
       addNoise(room, "attack", updatedEnemy, 8, 1.1, enemy.id);
 
-      if (closestTarget.combat.health <= 0) {
+      if (resolution.wasParried) {
+        room.message = `${closestTarget.name} desvia el golpe y aturde a ${updatedEnemy.name}.`;
+        return {
+          ...updatedEnemy,
+          lastAttackAt: now,
+          stunnedUntil: resolution.attackerStunnedUntil,
+        };
+      }
+
+      if (resolution.nextHealth <= 0) {
         eliminatePlayer(room, closestTarget, `${closestTarget.name} fue cazado por la cueva.`);
       } else {
         room.message = `${updatedEnemy.name} golpeo a ${closestTarget.name}.`;
@@ -838,10 +833,12 @@ io.on("connection", (socket: Socket) => {
       connectedAt: Date.now(),
       lastAttackAt: 0,
       lastMoveAt: Date.now(),
-      lastDefendAt: 0,
+      lastParryAt: 0,
+      lastMeaningfulActionAt: Date.now(),
       moveCooldownUntil: 0,
-      movementBurstDistance: 0,
-      defendingUntil: 0,
+      movementPath: [],
+      parryUntil: 0,
+      stunnedUntil: 0,
     };
 
     room.players.set(player.id, player);
@@ -887,10 +884,12 @@ io.on("connection", (socket: Socket) => {
         connectedAt: Date.now(),
         lastAttackAt: 0,
         lastMoveAt: Date.now(),
-        lastDefendAt: 0,
+        lastParryAt: 0,
+        lastMeaningfulActionAt: Date.now(),
         moveCooldownUntil: 0,
-        movementBurstDistance: 0,
-        defendingUntil: 0,
+        movementPath: [],
+        parryUntil: 0,
+        stunnedUntil: 0,
       };
 
       room.players.set(player.id, player);
@@ -950,50 +949,50 @@ io.on("connection", (socket: Socket) => {
 
       const now = Date.now();
 
-      if (now < player.moveCooldownUntil) {
+      if (now < player.moveCooldownUntil || player.movementPath.length > 0) {
         socket.emit("error-message", "Tu criatura aun recupera el impulso.");
         return;
       }
 
-      const maxDistance = getMoveSpeed(player.characterId) * (MOVE_INTERVAL_MS / 1000);
-      let nextPosition = player.position;
-
-      if (target) {
-        nextPosition = moveTowardPosition(
-          player.position,
-          target,
-          maxDistance,
-          undefined,
-          room.cave.walls,
-          room.tileLookup,
-        );
-      } else if (direction) {
-        const magnitude = Math.hypot(direction.x, direction.y) || 1;
-        nextPosition = moveWithCollisions(
-          player.position,
-          {
-            x: (direction.x / magnitude) * maxDistance,
-            y: (direction.y / magnitude) * maxDistance,
-          },
-          undefined,
-          room.cave.walls,
-          room.tileLookup,
-        );
+      if (!canTakeTurn({ now, stunnedUntil: player.stunnedUntil })) {
+        socket.emit("error-message", "Tu criatura esta aturdida.");
+        return;
       }
 
-      const movedDistance = distanceBetween(player.position, nextPosition);
-      player.position = nextPosition;
+      const intendedTarget =
+        target ??
+        (direction
+          ? {
+              x: player.position.x + Math.sign(direction.x || 0) * 80,
+              y: player.position.y + Math.sign(direction.y || 0) * 80,
+            }
+          : null);
+
+      if (!intendedTarget) {
+        return;
+      }
+
+      const movePlan = planMovementPath(
+        player.position,
+        intendedTarget,
+        PLAYER_MOVE_RANGE_TILES,
+        room.tileLookup,
+        characterOptions.find((option) => option.id === player.characterId)?.moveCooldownMultiplier ?? 1,
+      );
+
+      if (!movePlan) {
+        socket.emit("error-message", "No hay una ruta valida hacia esa celda.");
+        return;
+      }
+
       player.lastAction = "move";
-      if (movedDistance > 0.1) {
-        player.lastMoveAt = now;
-        player.movementBurstDistance += movedDistance;
-        player.combat.idleMs = 0;
-        player.combat.threatLevel = "calm";
-        addSignal(room, "move", player.position, player.id);
-        const moveMultiplier =
-          characterOptions.find((option) => option.id === player.characterId)?.moveSignalMultiplier ?? 1;
-        addNoise(room, "move", player.position, 4 + Math.round(moveMultiplier * 2), 0.45 * moveMultiplier, player.id);
-      }
+      player.movementPath = movePlan.worldPath;
+      player.moveCooldownUntil = now + movePlan.cooldownMs;
+      player.combat.idleMs = 0;
+      player.combat.threatLevel = "calm";
+      const moveMultiplier =
+        characterOptions.find((option) => option.id === player.characterId)?.moveSignalMultiplier ?? 1;
+      addNoise(room, "move", player.position, 4 + Math.round(moveMultiplier * 2), 0.45 * moveMultiplier, player.id);
       emitState(room, io);
     },
   );
@@ -1019,13 +1018,19 @@ io.on("connection", (socket: Socket) => {
       return;
     }
 
-    if (now < attacker.moveCooldownUntil) {
+    if (now < attacker.moveCooldownUntil || attacker.movementPath.length > 0) {
       socket.emit("error-message", "Tu criatura aun recupera el impulso.");
+      return;
+    }
+
+    if (!canTakeTurn({ now, stunnedUntil: attacker.stunnedUntil })) {
+      socket.emit("error-message", "Tu criatura esta aturdida.");
       return;
     }
 
     attacker.lastAttackAt = now;
     attacker.lastAction = "attack";
+    attacker.lastMeaningfulActionAt = now;
     attacker.combat.attackCooldownRemaining = ATTACK_COOLDOWN;
     addSignal(room, "attack", attacker.position, attacker.id);
     addNoise(room, "attack", attacker.position, 9, 1.2, attacker.id);
@@ -1037,17 +1042,26 @@ io.on("connection", (socket: Socket) => {
         continue;
       }
 
-      if (distanceBetween(attacker.position, target.position) > PLAYER_ATTACK_RANGE) {
+      if (!isAttackReachableByTiles(attacker.position, target.position, PLAYER_ATTACK_RANGE_TILES, room.tileLookup)) {
         continue;
       }
 
-      const previousHealth = target.combat.health;
-      target.combat.health = applyDamage(
-        target.combat.health,
-        PLAYER_ATTACK_DAMAGE,
-        target.combat.isDefending,
-      );
-      inflictedDamage += previousHealth - target.combat.health;
+      const resolution = resolveCombatHit({
+        targetHealth: target.combat.health,
+        damage: PLAYER_ATTACK_DAMAGE,
+        now,
+        targetParryUntil: target.parryUntil,
+        attackerStunnedUntil: attacker.stunnedUntil,
+      });
+      target.combat.health = resolution.nextHealth;
+      target.parryUntil = resolution.nextParryUntil;
+      attacker.stunnedUntil = resolution.attackerStunnedUntil;
+      inflictedDamage += resolution.damageApplied;
+
+      if (resolution.wasParried) {
+        room.message = `${target.name} hace parry y aturde a ${attacker.name}.`;
+        continue;
+      }
 
       if (target.combat.health <= 0) {
         eliminatePlayer(
@@ -1064,7 +1078,7 @@ io.on("connection", (socket: Socket) => {
         continue;
       }
 
-      if (distanceBetween(attacker.position, enemy) > PLAYER_ATTACK_RANGE) {
+      if (!isAttackReachableByTiles(attacker.position, enemy, PLAYER_ATTACK_RANGE_TILES, room.tileLookup)) {
         continue;
       }
 
@@ -1111,25 +1125,31 @@ io.on("connection", (socket: Socket) => {
 
     const now = Date.now();
 
-    if (now - player.lastDefendAt < DEFEND_COOLDOWN) {
-      socket.emit("error-message", "Tu criatura aun no puede defenderse otra vez.");
+    if (now - player.lastParryAt < PARRY_COOLDOWN_MS) {
+      socket.emit("error-message", "Tu criatura aun no puede hacer parry otra vez.");
       return;
     }
 
-    if (now < player.moveCooldownUntil) {
+    if (now < player.moveCooldownUntil || player.movementPath.length > 0) {
       socket.emit("error-message", "Tu criatura aun recupera el impulso.");
       return;
     }
 
+    if (!canTakeTurn({ now, stunnedUntil: player.stunnedUntil })) {
+      socket.emit("error-message", "Tu criatura esta aturdida.");
+      return;
+    }
+
     player.lastAction = "defend";
-    player.lastDefendAt = now;
-    player.defendingUntil = now + DEFEND_ACTIVE_DURATION;
-    player.combat.isDefending = true;
-    player.combat.defenseCooldownRemaining = DEFEND_COOLDOWN;
-    player.combat.defenseDurationRemaining = DEFEND_ACTIVE_DURATION;
+    player.lastParryAt = now;
+    player.lastMeaningfulActionAt = now;
+    player.parryUntil = now + PARRY_WINDOW_MS;
+    player.combat.isParrying = true;
+    player.combat.parryCooldownRemaining = PARRY_COOLDOWN_MS;
+    player.combat.parryWindowRemaining = PARRY_WINDOW_MS;
     addSignal(room, "defend", player.position, player.id);
     addNoise(room, "defend", player.position, 6, 0.65, player.id);
-    room.message = `${player.name} endurece su caparazon por un instante.`;
+    room.message = `${player.name} abre una ventana corta de parry.`;
     emitState(room, io);
   });
 

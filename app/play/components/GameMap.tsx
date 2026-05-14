@@ -289,6 +289,9 @@ export function GameMap({
             >
               <div
                 className={`relative rounded-full border ${
+                  entry.state === "stunned"
+                    ? "border-amber-100/80 bg-amber-200/20 shadow-[0_0_26px_rgba(251,191,36,0.35)]"
+                    : 
                   entry.state === "attacking" ||
                   entry.state === "chasing" ||
                   entry.state === "investigating"
@@ -337,7 +340,13 @@ export function GameMap({
                 style={pointStyle(otherPlayer.position)}
               >
                 <div
-                  className="relative rounded-full border border-cyan-200/70 bg-cyan-300/25 shadow-[0_0_22px_rgba(103,232,249,0.35)]"
+                  className={`relative rounded-full border ${
+                    otherPlayer.combat.isStunned
+                      ? "border-amber-100/80 bg-amber-200/25 shadow-[0_0_22px_rgba(251,191,36,0.35)]"
+                      : otherPlayer.combat.isParrying
+                        ? "border-zinc-100/80 bg-zinc-200/20 shadow-[0_0_22px_rgba(228,228,231,0.28)]"
+                        : "border-cyan-200/70 bg-cyan-300/25 shadow-[0_0_22px_rgba(103,232,249,0.35)]"
+                  }`}
                   style={{ width: PLAYER_RADIUS * 2, height: PLAYER_RADIUS * 2 }}
                 >
                   <div className="absolute inset-1 flex items-center justify-center overflow-hidden rounded-full bg-cyan-950/70">
