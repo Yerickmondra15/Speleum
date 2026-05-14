@@ -982,16 +982,16 @@ function buildLayoutFromPlacements(
   const startPoint = startPositionCandidate ?? startPosition;
   const playerSpawns = spawnCandidates
     .filter((candidate) => pointDistanceTiles(candidate, startPoint) <= 5)
-    .slice(0, 4);
+    .slice(0, 6);
   const multiplayerSpawns =
-    playerSpawns.length >= 4
+    playerSpawns.length >= 6
       ? playerSpawns
       : [
           startPoint,
           ...spawnCandidates
             .filter((candidate) => candidate !== startPoint)
-            .slice(0, 3),
-        ].slice(0, 4);
+            .slice(0, 5),
+        ].slice(0, 6);
   const safeEnemyConfigs = enemyConfigs.filter(
     (enemy) => pointDistanceTiles(enemy.start, startPoint) >= 6,
   );

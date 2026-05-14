@@ -4,6 +4,7 @@ import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Radio, Skull, Users } from "lucide-react";
 import type { CharacterOption, GameStatus, PlayerPosition } from "../gameConfig";
 import {
+  MAX_ROOM_PLAYERS,
   MAX_HEALTH,
   PLAYER_ATTACK_RANGE_TILES,
   PLAYER_MOVE_RANGE_TILES,
@@ -219,6 +220,7 @@ export function MultiplayerGame({
   }, [gameState, matchId, selectedCharacter.id, user?.id]);
 
   const self = gameState?.self ?? null;
+  const maxPlayers = gameState?.maxPlayers ?? MAX_ROOM_PLAYERS;
   const player = useMemo(() => self?.position ?? { x: 0, y: 0 }, [self?.position]);
   const enemy = gameState?.enemy ?? null;
   const caveTiles = useMemo(() => (gameState ? buildTileMap(gameState.cave) : []), [gameState]);
@@ -520,7 +522,7 @@ export function MultiplayerGame({
       <div className="pointer-events-none absolute right-4 top-88 z-70 hidden max-w-xs rounded-[1.25rem] border border-white/10 bg-black/45 p-4 text-sm text-zinc-300 backdrop-blur-md lg:block">
         <p className="text-xs tracking-[0.25em] text-zinc-500">CADENA DE VIDA</p>
         <p className="mt-2">Conexion: {socketConnected ? "estable" : "reconectando"}</p>
-        <p className="mt-2">Criaturas en sala: {gameState.playerCount}/{gameState.maxPlayers}</p>
+        <p className="mt-2">Criaturas en sala: {gameState.playerCount}/{maxPlayers}</p>
         <p className="mt-2">Ultimos vivos: {gameState.aliveCount}</p>
         <p className="mt-2">Punto cercano: {nearestPoint?.label ?? currentZone.name}</p>
         <p className="mt-2">Vision: 8 casillas alrededor.</p>

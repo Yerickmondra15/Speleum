@@ -31,7 +31,7 @@ export function MatchmakingScreen({
         Cancelar
       </button>
 
-      <div className="relative flex h-[24rem] w-[24rem] max-w-full items-center justify-center sm:h-[34rem] sm:w-[34rem]">
+      <div className="relative flex h-96 w-[24rem] max-w-full items-center justify-center sm:h-136 sm:w-136">
         <div className="absolute inset-0 rounded-full border border-white/5 bg-[radial-gradient(circle,rgba(255,255,255,0.08),rgba(82,9,20,0.08)_32%,transparent_64%)]" />
         <div className="absolute inset-12 animate-ping rounded-full border border-white/10" />
         <div className="absolute inset-24 rounded-full border border-white/10" />

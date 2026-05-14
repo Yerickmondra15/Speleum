@@ -121,8 +121,10 @@ export const STUN_DURATION_MS = 1800;
 export const ATTACK_RADIUS = TILE_SIZE * 1.45;
 export const PLAYER_ATTACK_DAMAGE = 30;
 export const CAVE_ATTACK_DAMAGE = 18;
-export const MAX_ROOM_PLAYERS = 4;
-export const MIN_ROOM_PLAYERS = 2;
+export const MIN_PLAYERS = 2;
+export const MAX_PLAYERS = 6;
+export const MIN_ROOM_PLAYERS = MIN_PLAYERS;
+export const MAX_ROOM_PLAYERS = MAX_PLAYERS;
 export const ENEMY_MOVE_INTERVAL = 420;
 export const PLAYER_MOVE_RANGE_TILES = 4;
 export const PLAYER_ATTACK_RANGE_TILES = 3;
@@ -176,6 +178,14 @@ export const multiplayerSpawnPositions: PlayerPosition[] = [
   {
     x: 1380,
     y: 2860,
+  },
+  {
+    x: 620,
+    y: 2620,
+  },
+  {
+    x: 980,
+    y: 2620,
   },
 ];
 

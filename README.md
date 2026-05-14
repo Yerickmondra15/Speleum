@@ -182,6 +182,6 @@ NEXT_PUBLIC_SOCKET_URL=https://URL_DEL_SOCKET.onrender.com
 FRONTEND_URL=https://URL_DE_VERCEL.vercel.app
 ```
 
-- La partida inicia con minimo 3 jugadores y soporta hasta 4.
+- La partida inicia con minimo 2 jugadores y soporta hasta 6.
 - El multiplayer sigue siendo experimental.
 - Si `NEXT_PUBLIC_SOCKET_URL` no esta configurado, el multiplayer queda deshabilitado sin afectar `/play` local.

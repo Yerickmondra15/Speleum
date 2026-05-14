@@ -140,7 +140,7 @@ export default function Home() {
           </p>
 
           <div className="mt-14 flex w-full justify-center">
-            <div className="relative flex min-h-[20rem] w-full max-w-4xl items-center justify-center overflow-hidden rounded-4xl shadow-[0_0_120px_rgba(255,255,255,0.05)] sm:h-90">
+            <div className="relative flex min-h-90 w-full max-w-4xl items-center justify-center overflow-hidden rounded-4xl shadow-[0_0_120px_rgba(255,255,255,0.05)] sm:h-90">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.07),transparent_85%)]" />
               <div className="absolute bottom-0 left-0 right-0 h-32 bg-linear-to-t from-black via-black/70 to-transparent" />
               <div className="relative w-full overflow-hidden px-4 sm:px-6">

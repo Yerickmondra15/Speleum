@@ -4,8 +4,8 @@ import type { PlayerPosition } from "../app/play/gameConfig";
 import {
   ATTACK_COOLDOWN,
   CAVE_ATTACK_DAMAGE,
-  MAX_HEALTH,
   MAX_ROOM_PLAYERS,
+  MAX_HEALTH,
   MOVEMENT_STEP_INTERVAL_MS,
   MIN_ROOM_PLAYERS,
   PARRY_COOLDOWN_MS,

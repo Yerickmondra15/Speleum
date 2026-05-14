@@ -3,7 +3,11 @@
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Copy, Radio, Users } from "lucide-react";
-import type { CharacterOption } from "../gameConfig";
+import {
+  MAX_ROOM_PLAYERS,
+  MIN_ROOM_PLAYERS,
+  type CharacterOption,
+} from "../gameConfig";
 import type { MultiplayerStatePayload } from "../types";
 import { ensureSocketConnection, getSocket, isSocketMultiplayerAvailable } from "@/lib/socket";
 
@@ -124,6 +128,9 @@ export function MultiplayerMenu({
 
   const roomCode = roomState?.roomCode ?? normalizeRoomCode(roomCodeInput);
   const isInRoom = Boolean(roomState);
+  const minPlayers = roomState?.minPlayers ?? MIN_ROOM_PLAYERS;
+  const requiredPlayers = roomState?.requiredPlayers ?? minPlayers;
+  const maxPlayers = roomState?.maxPlayers ?? MAX_ROOM_PLAYERS;
 
   const statusLabel = useMemo(() => {
     if (!socketConnected) {
@@ -138,8 +145,8 @@ export function MultiplayerMenu({
       return "Iniciando partida...";
     }
 
-    if (roomState.playerCount < roomState.requiredPlayers || roomState.status === "waiting") {
-      return `Esperando minimo ${roomState.requiredPlayers} jugadores`;
+    if (roomState.playerCount < requiredPlayers || roomState.status === "waiting") {
+      return `Esperando minimo ${requiredPlayers} jugadores`;
     }
 
     if (roomState.status === "ready-check") {
@@ -153,7 +160,7 @@ export function MultiplayerMenu({
     }
 
     return "Sala sincronizada";
-  }, [roomState, socketConnected]);
+  }, [requiredPlayers, roomState, socketConnected]);
 
   const readyCountdownSeconds =
     roomState?.readyDeadline && roomState.status === "ready-check"
@@ -274,7 +281,7 @@ export function MultiplayerMenu({
               SALA PRIVADA
             </h1>
             <p className="mt-4 max-w-xl text-sm leading-7 text-zinc-400">
-              Crea una sala por codigo para 3 a 4 criaturas. El servidor valida
+              Crea una sala por codigo para {MIN_ROOM_PLAYERS} a {MAX_ROOM_PLAYERS} criaturas. El servidor valida
               movimiento, combate y solo envia el estado que entra en tu vision.
             </p>
 
@@ -383,7 +390,7 @@ export function MultiplayerMenu({
                   <div className="rounded-[1.2rem] border border-white/10 bg-black/35 p-4">
                     <p className="text-xs tracking-[0.22em] text-zinc-500">JUGADORES</p>
                     <p className="mt-2 text-sm text-zinc-200">
-                      {roomState.playerCount}/{roomState.maxPlayers} conectados
+                      {roomState.playerCount}/{maxPlayers} conectados
                     </p>
                     <p className="mt-2 text-xs text-zinc-500">
                       Confirmados: {roomState.readyCount}/{roomState.playerCount}
@@ -396,7 +403,7 @@ export function MultiplayerMenu({
                   onClick={markReady}
                   disabled={
                     roomState.self.isReady ||
-                    roomState.playerCount < roomState.requiredPlayers ||
+                    roomState.playerCount < requiredPlayers ||
                     isSendingReady ||
                     roomState.status === "starting" ||
                     roomState.status === "playing"
@@ -420,7 +427,7 @@ export function MultiplayerMenu({
               <p>Vision limitada a 8 casillas alrededor del jugador.</p>
               <p>Las otras criaturas solo aparecen si entran en tu rango visible.</p>
               <p>La sala vive en memoria y se pierde al reiniciar el servidor.</p>
-              <p>La partida inicia con minimo 3 jugadores y soporta hasta 4.</p>
+              <p>La partida inicia con minimo {MIN_ROOM_PLAYERS} jugadores y soporta hasta {MAX_ROOM_PLAYERS}.</p>
               <p>El multiplayer sigue siendo experimental.</p>
               <p>El servidor puede tardar unos segundos en despertar.</p>
               <p>Si NEXT_PUBLIC_SOCKET_URL no esta configurado, el multiplayer queda deshabilitado sin afectar /play local.</p>
