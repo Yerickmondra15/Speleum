@@ -25,7 +25,7 @@ export function PlayMenu({
   const localizedCharacter = localizeCharacterOption(locale, selectedCharacter);
 
   return (
-    <section className="relative z-10 min-h-screen overflow-hidden px-4 sm:px-5">
+    <section className="relative z-10 min-h-screen overflow-x-hidden px-4 py-6 sm:px-5 sm:py-8">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_42%,rgba(255,255,255,0.08),transparent_19%),radial-gradient(circle_at_58%_58%,rgba(82,9,20,0.22),transparent_34%)]" />
       <div className="absolute left-1/2 top-1/2 h-128 w-lg -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/5 sm:h-168 sm:w-2xl" />
       <div className="absolute left-1/2 top-1/2 h-80 w-80 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/5 sm:h-120 sm:w-120" />

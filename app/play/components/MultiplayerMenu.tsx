@@ -257,7 +257,7 @@ export function MultiplayerMenu({
   };
 
   return (
-    <section className="relative z-10 min-h-screen overflow-hidden px-4 py-6 sm:px-5 sm:py-8">
+    <section className="relative z-10 min-h-screen overflow-x-hidden px-4 py-6 sm:px-5 sm:py-8">
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-5xl items-center justify-center">
         <div className="grid w-full gap-6 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="rounded-4xl border border-white/10 bg-black/40 p-7 backdrop-blur-md">

@@ -87,7 +87,7 @@ export default function Home() {
         </div>
 
         <header className="sticky top-0 z-40 border-b border-white/5 bg-black/40 backdrop-blur-md">
-          <nav className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
+          <nav className="mx-auto grid max-w-7xl gap-4 px-4 py-3 sm:px-6 lg:grid-cols-[auto_1fr] lg:items-center">
             <div className="flex min-w-0 items-center gap-3">
               <Image
                 src="/Grafico/Logo blanco.svg"
@@ -105,8 +105,9 @@ export default function Home() {
               />
             </div>
 
-            <div className="order-2 flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+            <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end sm:gap-3">
               <LanguageSwitcher />
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               <Link href="/ranking" className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10">
                 <Trophy className="h-5 w-5 text-zinc-200" />
               </Link>
@@ -120,20 +121,21 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => void handleLogout()}
-                  className="inline-flex min-h-11 min-w-[9.5rem] items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-white/10"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-white/10"
                 >
                   <LogOut className="h-4 w-4 text-zinc-200" />
-                  {messages.common.logout}
+                  Salir
                 </button>
               ) : (
                 <Link
                   href="/login"
-                  className="inline-flex min-h-11 min-w-[9.5rem] items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-white/10"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-white/10"
                 >
                   <LogIn className="h-4 w-4 text-zinc-200" />
-                  {messages.home.primaryLogin}
+                  Entrar
                 </Link>
               )}
+              </div>
             </div>
           </nav>
         </header>
@@ -157,8 +159,8 @@ export default function Home() {
             <div className="relative flex min-h-90 w-full max-w-4xl items-center justify-center overflow-hidden rounded-4xl shadow-[0_0_120px_rgba(255,255,255,0.05)] sm:h-90">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.07),transparent_85%)]" />
               <div className="absolute bottom-0 left-0 right-0 h-32 bg-linear-to-t from-black via-black/70 to-transparent" />
-              <div className="relative w-full overflow-hidden px-4 sm:px-6">
-                <pre className="overflow-x-auto pb-2 text-center text-[5px] leading-[0.42rem] text-zinc-300 sm:text-[11px] sm:leading-2.75">
+              <div className="relative w-full px-3 sm:px-6">
+                <pre className="overflow-visible pb-2 text-center text-[4px] leading-[0.36rem] text-zinc-300 sm:text-[11px] sm:leading-2.75">
 {String.raw`                                                                                                                                
                                                                                                                                 
                                                                                                                                 
