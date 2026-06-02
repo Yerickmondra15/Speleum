@@ -13,6 +13,8 @@ import {
   Timer,
   UserRound,
 } from "lucide-react";
+import { LanguageSwitcher } from "@/app/components/LanguageSwitcher";
+import { useLanguage } from "@/lib/i18n/LanguageProvider";
 
 const fadeUp: Variants = {
   hidden: { opacity: 0, y: 30 },
@@ -26,51 +28,97 @@ const fadeUp: Variants = {
   },
 };
 
-const cards = [
-  {
-    icon: Eye,
-    title: "Vision limitada",
-    text: "Tu criatura solo percibe 8 casillas a su alrededor. Fuera de ese pulso visual, la cueva vuelve a cerrarse en oscuridad.",
-  },
-  {
-    icon: Footprints,
-    title: "Movimiento por ecos",
-    text: "Selecciona una celda dentro de tu zona visible. Speleum calcula el trayecto por tiles y la roca bloquea rutas imposibles tanto en la partida local como en la base multijugador.",
-  },
-  {
-    icon: Timer,
-    title: "Pulso y cooldown",
-    text: "Cuanto mas lejos te desplazas, mas tarda tu pulso en estabilizarse. Atacar y defender tambien exigen recuperacion.",
-  },
-  {
-    icon: Radio,
-    title: "Radar y senales",
-    text: "Moverse deja una senal leve. Atacar emite una senal fuerte. Defenderse deja una marca corta y discreta. El radar orienta, pero no revela posiciones perfectas.",
-  },
-  {
-    icon: Swords,
-    title: "Ataque",
-    text: "Puedes golpear amenazas dentro de 3 casillas. El ataque emite un eco fuerte y revela tu presencia cercana.",
-  },
-  {
-    icon: Shield,
-    title: "Defensa",
-    text: "La defensa reduce dano durante una ventana corta y luego entra en recuperacion antes de poder activarse otra vez.",
-  },
-];
-
-const creatures = [
-  {
-    title: "Ajolote de cueva",
-    text: "Equilibrado: movimiento estable, cooldown normal y senal clara. Es la forma mas directa de aprender el mapa.",
-  },
-  {
-    title: "Camaron de cueva",
-    text: "Evasivo: se mueve mas lejos, recupera antes y deja una senal de movimiento mas tenue.",
-  },
-];
-
 export default function ComoJugarPage() {
+  const { locale, messages } = useLanguage();
+  const cards =
+    locale === "es"
+      ? [
+          {
+            icon: Eye,
+            title: "Visión limitada",
+            text: "Tu criatura solo percibe 8 casillas a su alrededor. Fuera de ese pulso visual, la cueva vuelve a cerrarse en oscuridad.",
+          },
+          {
+            icon: Footprints,
+            title: "Movimiento por ecos",
+            text: "Selecciona una celda dentro de tu zona visible. Speleum calcula el trayecto por tiles y la roca bloquea rutas imposibles tanto en la partida local como en la base multijugador.",
+          },
+          {
+            icon: Timer,
+            title: "Pulso y cooldown",
+            text: "Cuanto más lejos te desplazas, más tarda tu pulso en estabilizarse. Atacar y defender también exigen recuperación.",
+          },
+          {
+            icon: Radio,
+            title: "Radar y señales",
+            text: "Moverse deja una señal leve. Atacar emite una señal fuerte. Defenderse deja una marca corta y discreta. El radar orienta, pero no revela posiciones perfectas.",
+          },
+          {
+            icon: Swords,
+            title: "Ataque",
+            text: "Puedes golpear amenazas dentro de 3 casillas. El ataque emite un eco fuerte y revela tu presencia cercana.",
+          },
+          {
+            icon: Shield,
+            title: "Defensa",
+            text: "La defensa reduce daño durante una ventana corta y luego entra en recuperación antes de poder activarse otra vez.",
+          },
+        ]
+      : [
+          {
+            icon: Eye,
+            title: "Limited vision",
+            text: "Your creature only perceives 8 tiles around it. Outside that visual pulse, the cave closes back into darkness.",
+          },
+          {
+            icon: Footprints,
+            title: "Echo movement",
+            text: "Select a cell inside your visible area. Speleum calculates the tile route and rock blocks impossible paths in both local play and the multiplayer foundation.",
+          },
+          {
+            icon: Timer,
+            title: "Pulse and cooldown",
+            text: "The farther you move, the longer your pulse takes to stabilize. Attacking and defending also require recovery.",
+          },
+          {
+            icon: Radio,
+            title: "Radar and signals",
+            text: "Moving leaves a light signal. Attacking emits a strong signal. Defending leaves a short, discreet mark. Radar guides you, but never reveals perfect positions.",
+          },
+          {
+            icon: Swords,
+            title: "Attack",
+            text: "You can hit threats within 3 tiles. Attacking emits a strong echo and reveals your nearby presence.",
+          },
+          {
+            icon: Shield,
+            title: "Defense",
+            text: "Defense reduces damage during a short window and then enters recovery before it can be activated again.",
+          },
+        ];
+  const creatures =
+    locale === "es"
+      ? [
+          {
+            title: "Ajolote de cueva",
+            text: "Equilibrado: movimiento estable, cooldown normal y señal clara. Es la forma más directa de aprender el mapa.",
+          },
+          {
+            title: "Camarón de cueva",
+            text: "Evasivo: se mueve más lejos, recupera antes y deja una señal de movimiento más tenue.",
+          },
+        ]
+      : [
+          {
+            title: "Cave axolotl",
+            text: "Balanced: steady movement, normal cooldown, and a clear signal. It is the most direct way to learn the map.",
+          },
+          {
+            title: "Cave shrimp",
+            text: "Evasive: moves farther, recovers sooner, and leaves a fainter movement signal.",
+          },
+        ];
+
   return (
     <main className="min-h-screen bg-black text-white">
       <div className="pointer-events-none fixed inset-0 -z-10">
@@ -85,10 +133,13 @@ export default function ComoJugarPage() {
             className="flex min-h-11 items-center gap-2 text-sm text-zinc-300 transition hover:text-white"
           >
             <ArrowLeft className="h-4 w-4" />
-            Volver
+            {messages.howToPlay.back}
           </Link>
 
-          <p className="text-xs tracking-[0.24em] text-zinc-400 sm:text-sm sm:tracking-[0.3em]">COMO JUGAR</p>
+          <div className="flex items-center gap-3">
+            <p className="text-xs tracking-[0.24em] text-zinc-400 sm:text-sm sm:tracking-[0.3em]">{messages.howToPlay.header}</p>
+            <LanguageSwitcher />
+          </div>
         </div>
       </header>
 
@@ -101,17 +152,15 @@ export default function ComoJugarPage() {
         >
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1 text-xs tracking-[0.25em] text-zinc-300">
             <Ghost className="h-4 w-4" />
-            GUIA DEL JUGADOR
+            {messages.howToPlay.guide}
           </div>
 
           <h1 className="text-3xl font-semibold tracking-[0.12em] text-white sm:text-6xl sm:tracking-[0.2em]">
-            Como jugar Speleum
+            {messages.howToPlay.title}
           </h1>
 
           <p className="mt-6 text-sm leading-7 text-zinc-400 sm:text-base">
-            Speleum se juega leyendo oscuridad, distancia y senales. Controlas
-            una criatura subterranea, eliges celdas dentro de tu zona visible y
-            sobrevives gestionando movimiento, ataque, defensa, criaturas hostiles y radar.
+            {messages.howToPlay.description}
           </p>
         </motion.div>
       </section>
@@ -156,10 +205,10 @@ export default function ComoJugarPage() {
         >
           <div>
             <p className="mb-3 text-xs tracking-[0.25em] text-zinc-500">
-              CRIATURAS JUGABLES
+              {messages.howToPlay.creatures}
             </p>
             <h3 className="text-2xl font-semibold text-white">
-              Elige una forma de sobrevivir
+              {messages.howToPlay.creaturesTitle}
             </h3>
 
             <div className="mt-5 grid gap-4">
@@ -184,17 +233,16 @@ export default function ComoJugarPage() {
 
           <div>
             <p className="mb-3 text-xs tracking-[0.25em] text-zinc-500">
-              CONSEJOS
+              {messages.howToPlay.tips}
             </p>
             <h3 className="text-2xl font-semibold text-white">
-              Lo que conviene recordar
+              {messages.howToPlay.tipsTitle}
             </h3>
 
             <ul className="mt-5 space-y-3 text-zinc-400">
-              <li>Marca trayectos cortos si necesitas recuperar pulso rapido.</li>
-              <li>Ataca cuando una amenaza entre en tus 3 casillas de alcance.</li>
-              <li>Usa defensa para amortiguar dano antes de exponerte.</li>
-              <li>Mira el radar despues de cada accion: cada senal sugiere actividad cercana.</li>
+              {messages.howToPlay.advice.map((tip) => (
+                <li key={tip}>{tip}</li>
+              ))}
             </ul>
           </div>
         </motion.div>

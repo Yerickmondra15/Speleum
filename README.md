@@ -33,6 +33,7 @@ Además, incluye una base multijugador con salas privadas en tiempo real mediant
 - Login y registro de usuarios.
 - Verificación por código para registro e inicio de sesión.
 - Gestión de sesión autenticada.
+- Soporte bilingüe en interfaz principal (Español/Inglés) con persistencia local.
 - Perfil de usuario con estadísticas básicas.
 - Selección y persistencia de criatura activa.
 - Ranking persistido en base de datos.
@@ -232,7 +233,7 @@ La IA no reemplazó la implementación del proyecto. Las decisiones finales, la 
 
 **Yerick Mondragón**
 
-- GitHub: pendiente de agregar
-- LinkedIn: pendiente de agregar
-- Institución: pendiente de agregar
+- GitHub: (https://github.com/Yerickmondra15)
+- LinkedIn: www.linkedin.com/in/yerick-mondragon-sancho-a396473b0
+- Institución: Cedes Don Bosco
 - Año: 2026

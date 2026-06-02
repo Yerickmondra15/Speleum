@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { AuthProvider } from './auth/AuthProvider'
+import { LanguageProvider } from '@/lib/i18n/LanguageProvider'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -30,9 +31,11 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="es">
+    <html lang="es" suppressHydrationWarning>
       <body className="font-sans antialiased">
-        <AuthProvider>{children}</AuthProvider>
+        <LanguageProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </LanguageProvider>
       </body>
     </html>
   )

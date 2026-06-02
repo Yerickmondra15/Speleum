@@ -12,6 +12,7 @@ import { LoadingCaveScreen } from "./LoadingCaveScreen";
 import { MultiplayerMenu } from "./MultiplayerMenu";
 import { MultiplayerGame } from "./MultiplayerGame";
 import { useAuth } from "../../auth/AuthProvider";
+import { useLanguage } from "@/lib/i18n/LanguageProvider";
 
 type Screen =
   | "menu"
@@ -27,6 +28,7 @@ const SELECTED_CREATURE_KEY = "speleum.selectedCreature.v1";
 export function PlayScene() {
   const router = useRouter();
   const { user, status, updateActiveCreature } = useAuth();
+  const { locale, messages } = useLanguage();
   const [screen, setScreen] = useState<Screen>("menu");
   const [playMode, setPlayMode] = useState<PlayMode>("local");
   const [multiplayerSession, setMultiplayerSession] = useState<{
@@ -87,7 +89,7 @@ export function PlayScene() {
   if (status === "loading") {
     return (
       <main className="flex min-h-screen items-center justify-center bg-black text-zinc-400">
-        Cargando expedicion...
+        {messages.play.loadingExpedition}
       </main>
     );
   }
@@ -139,7 +141,7 @@ export function PlayScene() {
       {screen === "multiplayer-menu" && (
         <MultiplayerMenu
           selectedCharacter={selectedCharacter}
-          defaultPlayerName={user?.username ?? "Explorador"}
+          defaultPlayerName={user?.username ?? (locale === "es" ? "Explorador" : "Explorer")}
           onBack={() => setScreen("menu")}
           onGameStart={(session) => {
             setMultiplayerSession(session);

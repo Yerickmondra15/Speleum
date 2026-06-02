@@ -17,6 +17,9 @@ import {
 import { motion, type Variants } from "framer-motion";
 import { LIGHTS_ON_KEY, creatures } from "@/lib/creatures";
 import { useAuth } from "./auth/AuthProvider";
+import { LanguageSwitcher } from "./components/LanguageSwitcher";
+import { useLanguage } from "@/lib/i18n/LanguageProvider";
+import { getLocalizedCreature } from "@/lib/i18n/content";
 
 const fadeUp: Variants = {
   hidden: { opacity: 0, y: 35, filter: "blur(6px)" },
@@ -34,6 +37,7 @@ const fadeUp: Variants = {
 export default function Home() {
   const router = useRouter();
   const { status, logout } = useAuth();
+  const { locale, messages } = useLanguage();
   const [turnedOn, setTurnedOn] = useState(false);
   const hasSession = status === "signed-in";
 
@@ -46,7 +50,7 @@ export default function Home() {
   }, []);
 
   const primaryHref = hasSession ? "/play" : "/login";
-  const primaryLabel = hasSession ? "Jugar ahora" : "Iniciar sesion";
+  const primaryLabel = hasSession ? messages.home.primaryPlay : messages.home.primaryLogin;
 
   const handleTurnOn = () => {
     setTurnedOn(true);
@@ -70,7 +74,7 @@ export default function Home() {
             >
               <Lightbulb className="h-10 w-10 text-zinc-300 transition group-hover:text-yellow-200" />
               <span className="absolute -bottom-10 text-sm tracking-wide text-zinc-500 group-hover:text-zinc-300">
-                Enciendeme
+                {messages.home.turnOn}
               </span>
             </button>
           </div>
@@ -115,6 +119,7 @@ export default function Home() {
             </Link>
 
             <div className="order-2 flex items-center gap-2 sm:order-3 sm:gap-3">
+              <LanguageSwitcher />
               <Link href="/ranking" className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10">
                 <Trophy className="h-5 w-5 text-zinc-200" />
               </Link>
@@ -129,7 +134,7 @@ export default function Home() {
                   type="button"
                   onClick={() => void handleLogout()}
                   className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10"
-                  aria-label="Cerrar sesion"
+                  aria-label={messages.home.logoutAria}
                 >
                   <LogOut className="h-5 w-5 text-zinc-200" />
                 </button>
@@ -146,7 +151,7 @@ export default function Home() {
           <div className="absolute inset-x-0 top-16 -z-10 h-80 bg-[radial-gradient(circle,rgba(255,255,255,0.06),transparent_60%)] blur-3xl" />
 
           <div className="mb-4 inline-flex max-w-full items-center rounded-full border border-white/10 bg-white/5 px-4 py-1 text-center text-[0.65rem] tracking-[0.24em] text-zinc-300 sm:text-xs sm:tracking-[0.3em]">
-            Oscuridad · Ecos · Supervivencia
+            {messages.home.heroTag}
           </div>
 
           <h1 className="text-4xl font-serif font-semibold tracking-[0.22em] text-white sm:text-7xl sm:tracking-[0.35em]">
@@ -154,8 +159,7 @@ export default function Home() {
           </h1>
 
           <p className="mt-5 max-w-2xl text-sm leading-7 text-zinc-400 sm:text-base">
-            Speleum es un juego web de supervivencia en cuevas con vision limitada,
-            criaturas subterraneas, radar de ecos, combate, defensa, ranking y persistencia de puntuaciones.
+            {messages.home.heroDescription}
           </p>
 
           <div className="mt-14 flex w-full justify-center">
@@ -218,7 +222,7 @@ export default function Home() {
                                                                                                                                 
 `}
                 </pre>
-                <p className="mt-4 text-center text-sm tracking-[0.25em] text-zinc-500">ajolote de cueva</p>
+                <p className="mt-4 text-center text-sm tracking-[0.25em] text-zinc-500">{messages.home.creatureCaption}</p>
               </div>
             </div>
           </div>
@@ -237,7 +241,7 @@ export default function Home() {
 
             <div className="flex items-center gap-2 text-sm text-zinc-500">
               <ChevronDown className="h-4 w-4" />
-              Conoce mas de Speleum
+              {messages.home.discover}
             </div>
           </div>
         </section>
@@ -245,20 +249,18 @@ export default function Home() {
         <section className="mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-24">
           <div className="grid gap-8 md:grid-cols-2">
             <motion.div variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }} className="rounded-4xl border border-white/10 bg-white/3 p-8">
-              <p className="mb-3 text-xs tracking-[0.25em] text-zinc-500">QUE ES SPELEUM</p>
-              <h2 className="text-2xl font-semibold text-white">Supervivencia subterranea con vision limitada</h2>
+              <p className="mb-3 text-xs tracking-[0.25em] text-zinc-500">{messages.home.sectionWhatIs}</p>
+              <h2 className="text-2xl font-semibold text-white">{messages.home.sectionWhatIsTitle}</h2>
               <p className="mt-4 leading-7 text-zinc-400">
-                Speleum integra exploracion tensa, lectura parcial del entorno y enfrentamientos
-                en cuevas oscuras donde cada desplazamiento deja senales detectables.
+                {messages.home.sectionWhatIsText}
               </p>
             </motion.div>
 
             <motion.div variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }} transition={{ delay: 0.12 }} className="rounded-4xl border border-white/10 bg-white/3 p-8">
-              <p className="mb-3 text-xs tracking-[0.25em] text-zinc-500">IDEA PRINCIPAL</p>
-              <h2 className="text-2xl font-semibold text-white">Leer la cueva, cazar y sobrevivir mas que los demas</h2>
+              <p className="mb-3 text-xs tracking-[0.25em] text-zinc-500">{messages.home.sectionCore}</p>
+              <h2 className="text-2xl font-semibold text-white">{messages.home.sectionCoreTitle}</h2>
               <p className="mt-4 leading-7 text-zinc-400">
-                La base funcional del proyecto combina vision limitada, radar de senales,
-                ataque, defensa, ranking persistente y un modo multijugador preparado para seguir ampliandose.
+                {messages.home.sectionCoreText}
               </p>
             </motion.div>
           </div>
@@ -266,22 +268,27 @@ export default function Home() {
 
         <section className="mx-auto max-w-6xl px-4 pb-20 sm:px-6 sm:pb-24">
           <div className="mb-10 max-w-2xl">
-            <p className="text-xs tracking-[0.25em] text-zinc-500">CRIATURAS</p>
-            <h2 className="mt-3 text-3xl font-semibold text-white">Formas de sobrevivir</h2>
+            <p className="text-xs tracking-[0.25em] text-zinc-500">{messages.home.creaturesLabel}</p>
+            <h2 className="mt-3 text-3xl font-semibold text-white">{messages.home.creaturesTitle}</h2>
             <p className="mt-4 leading-7 text-zinc-400">
-              Cada criatura entra a Speleum con una lectura distinta del peligro, el movimiento y los ecos.
+              {messages.home.creaturesText}
             </p>
           </div>
 
           <div className="grid gap-6 md:grid-cols-2">
             {creatures.slice(0, 2).map((creature) => (
+              (() => {
+                const localizedCreature = getLocalizedCreature(locale, creature.id);
+                return (
               <motion.div key={creature.id} variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.2 }} className="rounded-4xl border border-white/10 bg-white/3 p-7">
                 <div className="mb-5 flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-zinc-100/80 shadow-[0_0_28px_rgba(255,255,255,0.12)]">
-                  <Image src={creature.imagenJuego} alt={creature.nombre} width={40} height={40} className="h-10 w-10 object-contain" />
+                  <Image src={creature.imagenJuego} alt={localizedCreature.nombre} width={40} height={40} className="h-10 w-10 object-contain" />
                 </div>
-                <h3 className="text-xl font-semibold text-white">{creature.nombre}</h3>
-                <p className="mt-3 leading-7 text-zinc-400">{creature.descripcionCorta}</p>
+                <h3 className="text-xl font-semibold text-white">{localizedCreature.nombre}</h3>
+                <p className="mt-3 leading-7 text-zinc-400">{localizedCreature.descripcionCorta}</p>
               </motion.div>
+                );
+              })()
             ))}
           </div>
         </section>
@@ -291,17 +298,15 @@ export default function Home() {
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_right,rgba(255,255,255,0.08),transparent_55%)]" />
             <div className="relative grid gap-8 md:grid-cols-[1.2fr_0.8fr]">
               <div>
-                <p className="text-xs tracking-[0.25em] text-zinc-500">MUNDO SUBTERRANEO</p>
-                <h2 className="mt-3 text-3xl font-semibold text-white">Un ecosistema hecho de ecos</h2>
+                <p className="text-xs tracking-[0.25em] text-zinc-500">{messages.home.worldLabel}</p>
+                <h2 className="mt-3 text-3xl font-semibold text-white">{messages.home.worldTitle}</h2>
                 <p className="mt-4 leading-7 text-zinc-400">
-                  Speleum toma inspiracion de animales adaptados a cuevas: baja vision, cuerpos palidos,
-                  sensibilidad al movimiento y orientacion por vibraciones. El juego convierte esas ideas en radar,
-                  senales parciales, criaturas hostiles y decisiones de combate.
+                  {messages.home.worldText}
                 </p>
               </div>
               <div className="flex items-end md:justify-end">
                 <Link href="/world" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200">
-                  Explorar mundo
+                  {messages.home.exploreWorld}
                 </Link>
               </div>
             </div>
@@ -312,10 +317,10 @@ export default function Home() {
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.06),transparent_55%)]" />
           <div className="relative mx-auto grid max-w-7xl gap-10 md:grid-cols-[1.2fr_1fr_1fr]">
             <div>
-              <p className="text-xs tracking-[0.25em] text-zinc-500">ULTIMA INCURSION</p>
-              <h3 className="mt-3 text-3xl font-semibold text-white">Entra a Speleum</h3>
+              <p className="text-xs tracking-[0.25em] text-zinc-500">{messages.home.footerLabel}</p>
+              <h3 className="mt-3 text-3xl font-semibold text-white">{messages.home.footerTitle}</h3>
               <p className="mt-4 max-w-md leading-7 text-zinc-400">
-                Entra a la cueva, detecta actividad cercana y protege tu puntuacion en partidas locales o en tiempo real.
+                {messages.home.footerText}
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
                 <Link href={primaryHref} className="inline-flex min-h-11 items-center justify-center rounded-full bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200">
@@ -327,29 +332,29 @@ export default function Home() {
                     onClick={() => void handleLogout()}
                     className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-white/5 px-6 py-3 text-sm text-white transition hover:bg-white/10"
                   >
-                    Cerrar sesion
+                    {messages.common.logout}
                   </button>
                 ) : (
                   <Link href="/login" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-white/5 px-6 py-3 text-sm text-white transition hover:bg-white/10">
-                    Acceder
+                    {messages.home.footerLogin}
                   </Link>
                 )}
                 <Link href="/How-to-play" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-white/5 px-6 py-3 text-sm text-white transition hover:bg-white/10">
-                  Como jugar
+                  {messages.home.footerHowToPlay}
                 </Link>
               </div>
             </div>
 
             <div>
-              <p className="mb-4 text-xs tracking-[0.25em] text-zinc-500">SECCIONES</p>
+              <p className="mb-4 text-xs tracking-[0.25em] text-zinc-500">{messages.home.footerSections}</p>
               <div className="flex flex-col gap-3 text-sm text-zinc-400">
-                <Link href="/" className="transition hover:text-white">Inicio</Link>
-                <Link href="/play" className="transition hover:text-white">Jugar</Link>
-                {!hasSession && <Link href="/login" className="transition hover:text-white">Acceder</Link>}
-                <Link href="/ranking" className="transition hover:text-white">Ranking</Link>
-                <Link href="/How-to-play" className="transition hover:text-white">Como jugar</Link>
-                <Link href="/world" className="transition hover:text-white">Mundo</Link>
-                <Link href="/profile" className="transition hover:text-white">Perfil</Link>
+                <Link href="/" className="transition hover:text-white">{messages.common.home}</Link>
+                <Link href="/play" className="transition hover:text-white">{messages.common.play}</Link>
+                {!hasSession && <Link href="/login" className="transition hover:text-white">{messages.common.login}</Link>}
+                <Link href="/ranking" className="transition hover:text-white">{messages.common.ranking}</Link>
+                <Link href="/How-to-play" className="transition hover:text-white">{messages.common.howToPlay}</Link>
+                <Link href="/world" className="transition hover:text-white">{messages.common.world}</Link>
+                <Link href="/profile" className="transition hover:text-white">{messages.common.profile}</Link>
               </div>
             </div>
 
@@ -364,7 +369,7 @@ export default function Home() {
 
           <div className="relative mx-auto mt-12 flex max-w-7xl flex-col items-center justify-between gap-3 border-t border-white/5 pt-6 text-center text-sm text-zinc-500 sm:flex-row sm:text-left">
             <p>Speleum · 2026</p>
-            <p>Proyecto personal hecho por Yerick M.</p>
+            <p>{messages.home.footerBuiltBy}</p>
           </div>
         </motion.footer>
       </div>

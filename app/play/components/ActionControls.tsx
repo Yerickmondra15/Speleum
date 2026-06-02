@@ -2,6 +2,7 @@
 
 import { Footprints, Shield, Swords } from "lucide-react";
 import type { ActionKind } from "../gameConfig";
+import { useLanguage } from "@/lib/i18n/LanguageProvider";
 
 type ActionControlsProps = {
   activeAction: ActionKind;
@@ -15,10 +16,6 @@ type ActionControlsProps = {
   onDefend: () => void;
 };
 
-function label(value: number) {
-  return value > 0 ? `${(value / 1000).toFixed(1)}s` : "listo";
-}
-
 export function ActionControls({
   activeAction,
   cooldownRemaining,
@@ -30,6 +27,10 @@ export function ActionControls({
   onAttack,
   onDefend,
 }: ActionControlsProps) {
+  const { messages } = useLanguage();
+  const label = (value: number) =>
+    value > 0 ? `${(value / 1000).toFixed(1)}s` : messages.play.radar.ready;
+
   return (
     <div
       className="absolute inset-x-0 bottom-0 z-60 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] sm:px-4 sm:pb-4"
@@ -49,7 +50,7 @@ export function ActionControls({
             <div className="flex flex-col items-center gap-1 sm:flex-row sm:items-center sm:gap-3">
               <Footprints className="h-3.5 w-3.5 text-zinc-100 sm:h-4 sm:w-4" />
               <div>
-                <p className="text-[0.58rem] uppercase tracking-[0.18em] text-zinc-500 sm:text-[0.7rem] sm:tracking-[0.22em]">Pulso</p>
+                <p className="text-[0.58rem] uppercase tracking-[0.18em] text-zinc-500 sm:text-[0.7rem] sm:tracking-[0.22em]">{messages.common.pulse}</p>
                 <p className="mt-0.5 text-[0.72rem] text-zinc-100 sm:mt-1 sm:text-sm">{label(moveCooldownRemaining)}</p>
               </div>
             </div>
@@ -68,7 +69,7 @@ export function ActionControls({
             <div className="flex flex-col items-center gap-1 sm:flex-row sm:items-center sm:gap-3">
               <Swords className="h-3.5 w-3.5 text-rose-100 sm:h-4 sm:w-4" />
               <div>
-                <p className="text-[0.58rem] uppercase tracking-[0.18em] text-zinc-500 sm:text-[0.7rem] sm:tracking-[0.22em]">Ataque</p>
+                <p className="text-[0.58rem] uppercase tracking-[0.18em] text-zinc-500 sm:text-[0.7rem] sm:tracking-[0.22em]">{messages.common.attack}</p>
                 <p className="mt-0.5 text-[0.72rem] text-zinc-100 sm:mt-1 sm:text-sm">{label(cooldownRemaining)} / E</p>
               </div>
             </div>
@@ -87,9 +88,9 @@ export function ActionControls({
             <div className="flex flex-col items-center gap-1 sm:flex-row sm:items-center sm:gap-3">
               <Shield className="h-3.5 w-3.5 text-amber-100 sm:h-4 sm:w-4" />
               <div>
-                <p className="text-[0.58rem] uppercase tracking-[0.18em] text-zinc-500 sm:text-[0.7rem] sm:tracking-[0.22em]">Parry</p>
+                <p className="text-[0.58rem] uppercase tracking-[0.18em] text-zinc-500 sm:text-[0.7rem] sm:tracking-[0.22em]">{messages.common.parry}</p>
                 <p className="mt-0.5 text-[0.72rem] text-zinc-100 sm:mt-1 sm:text-sm">
-                  {isParrying ? "activo / Q" : `${label(parryCooldownRemaining)} / Q`}
+                  {isParrying ? `${messages.play.active.toLowerCase()} / Q` : `${label(parryCooldownRemaining)} / Q`}
                 </p>
               </div>
             </div>

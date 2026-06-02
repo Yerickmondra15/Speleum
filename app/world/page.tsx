@@ -1,27 +1,34 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowLeft, EyeOff, Radio, Waves } from "lucide-react";
 import { creatures } from "@/lib/creatures";
-
-const sections = [
-  {
-    icon: EyeOff,
-    title: "Troglobios",
-    text: "Los troglobios son organismos adaptados a vivir en cuevas. En ambientes sin luz, muchas especies reducen pigmento y vision, mientras aumentan su sensibilidad al tacto, vibraciones o cambios de corriente.",
-  },
-  {
-    icon: Radio,
-    title: "Senales",
-    text: "Speleum convierte esa biologia en ecos: moverse, atacar o defenderse no solo cambia tu posicion, tambien produce rastros parciales que otras criaturas pueden interpretar.",
-  },
-  {
-    icon: Waves,
-    title: "Adaptacion",
-    text: "Cada criatura toma una idea biologica y la vuelve mecanica. El ajolote es estable y sensible; el camaron usa impulsos evasivos y deja menos huella al desplazarse.",
-  },
-];
+import { LanguageSwitcher } from "@/app/components/LanguageSwitcher";
+import { getLocalizedCreature } from "@/lib/i18n/content";
+import { useLanguage } from "@/lib/i18n/LanguageProvider";
 
 export default function WorldPage() {
+  const { locale, messages } = useLanguage();
+
+  const sections = [
+    {
+      icon: EyeOff,
+      title: messages.world.sections.troglobites.title,
+      text: messages.world.sections.troglobites.text,
+    },
+    {
+      icon: Radio,
+      title: messages.world.sections.signals.title,
+      text: messages.world.sections.signals.text,
+    },
+    {
+      icon: Waves,
+      title: messages.world.sections.adaptation.title,
+      text: messages.world.sections.adaptation.text,
+    },
+  ];
+
   return (
     <main className="relative min-h-screen overflow-hidden bg-black text-white">
       <div className="pointer-events-none fixed inset-0">
@@ -35,24 +42,25 @@ export default function WorldPage() {
           className="inline-flex min-h-11 items-center gap-2 text-sm text-zinc-300 transition hover:text-white"
         >
           <ArrowLeft className="h-4 w-4" />
-          Inicio
+          {messages.world.backHome}
         </Link>
-        <p className="text-xs tracking-[0.34em] text-zinc-500">
-          MUNDO SPELEUM
-        </p>
+        <div className="flex items-center gap-3">
+          <p className="text-xs tracking-[0.34em] text-zinc-500">
+            {messages.world.header}
+          </p>
+          <LanguageSwitcher />
+        </div>
       </header>
 
       <section className="relative z-10 mx-auto max-w-6xl px-4 pb-16 pt-16 text-center sm:px-6 sm:pt-20">
         <p className="text-xs tracking-[0.35em] text-zinc-500">
-          CUEVAS / BIOLOGIA / JUEGO
+          {messages.world.eyebrow}
         </p>
         <h1 className="mx-auto mt-5 max-w-4xl text-3xl font-semibold tracking-[0.12em] text-white sm:text-6xl sm:tracking-[0.16em]">
-          Criaturas que aprendieron a vivir sin luz
+          {messages.world.title}
         </h1>
         <p className="mx-auto mt-6 max-w-3xl text-sm leading-7 text-zinc-400 sm:text-base">
-          Speleum no copia biologia real de forma literal: la traduce en
-          sensaciones jugables. La oscuridad limita informacion, las criaturas
-          leen vibraciones y cada accion deja una huella competitiva en la cueva.
+          {messages.world.description}
         </p>
       </section>
 
@@ -80,44 +88,48 @@ export default function WorldPage() {
       <section className="relative z-10 mx-auto max-w-6xl px-4 pb-24 sm:px-6">
         <div className="mb-8">
           <p className="text-xs tracking-[0.25em] text-zinc-500">
-            BESTIARIO
+            {messages.world.bestiary}
           </p>
           <h2 className="mt-3 text-3xl font-semibold text-white">
-            De adaptacion a mecanica
+            {messages.world.bestiaryTitle}
           </h2>
         </div>
 
         <div className="grid gap-5 md:grid-cols-2">
-          {creatures.map((creature) => (
-            <article
-              key={creature.id}
-              className="rounded-4xl border border-white/10 bg-white/3 p-7"
-            >
-              <div className="mb-5 flex items-center gap-4">
-                <div className="relative h-20 w-20 overflow-hidden rounded-3xl border border-white/10 bg-black/25">
-                  <Image
-                    src={creature.imagenIlustracion}
-                    alt={creature.nombre}
-                    fill
-                    sizes="80px"
-                    className="object-contain p-2"
-                  />
+          {creatures.map((creature) => {
+            const localizedCreature = getLocalizedCreature(locale, creature.id);
+
+            return (
+              <article
+                key={creature.id}
+                className="rounded-4xl border border-white/10 bg-white/3 p-7"
+              >
+                <div className="mb-5 flex items-center gap-4">
+                  <div className="relative h-20 w-20 overflow-hidden rounded-3xl border border-white/10 bg-black/25">
+                    <Image
+                      src={creature.imagenIlustracion}
+                      alt={localizedCreature.nombre}
+                      fill
+                      sizes="80px"
+                      className="object-contain p-2"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-xl font-semibold text-white">
+                      {localizedCreature.nombre}
+                    </h3>
+                    <p className="mt-1 wrap-break-word text-sm text-zinc-500">{localizedCreature.rol}</p>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <h3 className="text-xl font-semibold text-white">
-                    {creature.nombre}
-                  </h3>
-                  <p className="mt-1 wrap-break-word text-sm text-zinc-500">{creature.rol}</p>
-                </div>
-              </div>
-              <p className="mt-4 text-sm leading-7 text-zinc-400">
-                {creature.descripcionCorta}
-              </p>
-              <p className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-4 text-sm leading-6 text-zinc-300">
-                {creature.habilidad}
-              </p>
-            </article>
-          ))}
+                <p className="mt-4 text-sm leading-7 text-zinc-400">
+                  {localizedCreature.descripcionCorta}
+                </p>
+                <p className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-4 text-sm leading-6 text-zinc-300">
+                  {localizedCreature.habilidad}
+                </p>
+              </article>
+            );
+          })}
         </div>
       </section>
     </main>

@@ -1,5 +1,7 @@
 "use client";
 
+import { useLanguage } from "@/lib/i18n/LanguageProvider";
+
 type GameTopControlsProps = {
   isUiHidden: boolean;
   showPause?: boolean;
@@ -21,26 +23,28 @@ export function GameTopControls({
   onTogglePause,
   onToggleUi,
 }: GameTopControlsProps) {
+  const { messages } = useLanguage();
+
   return (
     <div className="pointer-events-auto flex items-center justify-end gap-1.5 sm:gap-2">
       {!isUiHidden && showPause && onTogglePause && (
         <button
           type="button"
           onClick={onTogglePause}
-          aria-label={isPaused ? "Continuar partida" : "Pausar partida"}
+          aria-label={isPaused ? messages.play.controls.resumeGame : messages.play.controls.pauseGame}
           className={controlButtonClass()}
         >
-          {isPaused ? "Continuar" : "Pausa"}
+          {isPaused ? messages.common.continue : messages.common.pause}
         </button>
       )}
 
       <button
         type="button"
         onClick={onToggleUi}
-        aria-label={isUiHidden ? "Mostrar interfaz" : "Ocultar interfaz"}
+        aria-label={isUiHidden ? messages.play.controls.showUi : messages.play.controls.hideUi}
         className={controlButtonClass(isUiHidden)}
       >
-        {isUiHidden ? "Mostrar UI" : "Ocultar UI"}
+        {isUiHidden ? messages.play.controls.showUiShort : messages.play.controls.hideUiShort}
       </button>
     </div>
   );

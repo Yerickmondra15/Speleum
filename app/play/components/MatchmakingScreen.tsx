@@ -3,13 +3,8 @@
 import Image from "next/image";
 import { X } from "lucide-react";
 import type { CharacterOption } from "../gameConfig";
-
-const searchPhrases = [
-  "buscando senales",
-  "rastreando vibraciones",
-  "explorando la cueva",
-  "preparando entrada",
-];
+import { localizeCharacterOption } from "@/lib/i18n/content";
+import { useLanguage } from "@/lib/i18n/LanguageProvider";
 
 type MatchmakingScreenProps = {
   selectedCharacter: CharacterOption;
@@ -20,6 +15,8 @@ export function MatchmakingScreen({
   selectedCharacter,
   onCancel,
 }: MatchmakingScreenProps) {
+  const { locale, messages } = useLanguage();
+  const localizedCharacter = localizeCharacterOption(locale, selectedCharacter);
   return (
     <section className="relative z-10 flex min-h-screen items-center justify-center px-4 sm:px-5">
       <button
@@ -28,7 +25,7 @@ export function MatchmakingScreen({
         className="absolute left-4 top-4 inline-flex min-h-11 items-center gap-2 text-sm text-zinc-400 transition hover:text-white sm:left-5 sm:top-5"
       >
         <X className="h-4 w-4" />
-        Cancelar
+        {messages.common.cancel}
       </button>
 
       <div className="relative flex h-96 w-[24rem] max-w-full items-center justify-center sm:h-136 sm:w-136">
@@ -42,22 +39,22 @@ export function MatchmakingScreen({
           <div className="mx-auto flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-zinc-100/90 shadow-[0_0_38px_rgba(255,255,255,0.18)] sm:h-24 sm:w-24">
             <Image
               src={selectedCharacter.imageGame}
-              alt={selectedCharacter.name}
+              alt={localizedCharacter.name}
               width={62}
               height={62}
               className="h-14 w-14 object-contain sm:h-16 sm:w-16"
             />
           </div>
           <p className="mt-7 text-xs tracking-[0.36em] text-zinc-500">
-            Bajando a las profundidades
+            {messages.play.descending}
           </p>
           <h1 className="mt-4 text-2xl font-semibold tracking-[0.12em] text-white sm:text-3xl sm:tracking-[0.18em]">
-            Buscando partida
+            {messages.play.searchingTitle}
           </h1>
-          <p className="mt-4 text-sm text-zinc-500">{selectedCharacter.name}</p>
+          <p className="mt-4 text-sm text-zinc-500">{localizedCharacter.name}</p>
 
           <div className="mt-10 grid gap-3 text-sm text-zinc-400">
-            {searchPhrases.map((phrase, index) => (
+            {messages.play.searchingPhrases.map((phrase, index) => (
               <div
                 key={phrase}
                 className="flex items-center justify-center gap-3"

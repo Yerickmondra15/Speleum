@@ -2,6 +2,8 @@
 
 import Image from "next/image";
 import type { CharacterOption, Zone } from "../gameConfig";
+import { localizeCharacterOption, localizeZone } from "@/lib/i18n/content";
+import { useLanguage } from "@/lib/i18n/LanguageProvider";
 
 type GameHudProps = {
   selectedCharacter: CharacterOption;
@@ -86,6 +88,9 @@ export function GameHud({
   stunRemaining = 0,
   nearbyDangerLabel = "bajo",
 }: GameHudProps) {
+  const { locale, messages } = useLanguage();
+  const localizedCharacter = localizeCharacterOption(locale, selectedCharacter);
+  const localizedZone = localizeZone(locale, zone);
   const hpPercent = Math.max(0, Math.min(100, (health / maxHealth) * 100));
   const guardState = formatGuardState({
     isStunned,
@@ -105,7 +110,7 @@ export function GameHud({
           <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-zinc-100/90">
             <Image
               src={selectedCharacter.imageGame}
-              alt={selectedCharacter.name}
+              alt={localizedCharacter.name}
               width={30}
               height={30}
               className="h-7.5 w-7.5 object-contain"
@@ -114,9 +119,9 @@ export function GameHud({
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <p className="truncate text-[0.52rem] tracking-[0.14em] text-zinc-500">{zone.subtitle}</p>
-                <h2 className="truncate text-[0.95rem] font-semibold text-white">{zone.name}</h2>
-                <p className="truncate text-[0.68rem] text-zinc-500">{selectedCharacter.name}</p>
+                <p className="truncate text-[0.52rem] tracking-[0.14em] text-zinc-500">{localizedZone.subtitle}</p>
+                <h2 className="truncate text-[0.95rem] font-semibold text-white">{localizedZone.name}</h2>
+                <p className="truncate text-[0.68rem] text-zinc-500">{localizedCharacter.name}</p>
               </div>
               <div className="text-right text-[0.68rem] text-zinc-300">
                 <p>{health}/{maxHealth} HP</p>
@@ -135,19 +140,19 @@ export function GameHud({
 
         <div className="mt-2 grid grid-cols-2 gap-1.5 text-[0.58rem] tracking-[0.08em] text-zinc-400">
           <div className="rounded-[0.85rem] border border-white/8 bg-black/35 px-2 py-1.5">
-            <p className="text-zinc-500">Pulso</p>
+            <p className="text-zinc-500">{messages.common.pulse}</p>
             <p className="mt-0.5 text-zinc-100">{formatCooldown(moveCooldownRemaining)}</p>
           </div>
           <div className="rounded-[0.85rem] border border-white/8 bg-black/35 px-2 py-1.5">
-            <p className="text-zinc-500">Ataque</p>
+            <p className="text-zinc-500">{messages.common.attack}</p>
             <p className="mt-0.5 text-zinc-100">{formatCooldown(attackCooldownRemaining)}</p>
           </div>
           <div className="rounded-[0.85rem] border border-white/8 bg-black/35 px-2 py-1.5">
-            <p className="text-zinc-500">Parry</p>
+            <p className="text-zinc-500">{messages.common.parry}</p>
             <p className="mt-0.5 text-zinc-100">{guardState}</p>
           </div>
           <div className="rounded-[0.85rem] border border-white/8 bg-black/35 px-2 py-1.5">
-            <p className="text-zinc-500">Score</p>
+            <p className="text-zinc-500">{messages.common.score}</p>
             <p className="mt-0.5 text-zinc-100">{score}</p>
           </div>
         </div>
@@ -168,22 +173,22 @@ export function GameHud({
           <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-zinc-100/90">
             <Image
               src={selectedCharacter.imageGame}
-              alt={selectedCharacter.name}
+              alt={localizedCharacter.name}
               width={40}
               height={40}
               className="h-10 w-10 object-contain"
             />
           </div>
           <div>
-            <p className="text-xs tracking-[0.25em] text-zinc-500">{zone.subtitle}</p>
-            <h2 className="mt-1 text-lg font-semibold text-white">{zone.name}</h2>
-            <p className="mt-1 text-xs text-zinc-500">{selectedCharacter.name}</p>
+            <p className="text-xs tracking-[0.25em] text-zinc-500">{localizedZone.subtitle}</p>
+            <h2 className="mt-1 text-lg font-semibold text-white">{localizedZone.name}</h2>
+            <p className="mt-1 text-xs text-zinc-500">{localizedCharacter.name}</p>
           </div>
         </div>
 
         <div className="mt-4 rounded-2xl border border-white/8 bg-black/35 px-3 py-3">
           <div className="flex items-center justify-between text-[0.7rem] tracking-[0.18em] text-zinc-500">
-            <span>VIDA</span>
+            <span>{messages.play.hud.life}</span>
             <span className="text-zinc-100">{health}/{maxHealth}</span>
           </div>
           <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/8">
@@ -196,19 +201,19 @@ export function GameHud({
 
         <div className="mt-3 grid grid-cols-2 gap-2 text-[0.7rem] tracking-[0.16em] text-zinc-400">
           <div className="rounded-xl border border-white/8 bg-black/35 px-3 py-2">
-            <p className="text-zinc-500">Pulso</p>
+            <p className="text-zinc-500">{messages.common.pulse}</p>
             <p className="mt-1 text-zinc-100">{formatCooldown(moveCooldownRemaining)}</p>
           </div>
           <div className="rounded-xl border border-white/8 bg-black/35 px-3 py-2">
-            <p className="text-zinc-500">Ataque</p>
+            <p className="text-zinc-500">{messages.common.attack}</p>
             <p className="mt-1 text-zinc-100">{formatCooldown(attackCooldownRemaining)}</p>
           </div>
           <div className="rounded-xl border border-white/8 bg-black/35 px-3 py-2">
-            <p className="text-zinc-500">Parry</p>
+            <p className="text-zinc-500">{messages.common.parry}</p>
             <p className="mt-1 text-zinc-100">{guardState}</p>
           </div>
           <div className="rounded-xl border border-white/8 bg-black/35 px-3 py-2">
-            <p className="text-zinc-500">Peligro</p>
+            <p className="text-zinc-500">{messages.common.danger}</p>
             <p className="mt-1 text-zinc-100">{nearbyDangerLabel}</p>
           </div>
         </div>
@@ -223,7 +228,7 @@ export function GameHud({
           <p>{objective}</p>
           {aliveCount !== undefined && <p className="mt-1">Vivos: {aliveCount}</p>}
           <p className="mt-1">{enemyStateLabel}</p>
-          {isPaused && <p className="mt-1 text-zinc-300">Juego en pausa</p>}
+          {isPaused && <p className="mt-1 text-zinc-300">{messages.play.hud.paused}</p>}
         </div>
       </div>
     </>

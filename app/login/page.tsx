@@ -18,6 +18,9 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 
 import { type PendingAuthState, useAuth } from "@/app/auth/AuthProvider";
+import { LanguageSwitcher } from "@/app/components/LanguageSwitcher";
+import { useLanguage } from "@/lib/i18n/LanguageProvider";
+import { translateAuthMessage } from "@/lib/i18n/content";
 
 type AuthMode = "login" | "register";
 type AuthStep = "credentials" | "verify";
@@ -401,6 +404,7 @@ export default function LoginPage() {
   const router = useRouter();
   const { login, register, resendCode, status, verifyEmailCode, verifyLoginCode } =
     useAuth();
+  const { locale, messages } = useLanguage();
   const typingTimeoutRef = useRef<number | null>(null);
   const [mode, setMode] = useState<AuthMode>("login");
   const [step, setStep] = useState<AuthStep>("credentials");
@@ -485,6 +489,13 @@ export default function LoginPage() {
 
     return nextErrors;
   }, [formData, mode, step, touched]);
+  const translatedErrors = {
+    code: currentErrors.code ? messages.login.errors.invalidCode : undefined,
+    username: currentErrors.username ? messages.login.errors.usernameShort : undefined,
+    email: currentErrors.email ? messages.login.errors.invalidEmail : undefined,
+    password: currentErrors.password ? messages.login.errors.passwordShort : undefined,
+    confirmPassword: currentErrors.confirmPassword ? messages.login.errors.passwordsDiffer : undefined,
+  };
 
   const isCredentialFormReady =
     validateEmail(formData.email.trim()) &&
@@ -589,8 +600,8 @@ export default function LoginPage() {
       if (result.status === "authenticated") {
         setSuccess(
           mode === "login"
-            ? "Sesion iniciada correctamente"
-            : "Cuenta creada correctamente",
+            ? messages.login.successLogin
+            : messages.login.successRegister,
         );
         window.setTimeout(() => {
           router.replace("/");
@@ -640,13 +651,14 @@ export default function LoginPage() {
           formData.code.trim(),
         );
         setSuccess("Correo verificado. Bienvenido a Speleum.");
+        
       } else {
         await verifyLoginCode(
           pendingAuth.challengeId,
           pendingAuth.email,
           formData.code.trim(),
         );
-        setSuccess("Acceso confirmado.");
+        setSuccess(messages.login.successLoginVerified);
       }
 
       window.setTimeout(() => {
@@ -654,7 +666,7 @@ export default function LoginPage() {
       }, 1200);
     } catch (error) {
       setSubmitError(
-        error instanceof Error ? error.message : "No se pudo validar el codigo.",
+        error instanceof Error ? translateAuthMessage(locale, error.message) : messages.login.errors.genericValidation,
       );
     } finally {
       setIsSubmitting(false);
@@ -703,7 +715,7 @@ export default function LoginPage() {
       }
 
       setSubmitError(
-        error instanceof Error ? error.message : "No se pudo reenviar el codigo.",
+        error instanceof Error ? translateAuthMessage(locale, error.message) : messages.login.errors.genericResend,
       );
     } finally {
       setIsResending(false);
@@ -714,6 +726,7 @@ export default function LoginPage() {
     return (
       <main className="flex min-h-screen items-center justify-center bg-black text-zinc-400">
         Cargando...
+        
       </main>
     );
   }
@@ -732,8 +745,11 @@ export default function LoginPage() {
           className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/10 bg-black/40 px-4 py-2 text-sm text-zinc-300 transition hover:text-white"
         >
           <ArrowLeft className="h-4 w-4" />
-          Volver al inicio
+          {messages.login.backHome}
         </Link>
+      </div>
+      <div className="absolute right-4 top-4 z-20 sm:right-6 sm:top-6">
+        <LanguageSwitcher />
       </div>
 
       <motion.div
@@ -749,13 +765,12 @@ export default function LoginPage() {
 
           <div className="mb-8 text-center">
             <h1 className="text-2xl font-semibold tracking-wide text-white sm:text-3xl">
-              {step === "verify" ? "Verificar acceso" : "Acceder a Speleum"}
+              {step === "verify" ? messages.login.verifyTitle : messages.login.accessTitle}
             </h1>
             <p className="mt-2 text-sm text-zinc-400">
               {step === "verify"
-                ? pendingAuth?.message ??
-                  "Revisa tu correo y escribe el codigo de 6 digitos para continuar."
-                : "Inicia sesion o registra tu cuenta para guardar perfil, ranking y progreso de partida."}
+                ? translateAuthMessage(locale, pendingAuth?.message ?? messages.login.verifyFallback)
+                : messages.login.accessDescription}
             </p>
           </div>
 
@@ -789,7 +804,7 @@ export default function LoginPage() {
                       : "text-zinc-400 hover:text-zinc-300"
                   }`}
                 >
-                  Iniciar sesion
+                  {messages.login.signIn}
                 </button>
                 <button
                   type="button"
@@ -801,7 +816,7 @@ export default function LoginPage() {
                       : "text-zinc-400 hover:text-zinc-300"
                   }`}
                 >
-                  Registro
+                  {messages.login.register}
                 </button>
               </div>
 
@@ -821,7 +836,7 @@ export default function LoginPage() {
                           <User className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
                           <input
                             type="text"
-                            placeholder="Nombre de usuario"
+                            placeholder={messages.login.username}
                             autoComplete="username"
                             minLength={3}
                             value={formData.username}
@@ -835,7 +850,7 @@ export default function LoginPage() {
                         </div>
                         {currentErrors.username && (
                           <p className="mt-1.5 text-xs text-rose-400">
-                            {currentErrors.username}
+                            {translatedErrors.username}
                           </p>
                         )}
                       </motion.div>
@@ -846,7 +861,7 @@ export default function LoginPage() {
                         <Mail className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
                         <input
                           type="email"
-                          placeholder="Correo electronico"
+                          placeholder={messages.login.email}
                           autoComplete="email"
                           value={formData.email}
                           onChange={(event) => handleInputChange("email", event.target.value)}
@@ -857,7 +872,7 @@ export default function LoginPage() {
                       </div>
                       {currentErrors.email && (
                         <p className="mt-1.5 text-xs text-rose-400">
-                          {currentErrors.email}
+                          {translatedErrors.email}
                         </p>
                       )}
                     </motion.div>
@@ -867,7 +882,7 @@ export default function LoginPage() {
                         <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
                         <input
                           type={showPassword ? "text" : "password"}
-                          placeholder="Contrasena"
+                          placeholder={messages.login.password}
                           autoComplete={mode === "login" ? "current-password" : "new-password"}
                           minLength={6}
                           value={formData.password}
@@ -881,7 +896,7 @@ export default function LoginPage() {
                         <button
                           type="button"
                           onClick={() => setShowPassword((current) => !current)}
-                          aria-label={showPassword ? "Ocultar contrasena" : "Mostrar contrasena"}
+                          aria-label={showPassword ? messages.login.hidePassword : messages.login.showPassword}
                           className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 transition-colors hover:text-zinc-300"
                         >
                           {showPassword ? (
@@ -893,7 +908,7 @@ export default function LoginPage() {
                       </div>
                       {currentErrors.password && (
                         <p className="mt-1.5 text-xs text-rose-400">
-                          {currentErrors.password}
+                          {translatedErrors.password}
                         </p>
                       )}
                     </motion.div>
@@ -904,7 +919,7 @@ export default function LoginPage() {
                           <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
                           <input
                             type={showConfirmPassword ? "text" : "password"}
-                            placeholder="Confirmar contrasena"
+                            placeholder={messages.login.confirmPassword}
                             autoComplete="new-password"
                             minLength={6}
                             value={formData.confirmPassword}
@@ -920,8 +935,8 @@ export default function LoginPage() {
                             onClick={() => setShowConfirmPassword((current) => !current)}
                             aria-label={
                               showConfirmPassword
-                                ? "Ocultar confirmacion de contrasena"
-                                : "Mostrar confirmacion de contrasena"
+                                ? messages.login.hideConfirmPassword
+                                : messages.login.showConfirmPassword
                             }
                             className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 transition-colors hover:text-zinc-300"
                           >
@@ -934,7 +949,7 @@ export default function LoginPage() {
                         </div>
                         {currentErrors.confirmPassword && (
                           <p className="mt-1.5 text-xs text-rose-400">
-                            {currentErrors.confirmPassword}
+                            {translatedErrors.confirmPassword}
                           </p>
                         )}
                       </motion.div>
@@ -946,7 +961,7 @@ export default function LoginPage() {
                           role="alert"
                           className="rounded-xl border border-rose-400/20 bg-rose-950/30 px-4 py-3 text-sm text-rose-200"
                         >
-                          {submitError}
+                          {submitError ? translateAuthMessage(locale, submitError) : submitError}
                         </div>
                       )}
                     </motion.div>
@@ -962,12 +977,12 @@ export default function LoginPage() {
                             ? "bg-rose-500/25 text-zinc-400 shadow-none"
                             : "bg-rose-400/80 shadow-rose-500/20 hover:bg-rose-400 hover:shadow-rose-500/30"
                         }`}
-                      >
+                        >
                         {isSubmitting
-                          ? "Procesando..."
+                          ? messages.login.processing
                           : mode === "login"
-                            ? "Continuar"
-                            : "Crear cuenta"}
+                            ? messages.login.continue
+                            : messages.login.createAccount}
                       </button>
                     </motion.div>
                   </motion.div>
@@ -979,23 +994,23 @@ export default function LoginPage() {
               <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-zinc-300">
                 <div className="mb-1 flex items-center gap-2 text-rose-300">
                   <ShieldCheck className="h-4 w-4" />
-                  <span className="font-medium">Correo destino</span>
+                  <span className="font-medium">{messages.login.destinationEmail}</span>
                 </div>
                 <p className="text-white">{pendingAuth?.email}</p>
                 <p className="mt-2 text-xs text-zinc-500">
                   {pendingAuth?.status === "pending_email_verification"
-                    ? "Debes verificar este correo antes de poder usar tu cuenta."
-                    : "Cada inicio de sesion requiere un codigo temporal enviado a tu correo."}
+                    ? messages.login.emailNeedsVerification
+                    : messages.login.loginNeedsVerification}
                 </p>
               </div>
 
               {isDemoCodeVisible && (
                 <details className="rounded-2xl border border-amber-300/15 bg-amber-950/15 p-4 text-amber-100">
                   <summary className="cursor-pointer text-sm font-medium">
-                    Codigo demo
+                    {messages.login.demoCode}
                   </summary>
                   <p className="mt-3 text-xs uppercase tracking-[0.18em] text-amber-200/70">
-                    Visible porque el modo demo publico esta activo
+                    {messages.login.demoCodeDescription}
                   </p>
                   <p className="mt-2 text-2xl font-semibold tracking-[0.34em]">
                     {pendingAuth?.demoCode}
@@ -1009,7 +1024,7 @@ export default function LoginPage() {
                   type="text"
                   inputMode="numeric"
                   autoComplete="one-time-code"
-                  placeholder="Codigo de 6 digitos"
+                  placeholder={messages.login.codePlaceholder}
                   value={formData.code}
                   onChange={(event) =>
                     handleInputChange("code", event.target.value.replace(/\D/g, "").slice(0, 6))
@@ -1020,14 +1035,14 @@ export default function LoginPage() {
                 />
               </div>
               {currentErrors.code && (
-                <p className="-mt-2 text-xs text-rose-400">{currentErrors.code}</p>
+                <p className="-mt-2 text-xs text-rose-400">{translatedErrors.code}</p>
               )}
 
               <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-sm">
                 <span className="text-zinc-400">
                   {resendSeconds > 0
-                    ? `Puedes reenviar en ${resendSeconds}s`
-                    : "No recibiste el codigo?"}
+                    ? messages.login.resendIn.replace("{seconds}", String(resendSeconds))
+                    : messages.login.noCode}
                 </span>
                 <button
                   type="button"
@@ -1040,7 +1055,7 @@ export default function LoginPage() {
                   }`}
                 >
                   <RefreshCcw className="h-4 w-4" />
-                  {isResending ? "Reenviando..." : "Reenviar"}
+                  {isResending ? messages.login.resending : messages.login.resend}
                 </button>
               </div>
 
@@ -1049,7 +1064,7 @@ export default function LoginPage() {
                   role="alert"
                   className="rounded-xl border border-rose-400/20 bg-rose-950/30 px-4 py-3 text-sm text-rose-200"
                 >
-                  {submitError}
+                  {submitError ? translateAuthMessage(locale, submitError) : submitError}
                 </div>
               )}
 
@@ -1064,7 +1079,7 @@ export default function LoginPage() {
                     : "bg-rose-400/80 shadow-rose-500/20 hover:bg-rose-400 hover:shadow-rose-500/30"
                 }`}
               >
-                {isSubmitting ? "Verificando..." : "Validar codigo"}
+                {isSubmitting ? messages.login.verifying : messages.login.validateCode}
               </button>
 
               <button
@@ -1072,7 +1087,7 @@ export default function LoginPage() {
                 onClick={() => resetVerificationState(mode)}
                 className="w-full text-sm text-zinc-500 transition hover:text-zinc-300"
               >
-                Volver y editar credenciales
+                {messages.login.editCredentials}
               </button>
             </form>
           )}

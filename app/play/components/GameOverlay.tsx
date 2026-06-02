@@ -3,6 +3,7 @@
 import Image from "next/image";
 import type { ReactNode } from "react";
 import type { GameStatus } from "../gameConfig";
+import { useLanguage } from "@/lib/i18n/LanguageProvider";
 
 type GameOverlayProps = {
   status: GameStatus;
@@ -14,22 +15,6 @@ type GameOverlayProps = {
   summary?: ReactNode;
 };
 
-const overlayContent: Record<
-  Extract<GameStatus, "won" | "lost">,
-  { title: string; message: string; buttonLabel: string }
-> = {
-  won: {
-    title: "Ganaste",
-    message: "Fuiste la ultima criatura viva en la cueva.",
-    buttonLabel: "Reiniciar",
-  },
-  lost: {
-    title: "Perdiste",
-    message: "La cueva te encontro antes del final.",
-    buttonLabel: "Intentar de nuevo",
-  },
-};
-
 export function GameOverlay({
   status,
   onRestart,
@@ -39,14 +24,15 @@ export function GameOverlay({
   buttonLabelOverride,
   summary,
 }: GameOverlayProps) {
+  const { messages } = useLanguage();
+
   if (status === "playing" || status === "paused") {
     return null;
   }
 
-  const content = overlayContent[status];
-  const title = titleOverride ?? content.title;
-  const message = messageOverride ?? content.message;
-  const buttonLabel = buttonLabelOverride ?? content.buttonLabel;
+  const title = titleOverride ?? (status === "won" ? messages.play.overlay.win : messages.play.overlay.lose);
+  const message = messageOverride ?? (status === "won" ? messages.play.overlay.winMessage : messages.play.overlay.loseMessage);
+  const buttonLabel = buttonLabelOverride ?? (status === "won" ? messages.play.overlay.restart : messages.play.overlay.retry);
 
   return (
     <div className="absolute inset-0 z-90 flex items-center justify-center bg-black/72 px-4 backdrop-blur-md">
@@ -80,7 +66,7 @@ export function GameOverlay({
             onClick={onExitToMenu}
             className="flex-1 rounded-full border border-white/10 bg-black/45 px-5 py-3 text-sm text-zinc-200 transition hover:bg-white/10"
           >
-            Volver al menu
+            {messages.play.overlay.backToMenu}
           </button>
         </div>
       </div>
