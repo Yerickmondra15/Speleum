@@ -68,7 +68,7 @@ export const creatures: Creature[] = [
       deteccion: 80,
     },
     imagenJuego: "/creatures/pez-juego.png",
-    imagenIlustracion: "/creatures/Pez-ilustracion.png",
+    imagenIlustracion: "/creatures/pez-ilustracion.png",
   },
   {
     id: "cave-crab",
@@ -115,4 +115,3 @@ export const creaturesById: Record<CreatureId, Creature> = {
 export function getCreatureById(id: string) {
   return creaturesById[id as CreatureId] ?? creaturesById["cave-axolotl"];
 }
-

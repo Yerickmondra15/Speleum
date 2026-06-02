@@ -35,7 +35,7 @@ export default function ComoJugarPage() {
       ? [
           {
             icon: Eye,
-            title: "Visión limitada",
+            title: "Vision limitada",
             text: "Tu criatura solo percibe 8 casillas a su alrededor. Fuera de ese pulso visual, la cueva vuelve a cerrarse en oscuridad.",
           },
           {
@@ -46,12 +46,12 @@ export default function ComoJugarPage() {
           {
             icon: Timer,
             title: "Pulso y cooldown",
-            text: "Cuanto más lejos te desplazas, más tarda tu pulso en estabilizarse. Atacar y defender también exigen recuperación.",
+            text: "Cuanto mas lejos te desplazas, mas tarda tu pulso en estabilizarse. Atacar y defender tambien exigen recuperacion.",
           },
           {
             icon: Radio,
-            title: "Radar y señales",
-            text: "Moverse deja una señal leve. Atacar emite una señal fuerte. Defenderse deja una marca corta y discreta. El radar orienta, pero no revela posiciones perfectas.",
+            title: "Radar y senales",
+            text: "Moverse deja una senal leve. Atacar emite una senal fuerte. Defenderse deja una marca corta y discreta. El radar orienta, pero no revela posiciones perfectas.",
           },
           {
             icon: Swords,
@@ -61,7 +61,7 @@ export default function ComoJugarPage() {
           {
             icon: Shield,
             title: "Defensa",
-            text: "La defensa reduce daño durante una ventana corta y luego entra en recuperación antes de poder activarse otra vez.",
+            text: "La defensa reduce dano durante una ventana corta y luego entra en recuperacion antes de poder activarse otra vez.",
           },
         ]
       : [
@@ -101,11 +101,11 @@ export default function ComoJugarPage() {
       ? [
           {
             title: "Ajolote de cueva",
-            text: "Equilibrado: movimiento estable, cooldown normal y señal clara. Es la forma más directa de aprender el mapa.",
+            text: "Equilibrado: movimiento estable, cooldown normal y senal clara. Es la forma mas directa de aprender el mapa.",
           },
           {
-            title: "Camarón de cueva",
-            text: "Evasivo: se mueve más lejos, recupera antes y deja una señal de movimiento más tenue.",
+            title: "Camaron de cueva",
+            text: "Evasivo: se mueve mas lejos, recupera antes y deja una senal de movimiento mas tenue.",
           },
         ]
       : [

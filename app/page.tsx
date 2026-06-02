@@ -8,7 +8,6 @@ import {
   Trophy,
   CircleHelp,
   User,
-  Play,
   LogIn,
   Lightbulb,
   ChevronDown,
@@ -63,7 +62,7 @@ export default function Home() {
   };
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-black text-white">
+    <main className="relative min-h-screen overflow-x-hidden bg-black text-white">
       {!turnedOn && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.04),transparent_45%)]" />
@@ -106,19 +105,7 @@ export default function Home() {
               />
             </div>
 
-            <Link
-              href={primaryHref}
-              className={`order-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-full border px-5 py-3 text-sm font-medium tracking-wide transition sm:order-2 sm:min-h-0 sm:w-auto sm:py-2 ${
-                hasSession
-                  ? "border-rose-200/30 bg-rose-300/90 text-black shadow-[0_0_24px_rgba(251,113,133,0.28)] hover:bg-rose-200"
-                  : "border-white/10 bg-white/5 text-white hover:bg-white/10"
-              }`}
-            >
-              {hasSession ? <Play className="h-4 w-4 fill-black" /> : <LogIn className="h-4 w-4" />}
-              {primaryLabel}
-            </Link>
-
-            <div className="order-2 flex items-center gap-2 sm:order-3 sm:gap-3">
+            <div className="order-2 flex flex-wrap items-center justify-end gap-2 sm:gap-3">
               <LanguageSwitcher />
               <Link href="/ranking" className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10">
                 <Trophy className="h-5 w-5 text-zinc-200" />
@@ -133,14 +120,18 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => void handleLogout()}
-                  className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10"
-                  aria-label={messages.home.logoutAria}
+                  className="inline-flex min-h-11 min-w-[9.5rem] items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-white/10"
                 >
-                  <LogOut className="h-5 w-5 text-zinc-200" />
+                  <LogOut className="h-4 w-4 text-zinc-200" />
+                  {messages.common.logout}
                 </button>
               ) : (
-                <Link href="/login" className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10">
-                  <LogIn className="h-5 w-5 text-zinc-200" />
+                <Link
+                  href="/login"
+                  className="inline-flex min-h-11 min-w-[9.5rem] items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-white/10"
+                >
+                  <LogIn className="h-4 w-4 text-zinc-200" />
+                  {messages.home.primaryLogin}
                 </Link>
               )}
             </div>
