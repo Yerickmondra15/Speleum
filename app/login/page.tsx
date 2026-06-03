@@ -18,7 +18,6 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 
 import { type PendingAuthState, useAuth } from "@/app/auth/AuthProvider";
-import { LanguageSwitcher } from "@/app/components/LanguageSwitcher";
 import { useLanguage } from "@/lib/i18n/LanguageProvider";
 import { translateAuthMessage } from "@/lib/i18n/content";
 
@@ -724,7 +723,7 @@ export default function LoginPage() {
 
   if (status === "signed-in") {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-black text-zinc-400">
+      <main className="theme-app flex min-h-screen items-center justify-center theme-text-muted">
         Cargando...
         
       </main>
@@ -732,24 +731,21 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-black px-4 py-20 sm:py-12">
+    <main className="theme-app relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-20 sm:py-12">
       <CaveParticles />
       <StalactiteBackground />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_20%,rgba(0,0,0,0.8)_80%)]" />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(30,30,30,0.4),transparent_60%)]" />
-      <div className="pointer-events-none absolute bottom-0 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-rose-500/5 blur-3xl" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_20%,var(--surface-overlay)_80%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,var(--glow-main),transparent_60%)]" />
+      <div className="pointer-events-none absolute bottom-0 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-(--glow-accent) blur-3xl" />
 
       <div className="absolute left-4 top-4 z-20 sm:left-6 sm:top-6">
         <Link
           href="/"
-          className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/10 bg-black/40 px-4 py-2 text-sm text-zinc-300 transition hover:text-white"
+          className="theme-button-secondary inline-flex min-h-11 items-center gap-2 rounded-full px-4 py-2 text-sm transition"
         >
           <ArrowLeft className="h-4 w-4" />
           {messages.login.backHome}
         </Link>
-      </div>
-      <div className="absolute right-4 top-4 z-20 sm:right-6 sm:top-6">
-        <LanguageSwitcher />
       </div>
 
       <motion.div
@@ -758,16 +754,16 @@ export default function LoginPage() {
         transition={{ duration: 0.8, ease: "easeOut" }}
         className="relative z-10 w-full max-w-md pt-10 sm:pt-0"
       >
-        <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-zinc-900/70 p-5 shadow-2xl shadow-black/50 backdrop-blur-xl sm:p-8">
+        <div className="theme-panel relative overflow-hidden rounded-3xl p-5 shadow-2xl shadow-black/20 sm:p-8">
           <AnimatePresence>
             {success && <SuccessMessage message={success} />}
           </AnimatePresence>
 
           <div className="mb-8 text-center">
-            <h1 className="text-2xl font-semibold tracking-wide text-white sm:text-3xl">
+            <h1 className="theme-text-primary text-2xl font-semibold tracking-wide sm:text-3xl">
               {step === "verify" ? messages.login.verifyTitle : messages.login.accessTitle}
             </h1>
-            <p className="mt-2 text-sm text-zinc-400">
+            <p className="theme-text-secondary mt-2 text-sm">
               {step === "verify"
                 ? translateAuthMessage(locale, pendingAuth?.message ?? messages.login.verifyFallback)
                 : messages.login.accessDescription}
@@ -780,7 +776,7 @@ export default function LoginPage() {
 
           {step === "credentials" ? (
             <>
-              <div className="relative mb-6 flex gap-2 rounded-xl bg-black/30 p-1">
+              <div className="theme-card-soft relative mb-6 flex gap-2 rounded-xl p-1">
                 <motion.div
                   className="absolute inset-y-1 rounded-lg bg-rose-400/20"
                   initial={false}
@@ -801,7 +797,7 @@ export default function LoginPage() {
                   className={`relative z-10 flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
                     mode === "login"
                       ? "text-rose-300"
-                      : "text-zinc-400 hover:text-zinc-300"
+                      : "theme-text-muted hover:text-(--text-secondary)"
                   }`}
                 >
                   {messages.login.signIn}
@@ -813,7 +809,7 @@ export default function LoginPage() {
                   className={`relative z-10 flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
                     mode === "register"
                       ? "text-rose-300"
-                      : "text-zinc-400 hover:text-zinc-300"
+                      : "theme-text-muted hover:text-(--text-secondary)"
                   }`}
                 >
                   {messages.login.register}

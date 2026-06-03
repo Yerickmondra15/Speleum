@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import { AuthProvider } from './auth/AuthProvider'
 import { LanguageProvider } from '@/lib/i18n/LanguageProvider'
+import { ThemeProvider } from '@/lib/theme/ThemeProvider'
+import { defaultTheme, themeStorageKey } from '@/lib/theme/theme'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -33,9 +35,23 @@ export default function RootLayout({
   return (
     <html lang="es" suppressHydrationWarning>
       <body className="font-sans antialiased">
-        <LanguageProvider>
-          <AuthProvider>{children}</AuthProvider>
-        </LanguageProvider>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(() => {
+              const key = ${JSON.stringify(themeStorageKey)};
+              const fallback = ${JSON.stringify(defaultTheme)};
+              const stored = window.localStorage.getItem(key);
+              const theme = stored === "light" || stored === "dark" ? stored : fallback;
+              document.documentElement.dataset.theme = theme;
+              document.documentElement.style.colorScheme = theme;
+            })();`,
+          }}
+        />
+        <ThemeProvider>
+          <LanguageProvider>
+            <AuthProvider>{children}</AuthProvider>
+          </LanguageProvider>
+        </ThemeProvider>
       </body>
     </html>
   )

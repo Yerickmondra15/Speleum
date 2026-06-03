@@ -19,7 +19,7 @@ Speleum es un proyecto académico de videojuego web centrado en supervivencia t�
 
 ## Objetivo del proyecto
 
-Desarrollar un MVP jugable que combine diseño de juego, frontend interactivo, persistencia de datos y una base de tiempo real. El proyecto busca demostrar integración entre experiencia visual, lógica táctica, autenticación, ranking y una primera aproximación a multijugador con salas.
+Desarrollar un multijugador jugable que combine diseño de juego, frontend interactivo, persistencia de datos y una base de tiempo real. El proyecto busca demostrar integración entre experiencia visual, lógica táctica, autenticación, ranking y una primera aproximación a multijugador con salas.
 
 ## Estado actual del sistema
 
@@ -34,7 +34,9 @@ Además, incluye una base multijugador con salas privadas en tiempo real mediant
 - Verificación por código para registro e inicio de sesión.
 - Gestión de sesión autenticada.
 - Soporte bilingüe en interfaz principal (Español/Inglés) con persistencia local.
+- Soporte de tema claro / oscuro con modo oscuro por defecto y persistencia local.
 - Perfil de usuario con estadísticas básicas.
+- Preferencias de usuario para idioma y tema desde la sección de perfil.
 - Selección y persistencia de criatura activa.
 - Ranking persistido en base de datos.
 - Guardado de resultados de partida.

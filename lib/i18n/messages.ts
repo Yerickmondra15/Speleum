@@ -12,6 +12,8 @@ export const translations = {
       language: "Idioma",
       spanish: "Español",
       english: "English",
+      darkTheme: "Oscuro",
+      lightTheme: "Claro",
       home: "Inicio",
       login: "Acceder",
       profile: "Perfil",
@@ -134,6 +136,11 @@ export const translations = {
       idLabel: "SPELEUM ID",
       description:
         "Tu perfil conserva tu criatura activa, tus resultados acumulados y el avance registrado en Speleum.",
+      preferencesTitle: "PREFERENCIAS",
+      preferencesDescription:
+        "Idioma y tema se guardan como preferencias personales y se aplican en el resto de Speleum sin mostrar controles repetidos.",
+      languagePreference: "Idioma de interfaz",
+      themePreference: "Tema visual",
       activeSession: "SESIÓN ACTIVA",
       username: "Nombre de usuario",
       email: "Correo",
@@ -292,6 +299,8 @@ export const translations = {
       language: "Language",
       spanish: "Español",
       english: "English",
+      darkTheme: "Dark",
+      lightTheme: "Light",
       home: "Home",
       login: "Sign in",
       profile: "Profile",
@@ -413,6 +422,11 @@ export const translations = {
       idLabel: "SPELEUM ID",
       description:
         "Your profile keeps your active creature, accumulated results, and recorded progress in Speleum.",
+      preferencesTitle: "PREFERENCES",
+      preferencesDescription:
+        "Language and theme are stored as personal preferences and applied across Speleum without repeating controls on every page.",
+      languagePreference: "Interface language",
+      themePreference: "Visual theme",
       activeSession: "ACTIVE SESSION",
       username: "Username",
       email: "Email",

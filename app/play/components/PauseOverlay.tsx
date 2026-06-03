@@ -14,13 +14,13 @@ export function PauseOverlay({
   const { messages } = useLanguage();
 
   return (
-    <div className="absolute inset-0 z-90 flex items-center justify-center bg-black/56 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-[linear-gradient(180deg,rgba(20,20,24,0.96),rgba(8,8,10,0.96))] p-6 text-center shadow-[0_24px_70px_rgba(0,0,0,0.58)] sm:p-8">
-        <p className="text-xs tracking-[0.36em] text-zinc-500">SPELEUM</p>
-        <h2 className="mt-4 text-3xl font-semibold tracking-[0.08em] text-white sm:text-4xl">
+    <div className="theme-overlay absolute inset-0 z-90 flex items-center justify-center px-4 backdrop-blur-sm">
+      <div className="theme-panel w-full max-w-md rounded-[2rem] bg-[linear-gradient(180deg,var(--surface-1),var(--app-bg-soft))] p-6 text-center shadow-[0_24px_70px_rgba(0,0,0,0.3)] sm:p-8">
+        <p className="theme-text-muted text-xs tracking-[0.36em]">SPELEUM</p>
+        <h2 className="theme-text-primary mt-4 text-3xl font-semibold tracking-[0.08em] sm:text-4xl">
           {messages.play.pause.title}
         </h2>
-        <p className="mt-4 text-sm leading-7 text-zinc-300">
+        <p className="theme-text-secondary mt-4 text-sm leading-7">
           {messages.play.pause.text}
         </p>
 
@@ -29,7 +29,7 @@ export function PauseOverlay({
             type="button"
             onClick={onContinue}
             aria-label={messages.play.controls.resumeGame}
-            className="flex-1 rounded-full bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200"
+            className="theme-button-primary flex-1 rounded-full px-5 py-3 text-sm font-semibold transition"
           >
             {messages.common.continue}
           </button>
@@ -37,7 +37,7 @@ export function PauseOverlay({
             type="button"
             onClick={onExitToMenu}
             aria-label={messages.play.overlay.backToMenu}
-            className="flex-1 rounded-full border border-white/10 bg-black/45 px-5 py-3 text-sm text-zinc-200 transition hover:bg-white/10"
+            className="theme-button-secondary flex-1 rounded-full px-5 py-3 text-sm transition"
           >
             {messages.play.overlay.backToMenu}
           </button>

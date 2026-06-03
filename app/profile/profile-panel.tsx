@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, LogOut, Play, UserRound } from "lucide-react";
 import { getCreatureById } from "@/lib/creatures";
 import { LanguageSwitcher } from "@/app/components/LanguageSwitcher";
+import { ThemeSwitcher } from "@/app/components/ThemeSwitcher";
 import { getLocalizedCreature } from "@/lib/i18n/content";
 import { useLanguage } from "@/lib/i18n/LanguageProvider";
 import { useAuth } from "../auth/AuthProvider";
@@ -21,6 +22,25 @@ type ProfileData = {
   score: number;
   lastMatchAt: string | null;
 };
+
+type ProfileFieldRowProps = {
+  label: string;
+  value: string | number;
+  valueClassName?: string;
+};
+
+function ProfileFieldRow({
+  label,
+  value,
+  valueClassName = "",
+}: ProfileFieldRowProps) {
+  return (
+    <div className="flex flex-col gap-1 rounded-2xl border border-(--border-soft) bg-(--surface-2) px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+      <span className="text-(--text-muted)">{label}: </span>
+      <span className={`text-(--text-secondary) sm:text-right ${valueClassName}`}>{value}</span>
+    </div>
+  );
+}
 
 export function ProfilePanel() {
   const router = useRouter();
@@ -71,47 +91,44 @@ export function ProfilePanel() {
 
   if (status === "loading" || isLoading || !profile) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-black text-zinc-400">
+      <main className="theme-page flex min-h-screen items-center justify-center text-(--text-muted)">
         {messages.profile.loading}
       </main>
     );
   }
 
   return (
-    <main className="relative min-h-screen overflow-x-hidden bg-black text-white">
+    <main className="theme-page relative min-h-screen overflow-x-hidden">
       <div className="pointer-events-none fixed inset-0">
-        <div className="absolute left-1/2 top-24 h-128 w-lg -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.08),transparent_70%)] blur-3xl" />
-        <div className="absolute inset-x-0 bottom-0 h-64 bg-[linear-gradient(to_top,rgba(82,9,20,0.22),transparent)]" />
+        <div className="absolute left-1/2 top-24 h-128 w-lg -translate-x-1/2 rounded-full theme-spotlight blur-3xl" />
+        <div className="absolute inset-x-0 bottom-0 h-64 theme-accent-fade" />
       </div>
 
       <header className="relative z-10 mx-auto flex min-h-16 max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
         <Link
           href="/"
-          className="inline-flex min-h-11 items-center gap-2 text-sm text-zinc-300 transition hover:text-white"
+          className="inline-flex min-h-11 items-center gap-2 text-sm text-(--text-secondary) transition hover:text-(--text-primary)"
         >
           <ArrowLeft className="h-4 w-4" />
           {messages.common.home}
         </Link>
-        <div className="flex items-center gap-3">
-          <p className="text-xs tracking-[0.34em] text-zinc-500">{messages.profile.title}</p>
-          <LanguageSwitcher />
-        </div>
+        <p className="text-xs tracking-[0.34em] text-(--text-muted)">{messages.profile.title}</p>
       </header>
 
       <section className="relative z-10 mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl content-center gap-8 px-4 py-10 sm:px-6 sm:py-12 lg:grid-cols-[0.9fr_1.1fr]">
         <div>
-          <p className="text-xs tracking-[0.35em] text-zinc-500">{messages.profile.idLabel}</p>
-          <h1 className="mt-4 wrap-break-word text-3xl font-semibold tracking-[0.12em] text-white sm:text-5xl sm:tracking-[0.18em]">
+          <p className="text-xs tracking-[0.35em] text-(--text-muted)">{messages.profile.idLabel}</p>
+          <h1 className="mt-4 wrap-break-word text-3xl font-semibold tracking-[0.12em] text-(--text-primary) sm:text-5xl sm:tracking-[0.18em]">
             {profile.username}
           </h1>
-          <p className="mt-5 max-w-xl text-sm leading-7 text-zinc-400">
+          <p className="mt-5 max-w-xl text-sm leading-7 text-(--text-secondary)">
             {messages.profile.description}
           </p>
         </div>
 
-        <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-6 backdrop-blur-md">
+        <div className="theme-panel rounded-3xl p-6">
           <div className="flex items-center gap-4">
-            <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-zinc-100/90">
+            <div className="theme-icon-shell flex h-16 w-16 items-center justify-center overflow-hidden rounded-full">
               <Image
                 src={activeCreature.imagenJuego}
                 alt={localizedCreature.nombre}
@@ -121,73 +138,106 @@ export function ProfilePanel() {
               />
             </div>
             <div>
-              <p className="text-xs tracking-[0.24em] text-zinc-500">
+              <p className="text-xs tracking-[0.24em] text-(--text-muted)">
                 {messages.profile.activeSession}
               </p>
-              <h2 className="mt-1 text-2xl font-semibold text-white">
+              <h2 className="mt-1 text-2xl font-semibold text-(--text-primary)">
                 {profile.username}
               </h2>
             </div>
           </div>
 
           <div className="mt-7 grid gap-3 text-sm">
-            <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <span className="text-zinc-500">{messages.profile.username}</span>
-              <span className="wrap-break-word text-zinc-200 sm:text-right">{profile.username}</span>
-            </div>
-            <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <span className="text-zinc-500">{messages.profile.email}</span>
-              <span className="break-all text-zinc-200 sm:text-right">{profile.email}</span>
-            </div>
-            <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <span className="text-zinc-500">{messages.profile.status}</span>
-              <span className="text-zinc-200">{messages.profile.authenticatedSession}</span>
-            </div>
-            <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <span className="text-zinc-500">{messages.profile.activeCreature}</span>
-              <span className="text-zinc-200 sm:text-right">{localizedCreature.nombre}</span>
-            </div>
-            <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <span className="text-zinc-500">{messages.profile.ability}</span>
-              <span className="max-w-full wrap-break-word text-zinc-200 sm:max-w-52 sm:text-right">{localizedCreature.habilidad}</span>
-            </div>
-            <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <span className="text-zinc-500">{messages.profile.matchesPlayed}</span>
-              <span className="text-zinc-200">{profile.matchesPlayed}</span>
-            </div>
-            <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <span className="text-zinc-500">{messages.profile.wins}</span>
-              <span className="text-zinc-200">{profile.wins}</span>
-            </div>
-            <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <span className="text-zinc-500">{messages.profile.losses}</span>
-              <span className="text-zinc-200">{profile.losses}</span>
-            </div>
-            <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <span className="text-zinc-500">Score</span>
-              <span className="text-zinc-200">{profile.score}</span>
-            </div>
-            <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <span className="text-zinc-500">{messages.profile.lastMatch}</span>
-              <span className="wrap-break-word text-zinc-200 sm:max-w-56 sm:text-right">
-                {profile.lastMatchAt
+            <ProfileFieldRow
+              label={messages.profile.username}
+              value={profile.username}
+              valueClassName="wrap-break-word"
+            />
+            <ProfileFieldRow
+              label={messages.profile.email}
+              value={profile.email}
+              valueClassName="break-all"
+            />
+            <ProfileFieldRow
+              label={messages.profile.status}
+              value={messages.profile.authenticatedSession}
+            />
+            <ProfileFieldRow
+              label={messages.profile.activeCreature}
+              value={localizedCreature.nombre}
+            />
+            <ProfileFieldRow
+              label={messages.profile.ability}
+              value={localizedCreature.habilidad}
+              valueClassName="max-w-full wrap-break-word sm:max-w-52"
+            />
+            <ProfileFieldRow
+              label={messages.profile.matchesPlayed}
+              value={profile.matchesPlayed}
+            />
+            <ProfileFieldRow
+              label={messages.profile.wins}
+              value={profile.wins}
+            />
+            <ProfileFieldRow
+              label={messages.profile.losses}
+              value={profile.losses}
+            />
+            <ProfileFieldRow
+              label="Score"
+              value={profile.score}
+            />
+            <ProfileFieldRow
+              label={messages.profile.lastMatch}
+              value={
+                profile.lastMatchAt
                   ? new Date(profile.lastMatchAt).toLocaleString(locale === "es" ? "es-CR" : "en-US")
-                  : messages.profile.noMatches}
-              </span>
+                  : messages.profile.noMatches
+              }
+              valueClassName="wrap-break-word sm:max-w-56"
+            />
+          </div>
+
+          <div className="mt-7 rounded-3xl border border-(--border-soft) bg-(--surface-2) p-5">
+            <p className="text-xs tracking-[0.28em] text-(--text-muted)">
+              {messages.profile.preferencesTitle}
+            </p>
+            <p className="mt-3 text-sm leading-6 text-(--text-secondary)">
+              {messages.profile.preferencesDescription}
+            </p>
+
+            <div className="mt-6 grid gap-5">
+              <div>
+                <p className="text-xs tracking-[0.2em] text-(--text-muted)">
+                  {messages.profile.languagePreference}
+                </p>
+                <div className="mt-4">
+                  <LanguageSwitcher />
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs tracking-[0.2em] text-(--text-muted)">
+                  {messages.profile.themePreference}
+                </p>
+                <div className="mt-4">
+                  <ThemeSwitcher />
+                </div>
+              </div>
             </div>
           </div>
 
           <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <Link
               href="/play"
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200"
+              className="theme-button-primary inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-semibold transition"
             >
-              <Play className="h-4 w-4 fill-black" />
+              <Play className="h-4 w-4" />
               {messages.profile.goPlay}
             </Link>
             <Link
               href="/play"
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-white/10 bg-black/40 px-6 py-3 text-sm text-zinc-300 transition hover:text-white"
+              className="theme-button-secondary inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-6 py-3 text-sm transition"
             >
               <UserRound className="h-4 w-4" />
               {messages.profile.changeCreature}
@@ -195,7 +245,7 @@ export function ProfilePanel() {
             <button
               type="button"
               onClick={handleLogout}
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-white/10 bg-black/40 px-6 py-3 text-sm text-zinc-300 transition hover:text-white"
+              className="theme-button-secondary inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-6 py-3 text-sm transition"
             >
               <LogOut className="h-4 w-4" />
               {messages.common.logout}

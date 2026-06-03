@@ -4,6 +4,7 @@ import Image from "next/image";
 import type { ReactNode } from "react";
 import type { GameStatus } from "../gameConfig";
 import { useLanguage } from "@/lib/i18n/LanguageProvider";
+import { useTheme } from "@/lib/theme/ThemeProvider";
 
 type GameOverlayProps = {
   status: GameStatus;
@@ -25,6 +26,7 @@ export function GameOverlay({
   summary,
 }: GameOverlayProps) {
   const { messages } = useLanguage();
+  const { theme } = useTheme();
 
   if (status === "playing" || status === "paused") {
     return null;
@@ -35,36 +37,36 @@ export function GameOverlay({
   const buttonLabel = buttonLabelOverride ?? (status === "won" ? messages.play.overlay.restart : messages.play.overlay.retry);
 
   return (
-    <div className="absolute inset-0 z-90 flex items-center justify-center bg-black/72 px-4 backdrop-blur-md">
-      <div className="w-full max-w-md rounded-4xl border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.96),rgba(10,10,12,0.96))] p-6 text-center shadow-[0_30px_80px_rgba(0,0,0,0.65)] sm:p-8">
+    <div className="theme-overlay absolute inset-0 z-90 flex items-center justify-center px-4 backdrop-blur-md">
+      <div className="theme-panel w-full max-w-md rounded-4xl bg-[linear-gradient(180deg,var(--surface-1),var(--app-bg-soft))] p-6 text-center shadow-[0_30px_80px_rgba(0,0,0,0.35)] sm:p-8">
         <div className="flex justify-center">
           <Image
-            src="/Grafico/Logo blanco.svg"
+            src={theme === "light" ? "/Grafico/Logo Speleum.svg" : "/Grafico/Logo blanco.svg"}
             alt="Speleum"
             width={42}
             height={42}
             className="h-10 w-auto opacity-90"
           />
         </div>
-        <p className="mt-3 text-xs tracking-[0.36em] text-zinc-500">SPELEUM</p>
-        <h2 className="mt-4 text-3xl font-semibold tracking-[0.08em] text-white sm:text-4xl sm:tracking-[0.12em]">
+        <p className="theme-text-muted mt-3 text-xs tracking-[0.36em]">SPELEUM</p>
+        <h2 className="theme-text-primary mt-4 text-3xl font-semibold tracking-[0.08em] sm:text-4xl sm:tracking-[0.12em]">
           {title}
         </h2>
-        <p className="mt-4 text-sm leading-7 text-zinc-300">{message}</p>
+        <p className="theme-text-secondary mt-4 text-sm leading-7">{message}</p>
         {summary && <div className="mt-6">{summary}</div>}
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
           <button
             type="button"
             onClick={onRestart}
-            className="flex-1 rounded-full bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200"
+            className="theme-button-primary flex-1 rounded-full px-5 py-3 text-sm font-semibold transition"
           >
             {buttonLabel}
           </button>
           <button
             type="button"
             onClick={onExitToMenu}
-            className="flex-1 rounded-full border border-white/10 bg-black/45 px-5 py-3 text-sm text-zinc-200 transition hover:bg-white/10"
+            className="theme-button-secondary flex-1 rounded-full px-5 py-3 text-sm transition"
           >
             {messages.play.overlay.backToMenu}
           </button>

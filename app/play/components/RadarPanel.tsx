@@ -45,19 +45,19 @@ export function RadarPanel({
   ).length;
 
   return (
-    <div className="rounded-[1rem] border border-white/10 bg-black/28 p-2.5 backdrop-blur-md sm:rounded-[1.2rem] sm:p-3">
+    <div className="theme-panel rounded-[1rem] p-2.5 sm:rounded-[1.2rem] sm:p-3">
       <div className="flex items-center justify-between">
-        <p className="text-[0.58rem] tracking-[0.22em] text-zinc-500 sm:text-[0.68rem] sm:tracking-[0.25em]">
+        <p className="theme-text-muted text-[0.58rem] tracking-[0.22em] sm:text-[0.68rem] sm:tracking-[0.25em]">
           {messages.play.radar.title}
         </p>
-        <Radio className="h-3.5 w-3.5 text-zinc-500 sm:h-4 sm:w-4" />
+        <Radio className="theme-text-muted h-3.5 w-3.5 sm:h-4 sm:w-4" />
       </div>
 
-      <div className="relative mt-2 aspect-square overflow-hidden rounded-full border border-white/10 bg-[radial-gradient(circle,rgba(255,255,255,0.04),transparent_28%),#050505] sm:mt-4">
-        <div className="absolute inset-1/2 h-px w-full -translate-x-1/2 bg-white/10" />
-        <div className="absolute left-1/2 top-0 h-full w-px bg-white/10" />
-        <div className="absolute inset-[18%] rounded-full border border-white/10" />
-        <div className="absolute inset-[34%] rounded-full border border-white/10" />
+      <div className="theme-border relative mt-2 aspect-square overflow-hidden rounded-full border bg-[radial-gradient(circle,var(--glow-main),transparent_28%),var(--app-bg)] sm:mt-4">
+        <div className="theme-border absolute inset-1/2 h-px w-full -translate-x-1/2 bg-[var(--border-soft)]" />
+        <div className="theme-border absolute left-1/2 top-0 h-full w-px bg-[var(--border-soft)]" />
+        <div className="theme-border absolute inset-[18%] rounded-full border" />
+        <div className="theme-border absolute inset-[34%] rounded-full border" />
 
         {nearbySignals.map((signal) => (
           <div
@@ -83,10 +83,10 @@ export function RadarPanel({
         </div>
       </div>
 
-      <div className="mt-2 grid gap-1 text-[0.6rem] text-zinc-500 sm:mt-4 sm:gap-2 sm:text-xs">
+      <div className="theme-text-muted mt-2 grid gap-1 text-[0.6rem] sm:mt-4 sm:gap-2 sm:text-xs">
         <div className="flex justify-between gap-2">
           <span>{messages.play.radar.lastSignal}</span>
-          <span className="truncate text-right text-zinc-300">
+          <span className="theme-text-secondary truncate text-right">
             {latestSignal
               ? `${messages.play.radar[latestSignal.type as "move" | "attack" | "defend"]} / ${latestSignal.strength}`
               : messages.play.radar.none}
@@ -94,7 +94,7 @@ export function RadarPanel({
         </div>
         <div className="flex justify-between">
           <span>{messages.common.pulse}</span>
-          <span className="text-zinc-300">
+          <span className="theme-text-secondary">
             {moveCooldownRemaining > 0
               ? `${(moveCooldownRemaining / 1000).toFixed(1)}s`
               : messages.play.radar.ready}
@@ -102,11 +102,11 @@ export function RadarPanel({
         </div>
         <div className="flex justify-between">
           <span>{messages.play.radar.contacts}</span>
-          <span className="text-zinc-300">{nearbySignals.length}</span>
+          <span className="theme-text-secondary">{nearbySignals.length}</span>
         </div>
         <div className="flex justify-between">
           <span>{messages.common.danger}</span>
-          <span className="text-zinc-300">
+          <span className="theme-text-secondary">
             {hostileCount > 1
               ? messages.play.radar.dangerHigh
               : hostileCount === 1
@@ -118,7 +118,7 @@ export function RadarPanel({
         </div>
         <div className="flex justify-between">
           <span>{messages.play.radar.ownNoise}</span>
-          <span className="text-zinc-300">
+          <span className="theme-text-secondary">
             {RADAR_SIGNAL_PROFILES.move.strength} / {RADAR_SIGNAL_PROFILES.attack.strength}
           </span>
         </div>
