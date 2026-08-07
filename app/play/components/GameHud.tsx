@@ -1,6 +1,8 @@
 "use client";
 
 import Image from "next/image";
+import { ChevronDown, ChevronUp } from "lucide-react";
+import { useState } from "react";
 import type { CharacterOption, Zone } from "../gameConfig";
 import { localizeCharacterOption, localizeZone } from "@/lib/i18n/content";
 import { useLanguage } from "@/lib/i18n/LanguageProvider";
@@ -28,6 +30,7 @@ type GameHudProps = {
   nearestThreatTiles?: number | null;
   nearbyDangerLabel?: string;
   detectedEnemies?: number;
+  sanity?: number;
   attackRangeLabel?: string;
   otherPlayersSummary?: Array<{
     id: string;
@@ -87,7 +90,9 @@ export function GameHud({
   parryWindowRemaining = 0,
   stunRemaining = 0,
   nearbyDangerLabel = "bajo",
+  sanity,
 }: GameHudProps) {
+  const [showDesktopDetails, setShowDesktopDetails] = useState(false);
   const { locale, messages } = useLanguage();
   const localizedCharacter = localizeCharacterOption(locale, selectedCharacter);
   const localizedZone = localizeZone(locale, zone);
@@ -166,32 +171,41 @@ export function GameHud({
       </div>
 
       <div
-        className="theme-panel pointer-events-none absolute left-4 z-70 hidden max-w-sm rounded-[1.35rem] bg-[linear-gradient(180deg,var(--surface-1),var(--surface-accent))] p-4 sm:block"
+        className="theme-panel pointer-events-auto absolute left-4 z-70 hidden w-72 rounded-[1.2rem] bg-[linear-gradient(180deg,var(--surface-1),var(--surface-accent))] p-3 sm:block"
         style={{ top: "calc(env(safe-area-inset-top) + 5.4rem)" }}
       >
         <div className="flex items-start gap-3">
-          <div className="theme-icon-shell flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full">
+          <div className="theme-icon-shell flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full">
             <Image
               src={selectedCharacter.imageGame}
               alt={localizedCharacter.name}
               width={40}
               height={40}
-              className="h-10 w-10 object-contain"
+              className="h-8 w-8 object-contain"
             />
           </div>
-          <div>
-            <p className="theme-text-muted text-xs tracking-[0.25em]">{localizedZone.subtitle}</p>
-            <h2 className="theme-text-primary mt-1 text-lg font-semibold">{localizedZone.name}</h2>
-            <p className="theme-text-muted mt-1 text-xs">{localizedCharacter.name}</p>
+          <div className="min-w-0 flex-1">
+            <p className="theme-text-muted truncate text-[0.62rem] tracking-[0.2em]">{localizedZone.subtitle}</p>
+            <h2 className="theme-text-primary mt-0.5 truncate text-base font-semibold">{localizedZone.name}</h2>
+            <p className="theme-text-muted mt-0.5 truncate text-[0.68rem]">{localizedCharacter.name}</p>
           </div>
+          <button
+            type="button"
+            aria-expanded={showDesktopDetails}
+            aria-label={showDesktopDetails ? "Ocultar detalles" : "Mostrar detalles"}
+            onClick={() => setShowDesktopDetails((current) => !current)}
+            className="theme-card-soft theme-text-secondary rounded-lg p-1.5 transition hover:bg-[var(--surface-3)]"
+          >
+            {showDesktopDetails ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          </button>
         </div>
 
-        <div className="theme-card-soft mt-4 rounded-2xl px-3 py-3">
+        <div className="theme-card-soft mt-3 rounded-xl px-3 py-2.5">
           <div className="theme-text-muted flex items-center justify-between text-[0.7rem] tracking-[0.18em]">
             <span>{messages.play.hud.life}</span>
             <span className="theme-text-secondary">{health}/{maxHealth}</span>
           </div>
-          <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--surface-3)]">
+          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[var(--surface-3)]">
             <div
               className="h-full rounded-full bg-[linear-gradient(90deg,rgba(244,114,182,0.7),rgba(255,255,255,0.9))]"
               style={{ width: `${hpPercent}%` }}
@@ -199,7 +213,16 @@ export function GameHud({
           </div>
         </div>
 
-        <div className="theme-text-secondary mt-3 grid grid-cols-2 gap-2 text-[0.7rem] tracking-[0.16em]">
+        <div className="theme-text-secondary mt-2 flex items-center justify-between text-[0.66rem]">
+          <span>{messages.common.pulse}: {formatCooldown(moveCooldownRemaining)}</span>
+          <span>
+            {sanity !== undefined ? `SAN: ${Math.round(sanity)} · ` : ""}
+            {messages.common.danger}: {nearbyDangerLabel}
+          </span>
+        </div>
+
+        {showDesktopDetails && <>
+        <div className="theme-text-secondary mt-3 grid grid-cols-2 gap-2 text-[0.7rem] tracking-[0.12em]">
           <div className="theme-card-soft rounded-xl px-3 py-2">
             <p className="theme-text-muted">{messages.common.pulse}</p>
             <p className="mt-1">{formatCooldown(moveCooldownRemaining)}</p>
@@ -230,6 +253,7 @@ export function GameHud({
           <p className="mt-1">{enemyStateLabel}</p>
           {isPaused && <p className="theme-text-secondary mt-1">{messages.play.hud.paused}</p>}
         </div>
+        </>}
       </div>
     </>
   );

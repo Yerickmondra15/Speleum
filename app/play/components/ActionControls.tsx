@@ -1,6 +1,6 @@
 "use client";
 
-import { Footprints, Shield, Swords } from "lucide-react";
+import { Footprints, Shield, Sparkles, Swords } from "lucide-react";
 import type { ActionKind } from "../gameConfig";
 import { useLanguage } from "@/lib/i18n/LanguageProvider";
 
@@ -14,6 +14,10 @@ type ActionControlsProps = {
   onMove: () => void;
   onAttack: () => void;
   onDefend: () => void;
+  abilityName?: string;
+  abilityCooldownRemaining?: number;
+  abilityDisabled?: boolean;
+  onAbility?: () => void;
 };
 
 export function ActionControls({
@@ -26,6 +30,10 @@ export function ActionControls({
   onMove,
   onAttack,
   onDefend,
+  abilityName,
+  abilityCooldownRemaining = 0,
+  abilityDisabled = false,
+  onAbility,
 }: ActionControlsProps) {
   const { messages } = useLanguage();
   const label = (value: number) =>
@@ -37,7 +45,7 @@ export function ActionControls({
       style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.5rem)" }}
     >
       <div className="theme-panel mx-auto max-w-3xl rounded-[1.15rem] p-2 sm:rounded-[1.4rem] sm:p-3">
-        <div className="grid grid-cols-3 gap-1.5 sm:gap-3">
+        <div className={`grid gap-1.5 sm:gap-3 ${onAbility ? "grid-cols-4" : "grid-cols-3"}`}>
           <button
             type="button"
             onClick={onMove}
@@ -95,6 +103,27 @@ export function ActionControls({
               </div>
             </div>
           </button>
+
+          {onAbility && (
+            <button
+              type="button"
+              onClick={onAbility}
+              disabled={abilityDisabled || abilityCooldownRemaining > 0}
+              className="theme-border min-h-[3.6rem] rounded-[1rem] border bg-[var(--surface-2)] px-1.5 py-2 text-center transition hover:bg-[var(--surface-3)] disabled:opacity-45 sm:min-h-[4.4rem] sm:rounded-2xl sm:px-4 sm:py-3 sm:text-left"
+            >
+              <div className="flex flex-col items-center gap-1 sm:flex-row sm:items-center sm:gap-3">
+                <Sparkles className="h-3.5 w-3.5 text-cyan-100 sm:h-4 sm:w-4" />
+                <div className="min-w-0">
+                  <p className="theme-text-muted truncate text-[0.52rem] uppercase tracking-[0.12em] sm:text-[0.66rem] sm:tracking-[0.18em]">
+                    {abilityName ?? "Habilidad"}
+                  </p>
+                  <p className="theme-text-secondary mt-0.5 text-[0.68rem] sm:mt-1 sm:text-sm">
+                    {label(abilityCooldownRemaining)} / R
+                  </p>
+                </div>
+              </div>
+            </button>
+          )}
         </div>
       </div>
     </div>
