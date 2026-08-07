@@ -1,30 +1,18 @@
-import { authChallengeErrorResponse, jsonError } from "@/lib/auth-api";
-import { sendAuthCodeEmail } from "@/lib/auth-email";
-import {
-  isDemoAuthCodesEnabled,
-  resendAuthChallenge,
-  type AuthChallengeType,
-} from "@/lib/auth-challenge";
+import { authChallengeErrorResponse } from "@/lib/auth-api";
+import { resendAuthChallenge } from "@/lib/auth-challenge";
+import { deliverAuthChallenge, prepareAuthDelivery } from "@/lib/auth-delivery";
 import { parseJsonBody } from "@/lib/validation/http";
 import { resendCodeSchema } from "@/lib/validation/schemas";
 
 export async function POST(request: Request) {
   try {
     const { challengeId, email } = await parseJsonBody(request, resendCodeSchema);
-    const { code, challenge, pending } = await resendAuthChallenge({
+    const deliveryConfig = prepareAuthDelivery();
+    const issued = await resendAuthChallenge({
       challengeId,
       email,
     });
-
-    const delivery = await sendAuthCodeEmail({
-      email: challenge.email,
-      code,
-      type: challenge.type as AuthChallengeType,
-    });
-
-    if (!delivery.ok && !isDemoAuthCodesEnabled()) {
-      return jsonError(delivery.error, 502);
-    }
+    const pending = await deliverAuthChallenge(issued, deliveryConfig);
 
     return Response.json(pending);
   } catch (error) {

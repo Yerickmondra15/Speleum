@@ -1,8 +1,12 @@
 import "server-only";
 
-import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
+import { createHmac, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import { headers } from "next/headers";
 
+import {
+  getAuthChallengeConfig,
+  type AuthDeliveryMode,
+} from "@/lib/auth-config";
 import { prisma } from "@/lib/prisma";
 import { getAuthCodeSecret } from "@/lib/security/secrets";
 
@@ -18,11 +22,19 @@ export type PendingAuthResponse = {
   status: "pending_email_verification" | "pending_login_verification";
   challengeId: string;
   email: string;
+  deliveryMode: AuthDeliveryMode;
   expiresAt: string;
+  expiresInSeconds: number;
+  attemptsRemaining: number;
   resendAvailableAt: string;
   message: string;
   demoCode?: string;
 };
+
+export type UndeliveredPendingAuthResponse = Omit<
+  PendingAuthResponse,
+  "deliveryMode" | "demoCode"
+>;
 
 type ChallengeRecipient = {
   email: string;
@@ -32,7 +44,6 @@ type ChallengeRecipient = {
 type IssueChallengeInput = {
   recipient: ChallengeRecipient;
   type: AuthChallengeType;
-  ttlMinutes: number;
   message: string;
   previousResendCount?: number;
 };
@@ -44,36 +55,17 @@ type VerifyChallengeInput = {
   type: AuthChallengeType;
 };
 
-function readBoundedInteger(name: string, fallback: number, minimum: number, maximum: number) {
-  const parsed = Number.parseInt(process.env[name] ?? `${fallback}`, 10);
-  return Number.isFinite(parsed) ? Math.min(maximum, Math.max(minimum, parsed)) : fallback;
-}
-
-const AUTH_RESEND_COOLDOWN_SECONDS = readBoundedInteger(
-  "AUTH_RESEND_COOLDOWN_SECONDS",
-  60,
-  10,
-  3_600,
-);
-const AUTH_MAX_VERIFY_ATTEMPTS = readBoundedInteger("AUTH_MAX_VERIFY_ATTEMPTS", 5, 3, 10);
-const AUTH_MAX_RESENDS = readBoundedInteger("AUTH_MAX_RESENDS", 5, 1, 10);
-const AUTH_RATE_LIMIT_WINDOW_MINUTES = readBoundedInteger(
-  "AUTH_RATE_LIMIT_WINDOW_MINUTES",
-  60,
-  1,
-  1_440,
-);
-const AUTH_RATE_LIMIT_PER_EMAIL = readBoundedInteger("AUTH_RATE_LIMIT_PER_EMAIL", 6, 1, 100);
-const AUTH_RATE_LIMIT_PER_IP = readBoundedInteger("AUTH_RATE_LIMIT_PER_IP", 12, 1, 200);
-const DEMO_AUTH_CODES = process.env.DEMO_AUTH_CODES === "true";
-const DEMO_AUTH_CODES_PUBLIC = process.env.DEMO_AUTH_CODES_PUBLIC === "true";
-
 function now() {
   return new Date();
 }
 
-function getCodeSecretPayload(type: AuthChallengeType, email: string, code: string) {
-  return `${type}:${email}:${code}`;
+function getCodeSecretPayload(
+  challengeId: string,
+  type: AuthChallengeType,
+  email: string,
+  code: string,
+) {
+  return `${challengeId}:${type}:${email}:${code}`;
 }
 
 export function generateVerificationCode() {
@@ -81,16 +73,18 @@ export function generateVerificationCode() {
 }
 
 export function hashVerificationCode({
+  challengeId,
   type,
   email,
   code,
 }: {
+  challengeId: string;
   type: AuthChallengeType;
   email: string;
   code: string;
 }) {
   return createHmac("sha256", getAuthCodeSecret())
-    .update(getCodeSecretPayload(type, email, code))
+    .update(getCodeSecretPayload(challengeId, type, email, code))
     .digest("hex");
 }
 
@@ -132,7 +126,6 @@ export function toPendingAuthResponse({
   lastSentAt,
   type,
   message,
-  demoCode,
 }: {
   challengeId: string;
   email: string;
@@ -140,27 +133,37 @@ export function toPendingAuthResponse({
   lastSentAt: Date;
   type: AuthChallengeType;
   message: string;
-  demoCode?: string;
-}): PendingAuthResponse {
+}): UndeliveredPendingAuthResponse {
+  const challengeConfig = getAuthChallengeConfig();
+  const referenceTime = lastSentAt.getTime();
+
   return {
     status: toPendingStatus(type),
     challengeId,
     email,
     expiresAt: expiresAt.toISOString(),
+    expiresInSeconds: Math.max(
+      0,
+      Math.ceil((expiresAt.getTime() - referenceTime) / 1_000),
+    ),
+    attemptsRemaining: challengeConfig.maxAttempts,
     resendAvailableAt: new Date(
-      lastSentAt.getTime() + AUTH_RESEND_COOLDOWN_SECONDS * 1000,
+      referenceTime + challengeConfig.resendCooldownSeconds * 1000,
     ).toISOString(),
     message,
-    ...(demoCode ? { demoCode } : {}),
   };
 }
 
-export function isDemoAuthCodesEnabled() {
-  return DEMO_AUTH_CODES;
-}
-
-export function isDemoAuthCodesPublicEnabled() {
-  return DEMO_AUTH_CODES_PUBLIC;
+export function completePendingAuthResponse(
+  pending: UndeliveredPendingAuthResponse,
+  deliveryMode: AuthDeliveryMode,
+  demoCode?: string,
+): PendingAuthResponse {
+  return {
+    ...pending,
+    deliveryMode,
+    ...(deliveryMode === "demo" && demoCode ? { demoCode } : {}),
+  };
 }
 
 async function enforceChallengeRateLimit({
@@ -170,8 +173,9 @@ async function enforceChallengeRateLimit({
   email: string;
   ipAddress?: string | null;
 }) {
+  const challengeConfig = getAuthChallengeConfig();
   const windowStart = new Date(
-    now().getTime() - AUTH_RATE_LIMIT_WINDOW_MINUTES * 60 * 1000,
+    now().getTime() - challengeConfig.rateLimitWindowMinutes * 60 * 1000,
   );
 
   const [perEmail, perIp] = await Promise.all([
@@ -195,16 +199,24 @@ async function enforceChallengeRateLimit({
       : Promise.resolve(0),
   ]);
 
-  if (perEmail >= AUTH_RATE_LIMIT_PER_EMAIL || perIp >= AUTH_RATE_LIMIT_PER_IP) {
+  if (
+    perEmail >= challengeConfig.rateLimitPerEmail ||
+    perIp >= challengeConfig.rateLimitPerIp
+  ) {
     throw new Error("RATE_LIMITED");
   }
 }
 
 export async function issueAuthChallenge(input: IssueChallengeInput) {
+  const challengeConfig = getAuthChallengeConfig();
   const issuedAt = now();
-  const expiresAt = new Date(issuedAt.getTime() + input.ttlMinutes * 60 * 1000);
+  const expiresAt = new Date(
+    issuedAt.getTime() + challengeConfig.expirationMinutes * 60 * 1000,
+  );
+  const challengeId = randomUUID();
   const code = generateVerificationCode();
   const codeHash = hashVerificationCode({
+    challengeId,
     type: input.type,
     email: input.recipient.email,
     code,
@@ -232,12 +244,13 @@ export async function issueAuthChallenge(input: IssueChallengeInput) {
 
     return tx.authChallenge.create({
       data: {
+        id: challengeId,
         userId: input.recipient.userId ?? null,
         email: input.recipient.email,
         type: input.type,
         codeHash,
         expiresAt,
-        maxAttempts: AUTH_MAX_VERIFY_ATTEMPTS,
+        maxAttempts: challengeConfig.maxAttempts,
         resendCount: input.previousResendCount ?? 0,
         lastSentAt: issuedAt,
         ipAddress: metadata.ipAddress,
@@ -256,9 +269,15 @@ export async function issueAuthChallenge(input: IssueChallengeInput) {
       lastSentAt: challenge.lastSentAt,
       type: input.type,
       message: input.message,
-      demoCode: DEMO_AUTH_CODES && DEMO_AUTH_CODES_PUBLIC ? code : undefined,
     }),
   };
+}
+
+export async function invalidateAuthChallenge(challengeId: string) {
+  await prisma.authChallenge.updateMany({
+    where: { id: challengeId, consumedAt: null },
+    data: { consumedAt: now() },
+  });
 }
 
 export async function verifyAuthChallenge(input: VerifyChallengeInput) {
@@ -287,6 +306,7 @@ export async function verifyAuthChallenge(input: VerifyChallengeInput) {
   }
 
   const expectedHash = hashVerificationCode({
+    challengeId: challenge.id,
     type: input.type,
     email: input.email,
     code: input.code,
@@ -321,7 +341,10 @@ export async function verifyAuthChallenge(input: VerifyChallengeInput) {
       throw new Error("CHALLENGE_ATTEMPTS_EXCEEDED");
     }
 
-    throw new Error("CHALLENGE_INVALID_CODE");
+    const error = new Error("CHALLENGE_INVALID_CODE");
+    (error as Error & { remainingAttempts?: number }).remainingAttempts =
+      updated.maxAttempts - updated.attemptCount;
+    throw error;
   }
 
   const consumedAt = now();
@@ -363,6 +386,7 @@ export async function resendAuthChallenge({
   challengeId: string;
   email: string;
 }) {
+  const challengeConfig = getAuthChallengeConfig();
   const challenge = await prisma.authChallenge.findFirst({
     where: {
       id: challengeId,
@@ -383,7 +407,7 @@ export async function resendAuthChallenge({
   }
 
   const resendAvailableAt = new Date(
-    challenge.lastSentAt.getTime() + AUTH_RESEND_COOLDOWN_SECONDS * 1000,
+    challenge.lastSentAt.getTime() + challengeConfig.resendCooldownSeconds * 1000,
   );
 
   if (resendAvailableAt > now()) {
@@ -396,8 +420,15 @@ export async function resendAuthChallenge({
     throw error;
   }
 
-  if (challenge.resendCount >= AUTH_MAX_RESENDS) {
+  if (challenge.resendCount >= challengeConfig.maxResends) {
     throw new Error("CHALLENGE_RESEND_LIMIT");
+  }
+
+  if (
+    challenge.type !== AUTH_CHALLENGE_TYPES.emailVerification &&
+    challenge.type !== AUTH_CHALLENGE_TYPES.login2fa
+  ) {
+    throw new Error("CHALLENGE_NOT_FOUND");
   }
 
   return issueAuthChallenge({
@@ -405,9 +436,7 @@ export async function resendAuthChallenge({
       email: challenge.email,
       userId: challenge.userId,
     },
-    type: challenge.type as AuthChallengeType,
-    ttlMinutes:
-      challenge.type === AUTH_CHALLENGE_TYPES.emailVerification ? 15 : 10,
+    type: challenge.type,
     message:
       challenge.type === AUTH_CHALLENGE_TYPES.emailVerification
         ? "Te enviamos un nuevo codigo para verificar tu correo."

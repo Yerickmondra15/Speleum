@@ -4,10 +4,9 @@ import { hash } from "bcryptjs";
 import { jsonError, authChallengeErrorResponse } from "@/lib/auth-api";
 import {
   AUTH_CHALLENGE_TYPES,
-  isDemoAuthCodesEnabled,
   issueAuthChallenge,
 } from "@/lib/auth-challenge";
-import { sendAuthCodeEmail } from "@/lib/auth-email";
+import { deliverAuthChallenge, prepareAuthDelivery } from "@/lib/auth-delivery";
 import { prisma } from "@/lib/prisma";
 import { parseJsonBody } from "@/lib/validation/http";
 import { registerSchema } from "@/lib/validation/schemas";
@@ -15,6 +14,7 @@ import { registerSchema } from "@/lib/validation/schemas";
 export async function POST(request: Request) {
   try {
     const { username, email, password } = await parseJsonBody(request, registerSchema);
+    const deliveryConfig = prepareAuthDelivery();
     const existingUser = await prisma.user.findFirst({
       where: {
         OR: [{ username: { equals: username, mode: "insensitive" } }, { email }],
@@ -39,24 +39,12 @@ export async function POST(request: Request) {
         stats: { create: {} },
       },
     });
-    const { pending, code } = await issueAuthChallenge({
+    const issued = await issueAuthChallenge({
       recipient: { email: user.email, userId: user.id },
       type: AUTH_CHALLENGE_TYPES.emailVerification,
-      ttlMinutes: 15,
       message: "Te enviamos un codigo para verificar tu correo.",
     });
-    const delivery = await sendAuthCodeEmail({
-      email: user.email,
-      code,
-      type: AUTH_CHALLENGE_TYPES.emailVerification,
-    });
-
-    if (!delivery.ok && !isDemoAuthCodesEnabled()) {
-      return jsonError(
-        "La cuenta se creo, pero el correo no pudo enviarse. Inicia sesion para solicitar un codigo nuevo.",
-        502,
-      );
-    }
+    const pending = await deliverAuthChallenge(issued, deliveryConfig);
 
     return Response.json(pending, { status: 201 });
   } catch (error) {
