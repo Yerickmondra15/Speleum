@@ -92,3 +92,7 @@ export function upsertRadarSignal(
 
   return [...currentSignals.slice(-(SIGNAL_BUFFER_LIMIT - 1)), nextSignal];
 }
+
+export function pruneExpiredRadarSignals(signals: RadarSignal[], now = Date.now()) {
+  return signals.filter((signal) => now - signal.createdAt < signal.duration);
+}
