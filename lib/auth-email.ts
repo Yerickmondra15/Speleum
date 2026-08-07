@@ -128,7 +128,7 @@ export async function sendAuthCodeEmail(input: SendAuthCodeEmailInput) {
   const text = renderEmailText(input);
 
   if (!RESEND_API_KEY) {
-    console.info(`[auth-email-preview] ${input.email} ${copy.subject} ${input.code}`);
+    console.info(`[auth-email] Proveedor no configurado para ${input.email} (${copy.subject}).`);
     return {
       ok: false,
       mode: "not-configured",

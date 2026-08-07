@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { HttpBodyError } from "@/lib/validation/http";
+
 export function jsonError(error: string, status: number, extra?: Record<string, unknown>) {
   return NextResponse.json(
     {
@@ -11,6 +13,10 @@ export function jsonError(error: string, status: number, extra?: Record<string, 
 }
 
 export function authChallengeErrorResponse(error: unknown) {
+  if (error instanceof HttpBodyError) {
+    return jsonError(error.message, 400, { issues: error.issues });
+  }
+
   const retryAfterSeconds =
     typeof error === "object" &&
     error !== null &&

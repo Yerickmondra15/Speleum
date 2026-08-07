@@ -5,22 +5,12 @@ import {
   resendAuthChallenge,
   type AuthChallengeType,
 } from "@/lib/auth-challenge";
-
-type ResendCodeBody = {
-  challengeId?: string;
-  email?: string;
-};
+import { parseJsonBody } from "@/lib/validation/http";
+import { resendCodeSchema } from "@/lib/validation/schemas";
 
 export async function POST(request: Request) {
-  const body = (await request.json()) as ResendCodeBody;
-  const challengeId = body.challengeId?.trim() ?? "";
-  const email = body.email?.trim().toLowerCase() ?? "";
-
-  if (!challengeId || !email) {
-    return jsonError("No encontramos un desafio activo para reenviar.", 400);
-  }
-
   try {
+    const { challengeId, email } = await parseJsonBody(request, resendCodeSchema);
     const { code, challenge, pending } = await resendAuthChallenge({
       challengeId,
       email,
