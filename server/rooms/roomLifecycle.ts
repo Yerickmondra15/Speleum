@@ -1,6 +1,5 @@
 import {
   ATTACK_COOLDOWN,
-  CAVE_ATTACK_DAMAGE,
   MAX_ROOM_PLAYERS,
   MIN_ROOM_PLAYERS,
   PARRY_COOLDOWN_MS,
@@ -14,9 +13,10 @@ import {
   createEnemyState,
   distanceBetween,
   hitHazard,
-  isAttackReachableByTiles,
   pickSeparatedSpawns,
   resolveCombatHit,
+  selectNearestReachableTarget,
+  transitionEnemyToDead,
   updateEnemyState,
 } from "../../app/play/gameLogic";
 import type { NoiseEvent, RadarSignal } from "../../app/play/types";
@@ -28,6 +28,7 @@ import {
   getCreatureGameplayModifiers,
 } from "../../lib/creature-gameplay";
 import { createResultReceipt } from "../../lib/multiplayer/tickets";
+import { createGameplayEventId } from "../../lib/gameplay/event-ids";
 import { calculateCompetitiveScore } from "../game/scoring";
 import type { ServerContext, ServerPlayerState, ServerRoomState } from "../types";
 import {
@@ -172,7 +173,7 @@ export function startRoom(room: ServerRoomState, context: ServerContext, now = D
 
   room.noises = [];
   room.signals = [];
-  room.enemies = room.cave.enemyConfigs.map((config) => createEnemyState(config));
+  room.enemies = room.cave.enemyConfigs.map((config) => createEnemyState(config, now));
   markRoomActivity(room, context, now);
 }
 
@@ -203,17 +204,18 @@ export function addNoise(
   radiusTiles: number,
   intensity: number,
   sourceId: string,
+  now = Date.now(),
 ) {
   room.noises = [
     ...room.noises.slice(-31),
     {
-      id: `${sourceId}-${Date.now()}-${room.noises.length}`,
+      id: createGameplayEventId("noise", sourceId, now),
       type,
       sourceId,
       position,
       radiusTiles,
       intensity,
-      createdAt: Date.now(),
+      createdAt: now,
     },
   ];
 }
@@ -330,7 +332,7 @@ export function evaluateRoom(room: ServerRoomState, context: ServerContext, now 
         player.lastMoveAt = now;
         addSignal(room, "move", player.position, player.id);
         const noise = applyCreatureNoise(6, 0.45, player.characterId);
-        addNoise(room, "move", player.position, noise.radiusTiles, noise.intensity, player.id);
+        addNoise(room, "move", player.position, noise.radiusTiles, noise.intensity, player.id, now);
       }
     }
   }
@@ -395,17 +397,24 @@ export function evaluateRoom(room: ServerRoomState, context: ServerContext, now 
     );
     const moved = distanceBetween(enemy, updated) >= 24;
     const stateChanged = enemy.state !== updated.state;
-    const target = connectedSurvivors
-      .slice()
-      .sort((left, right) => distanceBetween(updated, left.position) - distanceBetween(updated, right.position))[0];
+    const selectedTarget = selectNearestReachableTarget(
+      updated,
+      connectedSurvivors.map((player) => ({
+        id: player.id,
+        position: player.position,
+        player,
+      })),
+      updated.attackRangeTiles,
+      room.tileLookup,
+    );
+    const target = selectedTarget?.player ?? null;
 
     if (
       target &&
       updated.state === "attacking" &&
-      now - enemy.lastAttackAt >= ATTACK_COOLDOWN &&
-      isAttackReachableByTiles(updated, target.position, 1, room.tileLookup)
+      now >= updated.nextAttackAt
     ) {
-      const damage = applyCreatureIncomingDamage(CAVE_ATTACK_DAMAGE, target.characterId);
+      const damage = applyCreatureIncomingDamage(updated.damage, target.characterId);
       const resolution = resolveCombatHit({
         targetHealth: target.combat.health,
         damage,
@@ -415,11 +424,16 @@ export function evaluateRoom(room: ServerRoomState, context: ServerContext, now 
       target.combat.health = resolution.nextHealth;
       target.parryUntil = resolution.nextParryUntil;
       addSignal(room, "attack", updated, enemy.id);
-      addNoise(room, "attack", updated, 8, 1.1, enemy.id);
+      addNoise(room, "attack", updated, 8, 1.1, enemy.id, now);
 
       if (resolution.wasParried) {
         room.message = `${target.name} desvia el golpe y aturde a ${updated.name}.`;
-        return { ...updated, lastAttackAt: now, stunnedUntil: resolution.attackerStunnedUntil };
+        return {
+          ...updated,
+          lastAttackAt: now,
+          nextAttackAt: now + ATTACK_COOLDOWN,
+          stunnedUntil: resolution.attackerStunnedUntil,
+        };
       }
 
       if (resolution.nextHealth <= 0) {
@@ -428,7 +442,11 @@ export function evaluateRoom(room: ServerRoomState, context: ServerContext, now 
         room.message = `${updated.name} golpeo a ${target.name}.`;
       }
 
-      return { ...updated, lastAttackAt: now };
+      return {
+        ...updated,
+        lastAttackAt: now,
+        nextAttackAt: now + ATTACK_COOLDOWN,
+      };
     }
 
     if (moved) {
@@ -439,7 +457,7 @@ export function evaluateRoom(room: ServerRoomState, context: ServerContext, now 
       addSignal(room, "danger", updated, enemy.id);
     }
 
-    return { ...updated, lastAttackAt: enemy.lastAttackAt };
+    return updated;
   });
 
   const finalSurvivors = getAlivePlayers(room);
@@ -532,57 +550,75 @@ export function attackPlayerTargets(
   now: number,
 ) {
   const attackDamage = applyCreatureOutgoingDamage(PLAYER_ATTACK_DAMAGE, attacker.characterId);
-  let inflictedDamage = 0;
+  const candidates = [
+    ...getAlivePlayers(room)
+      .filter((player) => player.id !== attacker.id && player.connected)
+      .map((player) => ({
+        id: player.id,
+        position: player.position,
+        kind: "player" as const,
+        player,
+      })),
+    ...room.enemies
+      .filter((enemy) => enemy.alive && enemy.state !== "dead")
+      .map((enemy) => ({
+        id: enemy.id,
+        position: { x: enemy.x, y: enemy.y },
+        kind: "enemy" as const,
+        enemy,
+      })),
+  ];
+  const target = selectNearestReachableTarget(
+    attacker.position,
+    candidates,
+    PLAYER_ATTACK_RANGE_TILES,
+    room.tileLookup,
+  );
 
-  for (const target of getAlivePlayers(room)) {
-    if (target.id === attacker.id || !target.connected) {
-      continue;
-    }
-
-    if (!isAttackReachableByTiles(attacker.position, target.position, PLAYER_ATTACK_RANGE_TILES, room.tileLookup)) {
-      continue;
-    }
-
-    const defendedDamage = applyCreatureIncomingDamage(attackDamage, target.characterId);
-    const resolution = resolveCombatHit({
-      targetHealth: target.combat.health,
-      damage: defendedDamage,
-      now,
-      targetParryUntil: target.parryUntil,
-      attackerStunnedUntil: attacker.stunnedUntil,
-    });
-    target.combat.health = resolution.nextHealth;
-    target.parryUntil = resolution.nextParryUntil;
-    attacker.stunnedUntil = resolution.attackerStunnedUntil;
-    inflictedDamage += resolution.damageApplied;
-
-    if (resolution.wasParried) {
-      room.message = `${target.name} hace parry y aturde a ${attacker.name}.`;
-    } else if (target.combat.health <= 0) {
-      eliminatePlayer(room, target, `${attacker.name} depredo a ${target.name}.`, attacker, now);
-    }
+  if (!target) {
+    return 0;
   }
 
-  for (const enemy of room.enemies) {
-    if (!enemy.alive || enemy.state === "dead") {
-      continue;
+  let inflictedDamage = 0;
+
+  if (target.kind === "player") {
+    const defendedDamage = applyCreatureIncomingDamage(attackDamage, target.player.characterId);
+    const resolution = resolveCombatHit({
+      targetHealth: target.player.combat.health,
+      damage: defendedDamage,
+      now,
+      targetParryUntil: target.player.parryUntil,
+      attackerStunnedUntil: attacker.stunnedUntil,
+    });
+    target.player.combat.health = resolution.nextHealth;
+    target.player.parryUntil = resolution.nextParryUntil;
+    attacker.stunnedUntil = resolution.attackerStunnedUntil;
+    inflictedDamage = resolution.damageApplied;
+
+    if (resolution.wasParried) {
+      room.message = `${target.player.name} hace parry y aturde a ${attacker.name}.`;
+    } else if (target.player.combat.health <= 0) {
+      eliminatePlayer(
+        room,
+        target.player,
+        `${attacker.name} depredo a ${target.player.name}.`,
+        attacker,
+        now,
+      );
     }
+  } else {
+    const previousHp = target.enemy.hp;
+    const nextHp = Math.max(0, previousHp - attackDamage);
+    inflictedDamage = previousHp - nextHp;
 
-    if (!isAttackReachableByTiles(attacker.position, enemy, PLAYER_ATTACK_RANGE_TILES, room.tileLookup)) {
-      continue;
-    }
-
-    const previousHp = enemy.hp;
-    enemy.hp = Math.max(0, enemy.hp - attackDamage);
-    inflictedDamage += previousHp - enemy.hp;
-
-    if (enemy.hp <= 0) {
-      enemy.alive = false;
-      enemy.state = "dead";
+    if (nextHp <= 0) {
+      Object.assign(target.enemy, transitionEnemyToDead(target.enemy, now));
       attacker.combat.kills += 1;
-      room.message = `${attacker.name} derribo a ${enemy.name}.`;
+      room.message = `${attacker.name} derribo a ${target.enemy.name}.`;
     } else {
-      enemy.state = "chasing";
+      target.enemy.hp = nextHp;
+      target.enemy.stateSince = target.enemy.state === "chasing" ? target.enemy.stateSince : now;
+      target.enemy.state = "chasing";
     }
   }
 

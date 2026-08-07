@@ -40,6 +40,7 @@ import {
 } from "./tileMap";
 import type { NoiseEvent } from "./types";
 import type { CaveLayout } from "./proceduralCave";
+import { calculateEnemyMoveCooldown } from "../../lib/gameplay/rules";
 
 export type EnemyBehaviorState =
   | "idle"
@@ -79,8 +80,16 @@ export type EnemyState = {
   lastKnownTargetId: string | null;
   stateSince: number;
   lastPositions: string[];
+  lastMoveAt: number;
+  nextMoveAt: number;
   lastAttackAt: number;
+  nextAttackAt: number;
   stunnedUntil: number;
+};
+
+export type ReachableCombatTarget = {
+  id: string;
+  position: PlayerPosition;
 };
 
 export type CombatResolution = {
@@ -123,6 +132,8 @@ export function enemyStateLabel(state: EnemyBehaviorState) {
       return "chasing";
     case "attacking":
       return "attacking";
+    case "stunned":
+      return "stunned";
     case "dead":
       return "dead";
   }
@@ -472,6 +483,37 @@ export function isAttackReachableByTiles(
   return Boolean(path && path.length - 1 <= rangeTiles);
 }
 
+function compareEntityIds(left: string, right: string) {
+  if (left === right) {
+    return 0;
+  }
+
+  return left < right ? -1 : 1;
+}
+
+export function selectNearestReachableTarget<T extends ReachableCombatTarget>(
+  origin: PlayerPosition,
+  candidates: T[],
+  rangeTiles: number,
+  lookup?: TileLookup,
+): T | null {
+  const originTile = worldToTile(origin);
+
+  return (
+    candidates
+      .filter((candidate) =>
+        isAttackReachableByTiles(origin, candidate.position, rangeTiles, lookup),
+      )
+      .sort((left, right) => {
+        const distanceDifference =
+          tileDistance(originTile, worldToTile(left.position)) -
+          tileDistance(originTile, worldToTile(right.position));
+
+        return distanceDifference || compareEntityIds(left.id, right.id);
+      })[0] ?? null
+  );
+}
+
 export function getAdjacentTilePosition(
   from: PlayerPosition,
   delta: { col: number; row: number },
@@ -515,7 +557,7 @@ export function shouldFinalizeMoveBurst(lastMoveAt: number, now: number) {
   return now - lastMoveAt >= MOVE_BURST_IDLE_MS;
 }
 
-export function createEnemyState(config: EnemyConfig): EnemyState {
+export function createEnemyState(config: EnemyConfig, now = Date.now()): EnemyState {
   return {
     id: config.id,
     name: config.name,
@@ -541,9 +583,29 @@ export function createEnemyState(config: EnemyConfig): EnemyState {
     lastKnownPlayerTileKey: null,
     lastHeardNoiseTileKey: null,
     lastKnownTargetId: null,
-    stateSince: Date.now(),
+    stateSince: now,
     lastPositions: [],
+    lastMoveAt: 0,
+    nextMoveAt: now,
     lastAttackAt: 0,
+    nextAttackAt: now,
+    stunnedUntil: 0,
+  };
+}
+
+export function transitionEnemyToDead(current: EnemyState, now = Date.now()): EnemyState {
+  return {
+    ...current,
+    hp: 0,
+    alive: false,
+    state: "dead",
+    stateSince: current.state === "dead" ? current.stateSince : now,
+    lastKnownPlayerTileKey: null,
+    lastKnownTargetId: null,
+    lastHeardNoiseTileKey: null,
+    lastPositions: [],
+    nextMoveAt: 0,
+    nextAttackAt: 0,
     stunnedUntil: 0,
   };
 }
@@ -615,7 +677,33 @@ function moveEnemyOneStep(
   };
 }
 
-function advancePatrol(current: EnemyState, config: EnemyConfig, lookup?: TileLookup): EnemyState {
+function moveEnemyOnCooldown(
+  current: EnemyState,
+  target: TileCoordinate,
+  speedWorldUnitsPerSecond: number,
+  now: number,
+  lookup?: TileLookup,
+): EnemyState {
+  if (now < current.nextMoveAt) {
+    return current;
+  }
+
+  const moved = moveEnemyOneStep(current, target, lookup);
+  const didMove = moved.x !== current.x || moved.y !== current.y;
+
+  return {
+    ...moved,
+    lastMoveAt: didMove ? now : current.lastMoveAt,
+    nextMoveAt: now + calculateEnemyMoveCooldown(speedWorldUnitsPerSecond),
+  };
+}
+
+function advancePatrol(
+  current: EnemyState,
+  config: EnemyConfig,
+  now: number,
+  lookup?: TileLookup,
+): EnemyState {
   if (config.patrolPoints.length === 0) {
     return current;
   }
@@ -632,7 +720,11 @@ function advancePatrol(current: EnemyState, config: EnemyConfig, lookup?: TileLo
     };
   }
 
-  const moved = moveEnemyOneStep(current, patrolTile, lookup);
+  if (now < current.nextMoveAt) {
+    return current;
+  }
+
+  const moved = moveEnemyOnCooldown(current, patrolTile, config.speed, now, lookup);
 
   if (moved.x === current.x && moved.y === current.y) {
     return {
@@ -667,9 +759,13 @@ function targetForEnemy(current: EnemyState, targets: EnemyTarget[]) {
     targets
       .filter((target) => target.alive !== false)
       .sort(
-        (left, right) =>
-          tileDistance(worldToTile(current), worldToTile(left.position)) -
-          tileDistance(worldToTile(current), worldToTile(right.position)),
+        (left, right) => {
+          const distanceDifference =
+            tileDistance(worldToTile(current), worldToTile(left.position)) -
+            tileDistance(worldToTile(current), worldToTile(right.position));
+
+          return distanceDifference || compareEntityIds(left.id, right.id);
+        },
       )[0] ?? null
   );
 }
@@ -727,13 +823,18 @@ function pickHeardNoise(
   return scored[0] ?? null;
 }
 
-function withEnemyState(current: EnemyState, state: EnemyBehaviorState, patch: Partial<EnemyState>) {
+function withEnemyState(
+  current: EnemyState,
+  state: EnemyBehaviorState,
+  patch: Partial<EnemyState>,
+  now: number,
+) {
   return {
     ...current,
     ...patch,
     lastPositions: patch.lastPositions ?? current.lastPositions,
     state,
-    stateSince: state === current.state ? current.stateSince : Date.now(),
+    stateSince: state === current.state ? current.stateSince : now,
   };
 }
 
@@ -752,16 +853,11 @@ export function updateEnemyState(
   }
 
   if (current.alive === false || current.hp <= 0) {
-    return {
-      ...current,
-      alive: false,
-      hp: 0,
-      state: "dead",
-    };
+    return transitionEnemyToDead(current, now);
   }
 
   if (isStunned(current.stunnedUntil, now)) {
-    return withEnemyState(current, "stunned", {});
+    return withEnemyState(current, "stunned", {}, now);
   }
 
   const enemyTile = worldToTile(current);
@@ -771,12 +867,13 @@ export function updateEnemyState(
   const targetTile = selectedTarget ? worldToTile(selectedTarget.position) : null;
   const distanceToTarget = targetTile ? tileDistance(enemyTile, targetTile) : Number.POSITIVE_INFINITY;
   const detectsTarget = Boolean(targetTile && distanceToTarget <= current.detectionRangeTiles);
-  const inAttackRange = Boolean(targetTile && distanceToTarget <= current.attackRangeTiles);
+  const inAttackRange = Boolean(
+    detectsTarget &&
+      selectedTarget &&
+      isAttackReachableByTiles(current, selectedTarget.position, current.attackRangeTiles, lookup),
+  );
   const heardNoise = pickHeardNoise(current, config, noises, now);
-  const knownTargetTile =
-    targetTile && (detectsTarget || current.lastKnownTargetId === selectedTarget?.id)
-      ? targetTile
-      : parseTileKey(current.lastKnownPlayerTileKey);
+  const knownTargetTile = parseTileKey(current.lastKnownPlayerTileKey);
   const playerInsideTerritory = Boolean(
     targetTile && tileDistance(targetTile, homeTile) <= current.tetherRangeTiles,
   );
@@ -785,7 +882,7 @@ export function updateEnemyState(
     return withEnemyState(current, "attacking", {
       lastKnownPlayerTileKey: toTileKey(targetTile),
       lastKnownTargetId: selectedTarget.id,
-    });
+    }, now);
   }
 
   if (detectsTarget && targetTile && selectedTarget) {
@@ -794,30 +891,40 @@ export function updateEnemyState(
       !playerInsideTerritory &&
       distanceFromHome >= current.tetherRangeTiles
     ) {
-      return withEnemyState(moveEnemyOneStep(current, homeTile, lookup), "patrol", {
-        lastKnownPlayerTileKey: null,
-        lastKnownTargetId: null,
-      });
+      return withEnemyState(
+        moveEnemyOnCooldown(current, homeTile, config.speed, now, lookup),
+        "patrol",
+        {
+          lastKnownPlayerTileKey: null,
+          lastKnownTargetId: null,
+        },
+        now,
+      );
     }
 
     if (current.behavior === "ambusher" && distanceToTarget > 2 && heardNoise) {
       return withEnemyState(current, "ambushing", {
         lastKnownPlayerTileKey: toTileKey(targetTile),
         lastKnownTargetId: selectedTarget.id,
-      });
+      }, now);
     }
 
-    return withEnemyState(moveEnemyOneStep(current, targetTile, lookup), "chasing", {
-      lastKnownPlayerTileKey: toTileKey(targetTile),
-      lastKnownTargetId: selectedTarget.id,
-    });
+    return withEnemyState(
+      moveEnemyOnCooldown(current, targetTile, config.chaseSpeed, now, lookup),
+      "chasing",
+      {
+        lastKnownPlayerTileKey: toTileKey(targetTile),
+        lastKnownTargetId: selectedTarget.id,
+      },
+      now,
+    );
   }
 
   if (heardNoise) {
     const investigatingMove =
       current.behavior === "ambusher" && heardNoise.score >= 0.7
         ? current
-        : moveEnemyOneStep(current, heardNoise.tile, lookup);
+        : moveEnemyOnCooldown(current, heardNoise.tile, config.speed, now, lookup);
     const nextState =
       current.behavior === "ambusher" && heardNoise.score >= 0.7
         ? "ambushing"
@@ -829,63 +936,78 @@ export function updateEnemyState(
       lastHeardNoiseTileKey: toTileKey(heardNoise.tile),
       lastKnownPlayerTileKey: toTileKey(heardNoise.tile),
       lastKnownTargetId: null,
-    });
+    }, now);
   }
 
   if (knownTargetTile && tileDistance(enemyTile, knownTargetTile) <= current.giveUpRangeTiles) {
-    const moved = moveEnemyOneStep(current, knownTargetTile, lookup);
+    if (now < current.nextMoveAt) {
+      return withEnemyState(current, "investigating", {
+        lastKnownPlayerTileKey: toTileKey(knownTargetTile),
+        lastKnownTargetId: null,
+      }, now);
+    }
+
+    const moved = moveEnemyOnCooldown(
+      current,
+      knownTargetTile,
+      config.chaseSpeed,
+      now,
+      lookup,
+    );
 
     if ((moved.x === current.x && moved.y === current.y) || isEnemyStuck(moved)) {
       return withEnemyState(current, "patrol", {
         lastKnownPlayerTileKey: null,
         lastKnownTargetId: null,
-      });
+        nextMoveAt: moved.nextMoveAt,
+      }, now);
     }
 
     if (tileDistance(worldToTile(moved), knownTargetTile) === 0) {
       return withEnemyState(moved, "listening", {
         lastKnownPlayerTileKey: null,
         lastKnownTargetId: null,
-      });
+      }, now);
     }
 
     return withEnemyState(moved, "investigating", {
       lastKnownPlayerTileKey: toTileKey(knownTargetTile),
       lastKnownTargetId: null,
-    });
+    }, now);
   }
 
   if (current.behavior === "territorial") {
     if (distanceFromHome > 0) {
-      const homebound = moveEnemyOneStep(current, homeTile, lookup);
+      const homebound = moveEnemyOnCooldown(current, homeTile, config.speed, now, lookup);
       return withEnemyState(homebound, distanceFromHome <= 1 ? "idle" : "patrol", {
         lastKnownPlayerTileKey: null,
         lastKnownTargetId: null,
-      });
+      }, now);
     }
 
     return withEnemyState(current, "idle", {
       lastKnownPlayerTileKey: null,
       lastKnownTargetId: null,
-    });
+    }, now);
   }
 
   if (current.behavior === "ambusher") {
     return withEnemyState(current, "ambushing", {
       lastKnownPlayerTileKey: null,
       lastKnownTargetId: null,
-    });
+    }, now);
   }
 
-  const pacedEnemy = advancePatrol(current, config, lookup);
+  const pacedEnemy = advancePatrol(current, config, now, lookup);
 
   return withEnemyState(
     pacedEnemy,
-    pacedEnemy.x === current.x && pacedEnemy.y === current.y ? "idle" : "patrol",
+    config.patrolPoints.length === 0 ? "idle" : "patrol",
     {
       lastKnownPlayerTileKey: null,
       lastKnownTargetId: null,
     },
+    now,
   );
 }
 
