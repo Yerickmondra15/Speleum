@@ -1,7 +1,6 @@
-import { TILE_SIZE, VISION_RADIUS } from "../../app/play/gameConfig";
-import { isWithinVision } from "../../app/play/gameLogic";
 import { getCreatureGameplayModifiers } from "../../lib/creature-gameplay";
 import type { MatchResultEntry, MultiplayerPlayerState } from "../../app/play/types";
+import { isTileVisible, tileDistance, worldToTile } from "../../app/play/tileMap";
 import type { ServerContext, ServerPlayerState, ServerRoomState } from "../types";
 
 export function getAlivePlayers(room: ServerRoomState) {
@@ -81,9 +80,10 @@ export function emitState(room: ServerRoomState, context: ServerContext) {
     }
 
     const visibleEnemies = aliveEnemies.filter((enemy) =>
-      isWithinVision(player.position, enemy, VISION_RADIUS),
+      isTileVisible(worldToTile(player.position), worldToTile(enemy)),
     );
-    const radarRange = getCreatureGameplayModifiers(player.characterId).radarRangeTiles * TILE_SIZE;
+    const playerTile = worldToTile(player.position);
+    const radarRangeTiles = getCreatureGameplayModifiers(player.characterId).radarRangeTiles;
 
     context.io.to(player.socketId).emit("game-state", {
       matchId: room.matchId,
@@ -97,16 +97,16 @@ export function emitState(room: ServerRoomState, context: ServerContext) {
         .filter(
           (other) =>
             other.id !== player.id &&
-            isWithinVision(player.position, other.position, VISION_RADIUS),
+            isTileVisible(playerTile, worldToTile(other.position)),
         )
         .map(toPublicPlayer),
       enemy: visibleEnemies[0] ?? null,
       enemies: visibleEnemies,
       signals: room.signals.filter((signal) =>
-        isWithinVision(player.position, { x: signal.x, y: signal.y }, radarRange),
+        tileDistance(playerTile, worldToTile(signal)) <= radarRangeTiles,
       ),
       noises: room.noises.filter((noise) =>
-        isWithinVision(player.position, noise.position, radarRange),
+        tileDistance(playerTile, worldToTile(noise.position)) <= radarRangeTiles,
       ),
       winnerId: room.winnerId,
       playerCount: activePlayers.length,

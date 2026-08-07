@@ -36,6 +36,23 @@ describe("radar y criaturas", () => {
     expect(signals[0]).toMatchObject({ x: 110, y: 110, createdAt: 1_100 });
   });
 
+  it("asigna IDs distintos a eventos creados en el mismo milisegundo", () => {
+    const input = {
+      type: "attack" as const,
+      strength: "high" as const,
+      position: { x: 100, y: 100 },
+      duration: 1_000,
+      radarJitter: 1,
+      ownerId: "enemy-1",
+      createdAt: 1_000,
+    };
+    const first = createRadarSignal(input);
+    const second = createRadarSignal(input);
+
+    expect(first.id).not.toBe(second.id);
+    expect(new Set([first.id, second.id])).toHaveLength(2);
+  });
+
   it("elimina senales vencidas", () => {
     const expired = createRadarSignal({
       type: "attack",
@@ -45,7 +62,7 @@ describe("radar y criaturas", () => {
       radarJitter: 0,
       createdAt: 1_000,
     });
-    const active = { ...expired, id: 2_000, createdAt: 2_000 };
+    const active = { ...expired, id: "signal:2000:active", createdAt: 2_000 };
     expect(pruneExpiredRadarSignals([expired, active], 2_400)).toEqual([active]);
   });
 
@@ -65,6 +82,9 @@ describe("radar y criaturas", () => {
     expect(getCreatureGameplayModifiers("blind-fish").radarRangeTiles).toBeGreaterThan(
       getCreatureGameplayModifiers("cave-crab").radarRangeTiles,
     );
+    for (const creature of creatures) {
+      expect(getCreatureGameplayModifiers(creature.id)).toBe(creature.gameplay);
+    }
   });
 
   it("aplica defensa, ataque y sigilo de forma acotada", () => {

@@ -22,7 +22,7 @@ export type NoiseEvent = {
 };
 
 export type RadarSignal = {
-  id: number;
+  id: string;
   type: SignalType;
   strength: RadarSignalStrength;
   x: number;

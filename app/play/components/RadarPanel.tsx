@@ -6,6 +6,7 @@ import { RADAR_SIGNAL_PROFILES, RADAR_SIGNAL_RANGE_TILES } from "../gameConfig";
 import type { RadarSignal } from "../types";
 import { approximateRadarPosition, tileDistance, worldToTile } from "../tileMap";
 import { useLanguage } from "@/lib/i18n/LanguageProvider";
+import { gameplayEventSeed } from "@/lib/gameplay/event-ids";
 
 type RadarPanelProps = {
   player: PlayerPosition;
@@ -69,7 +70,7 @@ export function RadarPanel({
               playerTile,
               worldToTile(signal),
               signal.radarJitter,
-              signal.id,
+              gameplayEventSeed(signal.id),
             )}
           >
             <div

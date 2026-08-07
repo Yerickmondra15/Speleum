@@ -1,5 +1,6 @@
 import { TILE_SIZE, type PlayerPosition } from "./gameConfig";
 import type { RadarSignal, SignalType } from "./types";
+import { createGameplayEventId } from "@/lib/gameplay/event-ids";
 
 const SIGNAL_BUFFER_LIMIT = 24;
 const MOVE_SIGNAL_MERGE_WINDOW_MS = 180;
@@ -14,6 +15,7 @@ type CreateRadarSignalInput = {
   radarJitter: number;
   ownerId?: string;
   createdAt?: number;
+  id?: string;
 };
 
 function distanceBetweenPoints(left: PlayerPosition, right: PlayerPosition) {
@@ -50,9 +52,10 @@ export function createRadarSignal({
   radarJitter,
   ownerId,
   createdAt = Date.now(),
+  id,
 }: CreateRadarSignalInput): RadarSignal {
   return {
-    id: createdAt,
+    id: id ?? createGameplayEventId("signal", ownerId, createdAt),
     type,
     strength,
     x: position.x,

@@ -10,6 +10,16 @@ export type CreatureId =
 
 export type CreatureStatKey = "vida" | "velocidad" | "sigilo" | "defensa" | "deteccion";
 
+export type CreatureGameplayProfile = {
+  maxHealth: number;
+  moveRangeTiles: number;
+  moveCooldownMultiplier: number;
+  noiseMultiplier: number;
+  outgoingDamageMultiplier: number;
+  incomingDamageMultiplier: number;
+  radarRangeTiles: number;
+};
+
 export type Creature = {
   id: CreatureId;
   nombre: string;
@@ -17,6 +27,7 @@ export type Creature = {
   rol: string;
   habilidad: string;
   stats: Record<CreatureStatKey, number>;
+  gameplay: CreatureGameplayProfile;
   imagenJuego: string;
   imagenIlustracion: string;
 };
@@ -35,6 +46,15 @@ export const creatures: Creature[] = [
       defensa: 57,
       deteccion: 86,
     },
+    gameplay: {
+      maxHealth: 100,
+      moveRangeTiles: 4,
+      moveCooldownMultiplier: 1,
+      noiseMultiplier: 0.9,
+      outgoingDamageMultiplier: 1,
+      incomingDamageMultiplier: 0.94,
+      radarRangeTiles: 13,
+    },
     imagenJuego: "/creatures/Ajolote-juego.png",
     imagenIlustracion: "/creatures/Ajolote-ilustacion.png",
   },
@@ -50,6 +70,15 @@ export const creatures: Creature[] = [
       sigilo: 79,
       defensa: 34,
       deteccion: 56,
+    },
+    gameplay: {
+      maxHealth: 78,
+      moveRangeTiles: 5,
+      moveCooldownMultiplier: 0.78,
+      noiseMultiplier: 0.55,
+      outgoingDamageMultiplier: 0.9,
+      incomingDamageMultiplier: 1.12,
+      radarRangeTiles: 10,
     },
     imagenJuego: "/creatures/Camaron-juego.png",
     imagenIlustracion: "/creatures/Camaron-ilustracion.png",
@@ -67,6 +96,15 @@ export const creatures: Creature[] = [
       defensa: 39,
       deteccion: 80,
     },
+    gameplay: {
+      maxHealth: 86,
+      moveRangeTiles: 4,
+      moveCooldownMultiplier: 0.92,
+      noiseMultiplier: 0.72,
+      outgoingDamageMultiplier: 0.92,
+      incomingDamageMultiplier: 1.04,
+      radarRangeTiles: 14,
+    },
     imagenJuego: "/creatures/pez-juego.png",
     imagenIlustracion: "/creatures/pez-ilustracion.png",
   },
@@ -83,6 +121,15 @@ export const creatures: Creature[] = [
       defensa: 94,
       deteccion: 50,
     },
+    gameplay: {
+      maxHealth: 125,
+      moveRangeTiles: 3,
+      moveCooldownMultiplier: 1.12,
+      noiseMultiplier: 1.15,
+      outgoingDamageMultiplier: 0.95,
+      incomingDamageMultiplier: 0.72,
+      radarRangeTiles: 9,
+    },
     imagenJuego: "/creatures/Cangrejo-juego.png",
     imagenIlustracion: "/creatures/Cangrejo-ilustracion.png",
   },
@@ -98,6 +145,15 @@ export const creatures: Creature[] = [
       sigilo: 91,
       defensa: 40,
       deteccion: 67,
+    },
+    gameplay: {
+      maxHealth: 84,
+      moveRangeTiles: 4,
+      moveCooldownMultiplier: 0.88,
+      noiseMultiplier: 0.62,
+      outgoingDamageMultiplier: 1.15,
+      incomingDamageMultiplier: 1.06,
+      radarRangeTiles: 11,
     },
     imagenJuego: "/creatures/Araña-juego.png",
     imagenIlustracion: "/creatures/Araña-ilustracion.png",

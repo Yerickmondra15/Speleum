@@ -11,7 +11,6 @@ import type {
   Zone,
 } from "../gameConfig";
 import {
-  ATTACK_RADIUS,
   CAVE_HEIGHT,
   CAVE_WIDTH,
   ENEMY_RADIUS,
@@ -21,7 +20,6 @@ import {
 } from "../gameConfig";
 import type { EnemyState } from "../gameLogic";
 import type { MultiplayerPlayerState, RadarSignal } from "../types";
-import { isWithinVision } from "../gameLogic";
 import type { TileCoordinate } from "../gameConfig";
 import { isTileVisible, tileMap, type TileCell, worldToTile } from "../tileMap";
 
@@ -38,6 +36,7 @@ type GameMapProps = {
   otherPlayers?: MultiplayerPlayerState[];
   visionRadius?: number;
   reachableTiles?: Map<string, { tile: TileCoordinate; distance: number }>;
+  attackableTiles?: Map<string, { tile: TileCoordinate; distance: number }>;
   selectedPath?: PlayerPosition[];
   isMoveReady?: boolean;
   tiles?: TileCell[];
@@ -116,6 +115,7 @@ export function GameMap({
   otherPlayers = [],
   visionRadius = VISION_RADIUS,
   reachableTiles = new Map(),
+  attackableTiles = new Map(),
   selectedPath = [],
   isMoveReady = false,
   tiles = tileMap,
@@ -229,6 +229,8 @@ export function GameMap({
             const visible = isTileVisible(playerTile, { col: tile.col, row: tile.row });
             const tileKey = `${tile.col},${tile.row}`;
             const reachable = isMoveReady && reachableTiles.has(tileKey) && visible;
+            const attackable =
+              activeAction === "attack" && attackableTiles.has(tileKey) && visible;
             const inPath = selectedPathKeys.has(tileKey);
 
             return (
@@ -243,6 +245,9 @@ export function GameMap({
                 {reachable && tile.type !== "wall" && tile.type !== "obstacle" && (
                   <div className="absolute inset-1.5 rounded-[0.9rem] border border-zinc-100/8 shadow-[0_0_12px_rgba(255,255,255,0.06)] transition hover:border-rose-200/18 hover:bg-white/3" />
                 )}
+                {attackable && tile.type !== "wall" && tile.type !== "obstacle" && (
+                  <div className="absolute inset-1 rounded-[0.9rem] border border-red-300/25 bg-red-400/5 shadow-[inset_0_0_14px_rgba(248,113,113,0.08)]" />
+                )}
                 {inPath && (
                   <div className="absolute inset-2 rounded-[0.8rem] border border-rose-200/18 bg-rose-200/3 shadow-[0_0_16px_rgba(251,113,133,0.08)]" />
                 )}
@@ -251,7 +256,7 @@ export function GameMap({
           })}
 
           {signals
-            .filter((signal) => isWithinVision(player, signal, visionRadius * 1.15))
+            .filter((signal) => isTileVisible(playerTile, worldToTile(signal)))
             .map((signal) => (
               <div
                 key={signal.id}
@@ -269,17 +274,6 @@ export function GameMap({
                 />
               </div>
             ))}
-
-          {activeAction === "attack" && gameStatus === "playing" && (
-            <div
-              className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-1/2 rounded-full border border-red-300/30 bg-red-500/5"
-              style={{
-                ...pointStyle(player),
-                width: ATTACK_RADIUS * 2,
-                height: ATTACK_RADIUS * 2,
-              }}
-            />
-          )}
 
           {visibleEnemies.map((entry) => (
             <div
