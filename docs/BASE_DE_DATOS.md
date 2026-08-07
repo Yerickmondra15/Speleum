@@ -1,268 +1,64 @@
-# Base de Datos de Speleum
+# Base de datos
 
-## Tecnologia utilizada
+## Tecnología
 
-- PostgreSQL como motor de persistencia.
-- Prisma ORM como capa de acceso y definicion del schema.
+PostgreSQL mediante Prisma 6.19.3. `DATABASE_URL` puede apuntar al pool de ejecución y `DIRECT_URL` a la conexión directa usada por migraciones.
 
-## Objetivo de la base de datos
-
-La base de datos permite que Speleum conserve informacion entre sesiones y partidas. En el estado actual del proyecto sostiene cuatro areas clave:
-
-- autenticacion
-- perfil
-- ranking
-- resultados y puntuaciones
-
-## Schema real de Prisma
-
-Los modelos activos definidos en [prisma/schema.prisma](C:/Users/yeric/Desktop/Speleum/speleum/prisma/schema.prisma) son los siguientes:
-
-```prisma
-model User {
-  id                String        @id @default(cuid())
-  username          String        @unique
-  email             String        @unique
-  passwordHash      String
-  emailVerified     Boolean       @default(false)
-  emailVerifiedAt   DateTime?
-  twoFactorEnabled  Boolean       @default(true)
-  lastLoginAt       DateTime?
-  failedLoginAttempts Int         @default(0)
-  activeCreature    String        @default("cave-axolotl")
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-  stats             UserStats?
-  matchResults      MatchResult[]
-  matchesWon        Match[]       @relation("MatchWinner")
-  authChallenges    AuthChallenge[]
-}
-
-model AuthChallenge {
-  id           String   @id @default(cuid())
-  userId       String?
-  email        String
-  type         String
-  codeHash     String
-  expiresAt    DateTime
-  consumedAt   DateTime?
-  attemptCount Int      @default(0)
-  maxAttempts  Int      @default(5)
-  resendCount  Int      @default(0)
-  lastSentAt   DateTime
-  ipAddress    String?
-  userAgent    String?
-  createdAt    DateTime @default(now())
-  user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-```
-
-```prisma
-model UserStats {
-  id            String   @id @default(cuid())
-  userId        String   @unique
-  matchesPlayed Int      @default(0)
-  wins          Int      @default(0)
-  losses        Int      @default(0)
-  score         Int      @default(0)
-  lastMatchAt   DateTime?
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model Match {
-  id        String        @id
-  mode      String
-  status    String
-  winnerId  String?
-  startedAt DateTime      @default(now())
-  endedAt   DateTime?
-  winner    User?         @relation("MatchWinner", fields: [winnerId], references: [id], onDelete: SetNull)
-  results   MatchResult[]
-}
-
-model MatchResult {
-  id          String   @id @default(cuid())
-  matchId     String
-  userId      String
-  creature    String
-  result      String
-  scoreEarned Int
-  createdAt   DateTime @default(now())
-  match       Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([matchId, userId])
-}
-```
-
-## Tablas o modelos principales
+## Modelos
 
 ### `User`
 
-Sirve como tabla central de cuentas.
-
-Campos relevantes:
-
-- `username`
-- `email`
-- `passwordHash`
-- `emailVerified`
-- `lastLoginAt`
-- `failedLoginAttempts`
-- `activeCreature`
-
-Uso dentro del sistema:
-
-- registro e inicio de sesion
-- sesion del usuario autenticado
-- perfil visible
-- criatura activa usada en partida
+Identidad, hash bcrypt, verificación, 2FA, criatura activa y auditoría de acceso. `failedLoginAttempts` ya tiene efecto: desde cinco fallos se escribe `lockedUntil` con espera exponencial acotada.
 
 ### `AuthChallenge`
 
-Sirve para manejar codigos temporales de autenticacion y verificacion.
-
-Campos relevantes:
-
-- `email`
-- `type`
-- `codeHash`
-- `expiresAt`
-- `consumedAt`
-- `attemptCount`
-- `maxAttempts`
-- `resendCount`
-- `lastSentAt`
-- `ipAddress`
-- `userAgent`
-
-Uso dentro del sistema:
-
-- verificacion de correo
-- segundo paso del login
-- control de reenvios
-- limite de intentos
+Desafíos de verificación con hash del código, vencimiento, consumo, número máximo de intentos, reenvíos y metadatos limitados. Índices por email, usuario, tipo/estado y expiración.
 
 ### `UserStats`
 
-Sirve para mantener el acumulado competitivo de cada usuario.
-
-Campos relevantes:
-
-- `matchesPlayed`
-- `wins`
-- `losses`
-- `score`
-- `lastMatchAt`
-
-Uso dentro del sistema:
-
-- perfil
-- ranking
-- seguimiento de avance del jugador
+Acumulado competitivo uno-a-uno con el usuario: partidas, victorias, derrotas, score y última partida. Solo resultados `server_verified` nuevos lo actualizan.
 
 ### `Match`
 
-Sirve para registrar cada partida guardada por el backend.
+- `id`: UUID generado por cliente local o servidor multijugador.
+- `mode`: `local` o `multiplayer` después de la validación.
+- `status`: actualmente `finished` al persistir.
+- `winnerId`: nulo en local; usuario ganador en multi.
+- `verificationLevel`: `local_unverified` o `server_verified`.
+- fechas de inicio/fin.
 
-Campos relevantes:
-
-- `id`
-- `mode`
-- `status`
-- `winnerId`
-- `startedAt`
-- `endedAt`
-
-Uso dentro del sistema:
-
-- soporte a resultados persistidos
-- identificacion de partidas locales o multijugador
-- referencia temporal para historial
+Incluye índice `(mode, verificationLevel, endedAt)` para consultas por confianza y fecha.
 
 ### `MatchResult`
 
-Sirve para registrar el resultado de un usuario dentro de una partida.
+Resultado individual, criatura y score. La restricción `@@unique([matchId, userId])` es la garantía final de idempotencia; el índice `(userId, createdAt)` soporta el historial reciente.
 
-Campos relevantes:
+## Transacción de resultados
 
-- `matchId`
-- `userId`
-- `creature`
-- `result`
-- `scoreEarned`
-- `createdAt`
+La API ejecuta una transacción `Serializable`:
 
-Uso dentro del sistema:
+1. Busca `(matchId, userId)`.
+2. Si es idéntico, responde idempotentemente sin incrementar estadísticas.
+3. Si existe con contenido distinto, responde `409`.
+4. Valida que un `Match` existente coincida en modo, estado, ganador y nivel.
+5. Crea resultado y, solo si es competitivo, actualiza `UserStats`.
+6. Reintenta hasta tres veces conflictos serializables o de unicidad.
 
-- guardar victoria o derrota
-- guardar puntos obtenidos
-- vincular una partida con el usuario que la jugo
+## Migración
 
-## Relaciones entre tablas
+`prisma/migrations/20260807010000_secure_results_and_login_lockout/migration.sql`:
 
-### `User` y `AuthChallenge`
+- añade `User.lockedUntil`;
+- añade `Match.verificationLevel` con valor predeterminado `local_unverified`;
+- añade el índice competitivo.
 
-- Un usuario puede tener muchos retos de autenticacion.
-- Relacion: `User.authChallenges` y `AuthChallenge.user`.
+No cambia ni elimina resultados previos. Por eso los acumulados históricos deben considerarse heredados hasta una auditoría de datos independiente.
 
-### `User` y `UserStats`
+## Operación
 
-- Cada usuario puede tener un solo registro de estadisticas.
-- Relacion uno a uno mediante `userId`.
+```bash
+npx prisma validate
+npx prisma migrate deploy
+```
 
-### `User` y `MatchResult`
-
-- Un usuario puede tener muchos resultados de partida.
-- Cada resultado pertenece a un solo usuario.
-
-### `Match` y `MatchResult`
-
-- Una partida puede tener varios resultados.
-- Cada resultado pertenece a una unica partida.
-
-### `User` y `Match` como ganador
-
-- `Match.winnerId` referencia a `User.id`.
-- Esto permite guardar el ganador de la partida cuando aplica.
-
-## Justificacion basica del diseño
-
-El diseño actual separa responsabilidades de forma clara:
-
-- `User` concentra la identidad y el estado base de la cuenta.
-- `AuthChallenge` aísla la logica temporal de codigos sin mezclarla con la cuenta principal.
-- `UserStats` evita recalcular ranking cada vez desde todos los resultados.
-- `Match` y `MatchResult` permiten registrar partidas y resultados sin duplicar datos de usuario.
-
-Este esquema es adecuado para una entrega academica porque ya sostiene autenticacion, perfil, ranking y persistencia de resultados con una estructura clara y ampliable.
-
-## Como la base de datos apoya cada modulo
-
-### Autenticacion
-
-- `User` guarda credenciales, verificacion y ultimo acceso.
-- `AuthChallenge` gestiona codigos de verificacion y login.
-- `failedLoginAttempts` y `attemptCount` ayudan a limitar errores y abusos.
-
-### Perfil
-
-- `User` aporta `username`, `email` y `activeCreature`.
-- `UserStats` aporta partidas, victorias, derrotas, score y fecha de ultima partida.
-
-### Ranking
-
-- El endpoint de ranking consulta `UserStats` ordenado por `score`, `wins` y `matchesPlayed`.
-- La relacion con `User` permite mostrar `username` y `activeCreature`.
-
-### Resultados y puntuaciones
-
-- `Match` guarda la partida.
-- `MatchResult` guarda el resultado individual del jugador.
-- `UserStats` se actualiza en el mismo flujo para mantener la puntuacion acumulada.
-
-## Consideraciones actuales
-
-- El schema ya documenta usuarios, estadisticas, partidas y resultados reales.
-- No existe aun una tabla separada para salas multijugador persistidas; ese estado se mantiene en memoria del servidor de sockets.
-- La estructura actual funciona como base funcional preparada para ampliacion sin contradecir la implementacion real.
+El build genera Prisma Client pero no requiere conexión. Las migraciones sí requieren PostgreSQL y no se ejecutan automáticamente al iniciar el frontend.

@@ -16,6 +16,7 @@ type RankingEntry = {
   wins: number;
   losses: number;
   score: number;
+  winRate: number;
   lastMatchAt: string | null;
 };
 
@@ -23,22 +24,28 @@ export default function RankingView() {
   const { locale, messages } = useLanguage();
   const [entries, setEntries] = useState<RankingEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
     async function loadRanking() {
       try {
-        const response = await fetch("/api/ranking", {
+        const response = await fetch(`/api/ranking?page=${page}&limit=20`, {
           cache: "no-store",
         });
-        const data = (await response.json()) as RankingEntry[];
-        setEntries(Array.isArray(data) ? data : []);
+        const data = (await response.json()) as {
+          entries?: RankingEntry[];
+          pagination?: { totalPages?: number };
+        };
+        setEntries(Array.isArray(data.entries) ? data.entries : []);
+        setTotalPages(data.pagination?.totalPages ?? 1);
       } finally {
         setIsLoading(false);
       }
     }
 
     void loadRanking();
-  }, []);
+  }, [page]);
 
   return (
     <main className="theme-page min-h-screen overflow-x-hidden px-4 py-8 sm:px-5 sm:py-10">
@@ -92,6 +99,7 @@ export default function RankingView() {
                       <div className="text-left text-sm text-(--text-secondary) sm:text-right">
                         <p>Score {entry.score}</p>
                         <p>{entry.wins} {messages.ranking.wins}</p>
+                        <p>{entry.winRate}%</p>
                         <p>{entry.matchesPlayed} {messages.ranking.matches}</p>
                       </div>
                     </div>
@@ -125,6 +133,33 @@ export default function RankingView() {
                   </article>
                 );
               })}
+            </div>
+          )}
+          {!isLoading && totalPages > 1 && (
+            <div className="mt-6 flex items-center justify-center gap-3">
+              <button
+                type="button"
+                disabled={page <= 1}
+                onClick={() => {
+                  setIsLoading(true);
+                  setPage((current) => Math.max(1, current - 1));
+                }}
+                className="theme-button-secondary rounded-full px-4 py-2 text-sm disabled:opacity-40"
+              >
+                {messages.common.back}
+              </button>
+              <span className="text-sm text-(--text-muted)">{page}/{totalPages}</span>
+              <button
+                type="button"
+                disabled={page >= totalPages}
+                onClick={() => {
+                  setIsLoading(true);
+                  setPage((current) => Math.min(totalPages, current + 1));
+                }}
+                className="theme-button-secondary rounded-full px-4 py-2 text-sm disabled:opacity-40"
+              >
+                {messages.common.continue}
+              </button>
             </div>
           )}
         </div>
