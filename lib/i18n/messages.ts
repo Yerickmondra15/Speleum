@@ -84,6 +84,8 @@ export const translations = {
       accessTitle: "Acceder a Speleum",
       verifyFallback:
         "Revisa tu correo y escribe el código de 6 dígitos para continuar.",
+      verifyInstruction:
+        "Introduce el código temporal asociado a esta solicitud para continuar.",
       accessDescription:
         "Inicia sesión o registra tu cuenta para guardar perfil, ranking y progreso de partida.",
       signIn: "Iniciar sesión",
@@ -100,8 +102,21 @@ export const translations = {
       continue: "Continuar",
       createAccount: "Crear cuenta",
       destinationEmail: "Correo destino",
-      demoCode: "Código demo",
-      demoCodeDescription: "Visible porque el modo demo público está activo",
+      deliveryDemo: "Entrega en pantalla · Demo",
+      deliveryEmail: "Entrega por correo",
+      enterCodeTitle: "Introduce tu código de 6 dígitos",
+      expiresIn: "Vence en {time}",
+      expired: "Código vencido",
+      expiredHelp: "Este código venció. Solicita uno nuevo para continuar.",
+      attemptsRemaining: "Intentos restantes: {count}",
+      codeLabel: "Código temporal",
+      demoMode: "Modo de demostración",
+      demoTemporaryCode: "Tu código temporal es:",
+      demoCodeLifetime:
+        "Este código funciona una sola vez y vence en {minutes} minutos.",
+      copyCode: "Copiar código",
+      codeCopied: "Copiado",
+      locked: "Demasiados intentos fallidos. Intenta nuevamente en {seconds} segundos.",
       codePlaceholder: "Código de 6 dígitos",
       resendIn: "Puedes reenviar en {seconds}s",
       noCode: "¿No recibiste el código?",
@@ -118,7 +133,7 @@ export const translations = {
       emailNeedsVerification:
         "Debes verificar este correo antes de poder usar tu cuenta.",
       loginNeedsVerification:
-        "Cada inicio de sesión requiere un código temporal enviado a tu correo.",
+        "Este inicio de sesión requiere confirmar un código temporal.",
       errors: {
         invalidCode: "Ingresa un código válido de 6 dígitos.",
         usernameShort: "El nombre debe tener al menos 3 caracteres.",
@@ -128,6 +143,7 @@ export const translations = {
         genericAuth: "No se pudo completar la autenticación.",
         genericValidation: "No se pudo validar el código.",
         genericResend: "No se pudo reenviar el código.",
+        copyCode: "No se pudo copiar el código.",
       },
     },
     profile: {
@@ -376,6 +392,8 @@ export const translations = {
       verifyTitle: "Verify access",
       accessTitle: "Access Speleum",
       verifyFallback: "Check your email and enter the 6-digit code to continue.",
+      verifyInstruction:
+        "Enter the temporary code associated with this request to continue.",
       accessDescription:
         "Sign in or register your account to save your profile, ranking, and match progress.",
       signIn: "Sign in",
@@ -392,8 +410,21 @@ export const translations = {
       continue: "Continue",
       createAccount: "Create account",
       destinationEmail: "Destination email",
-      demoCode: "Demo code",
-      demoCodeDescription: "Visible because public demo mode is enabled",
+      deliveryDemo: "On-screen delivery · Demo",
+      deliveryEmail: "Email delivery",
+      enterCodeTitle: "Enter your 6-digit code",
+      expiresIn: "Expires in {time}",
+      expired: "Code expired",
+      expiredHelp: "This code expired. Request a new one to continue.",
+      attemptsRemaining: "Attempts remaining: {count}",
+      codeLabel: "Temporary code",
+      demoMode: "Demo mode",
+      demoTemporaryCode: "Your temporary code is:",
+      demoCodeLifetime:
+        "This code works once and expires in {minutes} minutes.",
+      copyCode: "Copy code",
+      codeCopied: "Copied",
+      locked: "Too many failed attempts. Try again in {seconds} seconds.",
       codePlaceholder: "6-digit code",
       resendIn: "You can resend in {seconds}s",
       noCode: "Didn't receive the code?",
@@ -410,7 +441,7 @@ export const translations = {
       emailNeedsVerification:
         "You must verify this email before you can use your account.",
       loginNeedsVerification:
-        "Each sign-in requires a temporary code sent to your email.",
+        "This sign-in requires confirmation with a temporary code.",
       errors: {
         invalidCode: "Enter a valid 6-digit code.",
         usernameShort: "The username must have at least 3 characters.",
@@ -420,6 +451,7 @@ export const translations = {
         genericAuth: "Authentication could not be completed.",
         genericValidation: "The code could not be validated.",
         genericResend: "The code could not be resent.",
+        copyCode: "The code could not be copied.",
       },
     },
     profile: {

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { motion, type Variants } from "framer-motion";
 import {
   ArrowLeft,
@@ -11,8 +12,10 @@ import {
   Shield,
   Swords,
   Timer,
-  UserRound,
 } from "lucide-react";
+import { ThemeSwitcher } from "@/app/components/ThemeSwitcher";
+import { creatures } from "@/lib/creatures";
+import { getLocalizedCreature } from "@/lib/i18n/content";
 import { useLanguage } from "@/lib/i18n/LanguageProvider";
 
 const fadeUp: Variants = {
@@ -95,28 +98,10 @@ export default function ComoJugarPage() {
             text: "Defense reduces damage during a short window and then enters recovery before it can be activated again.",
           },
         ];
-  const creatures =
-    locale === "es"
-      ? [
-          {
-            title: "Ajolote de cueva",
-            text: "Equilibrado: movimiento estable, cooldown normal y senal clara. Es la forma mas directa de aprender el mapa.",
-          },
-          {
-            title: "Camaron de cueva",
-            text: "Evasivo: se mueve mas lejos, recupera antes y deja una senal de movimiento mas tenue.",
-          },
-        ]
-      : [
-          {
-            title: "Cave axolotl",
-            text: "Balanced: steady movement, normal cooldown, and a clear signal. It is the most direct way to learn the map.",
-          },
-          {
-            title: "Cave shrimp",
-            text: "Evasive: moves farther, recovers sooner, and leaves a fainter movement signal.",
-          },
-        ];
+  const localizedCreatures = creatures.map((creature) => ({
+    ...creature,
+    copy: getLocalizedCreature(locale, creature.id),
+  }));
 
   return (
     <main className="theme-page min-h-screen">
@@ -135,7 +120,10 @@ export default function ComoJugarPage() {
             {messages.howToPlay.back}
           </Link>
 
-          <p className="text-xs tracking-[0.24em] text-(--text-muted) sm:text-sm sm:tracking-[0.3em]">{messages.howToPlay.header}</p>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <p className="text-xs tracking-[0.24em] text-(--text-muted) sm:text-sm sm:tracking-[0.3em]">{messages.howToPlay.header}</p>
+            <ThemeSwitcher />
+          </div>
         </div>
       </header>
 
@@ -155,7 +143,7 @@ export default function ComoJugarPage() {
             {messages.howToPlay.title}
           </h1>
 
-          <p className="mt-6 text-sm leading-7 text-(--text-secondary)ext-base">
+          <p className="mt-6 text-sm leading-7 text-(--text-secondary) sm:text-base">
             {messages.howToPlay.description}
           </p>
         </motion.div>
@@ -208,19 +196,32 @@ export default function ComoJugarPage() {
             </h3>
 
             <div className="mt-5 grid gap-4">
-              {creatures.map((creature) => (
+              {localizedCreatures.map((creature) => (
                 <div
-                  key={creature.title}
+                  key={creature.id}
                   className="rounded-2xl border border-(--border-soft) bg-(--surface-2) p-4"
                 >
-                  <div className="flex items-center gap-3">
-                    <UserRound className="h-4 w-4 text-(--text-muted)" />
-                    <h4 className="font-semibold text-(--text-primary)">
-                      {creature.title}
-                    </h4>
+                  <div className="flex items-center gap-4">
+                    <div className="theme-icon-shell flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl">
+                      <Image
+                        src={creature.imagenJuego}
+                        alt={creature.copy.nombre}
+                        width={56}
+                        height={56}
+                        className="h-14 w-14 object-contain"
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="font-semibold text-(--text-primary)">
+                        {creature.copy.nombre}
+                      </h4>
+                      <p className="mt-1 text-xs text-(--text-muted)">
+                        {creature.copy.rol}
+                      </p>
+                    </div>
                   </div>
                   <p className="mt-2 text-sm leading-6 text-(--text-secondary)">
-                    {creature.text}
+                    {creature.copy.descripcionCorta}
                   </p>
                 </div>
               ))}

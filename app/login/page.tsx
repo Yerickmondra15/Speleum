@@ -5,7 +5,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
+  AlertCircle,
   CheckCircle2,
+  Clock3,
+  Copy,
   Eye,
   EyeOff,
   KeyRound,
@@ -17,7 +20,11 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 
-import { type PendingAuthState, useAuth } from "@/app/auth/AuthProvider";
+import {
+  type AuthRequestError,
+  type PendingAuthState,
+  useAuth,
+} from "@/app/auth/AuthProvider";
 import { useLanguage } from "@/lib/i18n/LanguageProvider";
 import { translateAuthMessage } from "@/lib/i18n/content";
 
@@ -413,6 +420,11 @@ export default function LoginPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [pendingAuth, setPendingAuth] = useState<PendingAuthState | null>(null);
+  const [loginLockRetryAt, setLoginLockRetryAt] = useState<string | null>(null);
+  const [demoCodeCopied, setDemoCodeCopied] = useState(false);
+  const [remainingCodeAttempts, setRemainingCodeAttempts] = useState<number | null>(
+    null,
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [countdownNow, setCountdownNow] = useState(() => Date.now());
@@ -438,15 +450,24 @@ export default function LoginPage() {
   }, [router, status]);
 
   useEffect(() => {
-    if (!pendingAuth) {
+    if (!pendingAuth && !loginLockRetryAt) {
       return;
     }
 
     const timer = window.setInterval(() => {
-      setCountdownNow(Date.now());
+      const nextNow = Date.now();
+      setCountdownNow(nextNow);
+
+      if (
+        loginLockRetryAt &&
+        new Date(loginLockRetryAt).getTime() <= nextNow
+      ) {
+        setLoginLockRetryAt(null);
+        setSubmitError(null);
+      }
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [pendingAuth]);
+  }, [loginLockRetryAt, pendingAuth]);
 
   const resendSeconds = pendingAuth
     ? Math.max(
@@ -454,6 +475,22 @@ export default function LoginPage() {
         Math.ceil((new Date(pendingAuth.resendAvailableAt).getTime() - countdownNow) / 1000),
       )
     : 0;
+  const loginLockSeconds = loginLockRetryAt
+    ? Math.max(
+        0,
+        Math.ceil((new Date(loginLockRetryAt).getTime() - countdownNow) / 1_000),
+      )
+    : 0;
+  const challengeSeconds = pendingAuth
+    ? Math.max(
+        0,
+        Math.ceil((new Date(pendingAuth.expiresAt).getTime() - countdownNow) / 1_000),
+      )
+    : 0;
+  const challengeExpired = Boolean(pendingAuth && challengeSeconds === 0);
+  const challengeTimeLabel = `${Math.floor(challengeSeconds / 60)}:${String(
+    challengeSeconds % 60,
+  ).padStart(2, "0")}`;
 
   const currentErrors = useMemo(() => {
     const nextErrors: FormErrors = {};
@@ -513,7 +550,12 @@ export default function LoginPage() {
     formData.confirmPassword.length > 0 &&
     formData.password !== formData.confirmPassword;
 
-  const isDemoCodeVisible = Boolean(pendingAuth?.demoCode);
+  const isDemoCodeVisible = Boolean(
+    pendingAuth?.deliveryMode === "demo" && pendingAuth.demoCode,
+  );
+  const demoCodeExpirationMinutes = pendingAuth
+    ? Math.max(1, Math.ceil(pendingAuth.expiresInSeconds / 60))
+    : 0;
 
   function handleInputChange(field: keyof typeof formData, value: string) {
     setFormData((current) => ({
@@ -542,6 +584,9 @@ export default function LoginPage() {
     setMode(nextMode ?? mode);
     setStep("credentials");
     setPendingAuth(null);
+    setLoginLockRetryAt(null);
+    setDemoCodeCopied(false);
+    setRemainingCodeAttempts(null);
     setSubmitError(null);
     setFocusedField("none");
     setTouched({
@@ -609,6 +654,9 @@ export default function LoginPage() {
       }
 
       setPendingAuth(result);
+      setLoginLockRetryAt(null);
+      setDemoCodeCopied(false);
+      setRemainingCodeAttempts(result.attemptsRemaining);
       setStep("verify");
       setFormData((current) => ({
         ...current,
@@ -619,6 +667,18 @@ export default function LoginPage() {
         code: false,
       }));
     } catch (error) {
+      const authError = error as AuthRequestError;
+
+      if (authError.temporaryLock) {
+        setCountdownNow(Date.now());
+        setLoginLockRetryAt(
+          authError.retryAt ??
+            new Date(
+              Date.now() + (authError.retryAfterSeconds ?? 1) * 1_000,
+            ).toISOString(),
+        );
+      }
+
       setSubmitError(
         error instanceof Error ? error.message : "No se pudo completar la autenticacion.",
       );
@@ -664,6 +724,10 @@ export default function LoginPage() {
         router.replace("/");
       }, 1200);
     } catch (error) {
+      const authError = error as AuthRequestError;
+      if (typeof authError.remainingAttempts === "number") {
+        setRemainingCodeAttempts(authError.remainingAttempts);
+      }
       setSubmitError(
         error instanceof Error ? translateAuthMessage(locale, error.message) : messages.login.errors.genericValidation,
       );
@@ -683,6 +747,8 @@ export default function LoginPage() {
 
       const nextPending = await resendCode(pendingAuth.challengeId, pendingAuth.email);
       setPendingAuth(nextPending);
+      setDemoCodeCopied(false);
+      setRemainingCodeAttempts(nextPending.attemptsRemaining);
       setFormData((current) => ({
         ...current,
         code: "",
@@ -718,6 +784,19 @@ export default function LoginPage() {
       );
     } finally {
       setIsResending(false);
+    }
+  }
+
+  async function handleCopyDemoCode() {
+    if (!pendingAuth?.demoCode) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(pendingAuth.demoCode);
+      setDemoCodeCopied(true);
+    } catch {
+      setSubmitError(messages.login.errors.copyCode);
     }
   }
 
@@ -765,7 +844,7 @@ export default function LoginPage() {
             </h1>
             <p className="theme-text-secondary mt-2 text-sm">
               {step === "verify"
-                ? translateAuthMessage(locale, pendingAuth?.message ?? messages.login.verifyFallback)
+                ? messages.login.verifyInstruction
                 : messages.login.accessDescription}
             </p>
           </div>
@@ -952,12 +1031,19 @@ export default function LoginPage() {
                     )}
 
                     <motion.div variants={formVariants}>
-                      {submitError && (
+                      {(submitError || loginLockSeconds > 0) && (
                         <div
                           role="alert"
                           className="rounded-xl border border-rose-400/20 bg-rose-950/30 px-4 py-3 text-sm text-rose-200"
                         >
-                          {submitError ? translateAuthMessage(locale, submitError) : submitError}
+                          {loginLockSeconds > 0
+                            ? messages.login.locked.replace(
+                                "{seconds}",
+                                String(loginLockSeconds),
+                              )
+                            : submitError
+                              ? translateAuthMessage(locale, submitError)
+                              : submitError}
                         </div>
                       )}
                     </motion.div>
@@ -965,11 +1051,15 @@ export default function LoginPage() {
                     <motion.div variants={formVariants}>
                       <button
                         type="submit"
-                        disabled={isSubmitting || !isCredentialFormReady}
-                        aria-disabled={isSubmitting || !isCredentialFormReady}
+                        disabled={
+                          isSubmitting || !isCredentialFormReady || loginLockSeconds > 0
+                        }
+                        aria-disabled={
+                          isSubmitting || !isCredentialFormReady || loginLockSeconds > 0
+                        }
                         aria-busy={isSubmitting}
                         className={`min-h-12 w-full rounded-xl py-3 text-sm font-semibold text-white shadow-lg transition-all active:scale-[0.98] ${
-                          isSubmitting || !isCredentialFormReady
+                          isSubmitting || !isCredentialFormReady || loginLockSeconds > 0
                             ? "bg-rose-500/25 text-zinc-400 shadow-none"
                             : "bg-rose-400/80 shadow-rose-500/20 hover:bg-rose-400 hover:shadow-rose-500/30"
                         }`}
@@ -987,36 +1077,99 @@ export default function LoginPage() {
             </>
           ) : (
             <form onSubmit={handleVerifySubmit} noValidate className="space-y-4">
-              <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-zinc-300">
-                <div className="mb-1 flex items-center gap-2 text-rose-300">
-                  <ShieldCheck className="h-4 w-4" />
-                  <span className="font-medium">{messages.login.destinationEmail}</span>
+              <section
+                aria-labelledby="verification-code-title"
+                className="theme-card-accent rounded-2xl p-5"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="theme-chip rounded-full px-3 py-1 text-xs font-medium">
+                    {pendingAuth?.deliveryMode === "demo"
+                      ? messages.login.deliveryDemo
+                      : messages.login.deliveryEmail}
+                  </span>
+                  <span className="flex items-center gap-1.5 text-xs text-(--text-muted)">
+                    <Clock3 className="h-3.5 w-3.5" />
+                    {challengeExpired
+                      ? messages.login.expired
+                      : messages.login.expiresIn.replace(
+                          "{time}",
+                          challengeTimeLabel,
+                        )}
+                  </span>
                 </div>
-                <p className="text-white">{pendingAuth?.email}</p>
-                <p className="mt-2 text-xs text-zinc-500">
+                <h2
+                  id="verification-code-title"
+                  className="mt-4 text-xl font-semibold text-(--text-primary)"
+                >
+                  {messages.login.enterCodeTitle}
+                </h2>
+                <div className="mt-3 flex items-start gap-2 text-sm text-(--text-secondary)">
+                  <ShieldCheck className="h-4 w-4" />
+                  <div className="min-w-0">
+                    <span>{messages.login.destinationEmail}</span>
+                    <p className="mt-1 break-all font-medium text-(--text-primary)">
+                      {pendingAuth?.email}
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-3 text-xs leading-5 text-(--text-muted)">
                   {pendingAuth?.status === "pending_email_verification"
                     ? messages.login.emailNeedsVerification
                     : messages.login.loginNeedsVerification}
                 </p>
-              </div>
+                {remainingCodeAttempts !== null && (
+                  <p className="mt-3 text-xs font-medium text-(--text-secondary)">
+                    {messages.login.attemptsRemaining.replace(
+                      "{count}",
+                      String(remainingCodeAttempts),
+                    )}
+                  </p>
+                )}
+              </section>
 
               {isDemoCodeVisible && (
-                <details className="rounded-2xl border border-amber-300/15 bg-amber-950/15 p-4 text-amber-100">
-                  <summary className="cursor-pointer text-sm font-medium">
-                    {messages.login.demoCode}
-                  </summary>
-                  <p className="mt-3 text-xs uppercase tracking-[0.18em] text-amber-200/70">
-                    {messages.login.demoCodeDescription}
+                <div className="rounded-2xl border border-rose-400/25 bg-rose-950/15 p-5 text-(--text-primary)">
+                  <p className="text-sm font-semibold text-(--text-primary)">
+                    {messages.login.demoMode}
                   </p>
-                  <p className="mt-2 text-2xl font-semibold tracking-[0.34em]">
-                    {pendingAuth?.demoCode}
+                  <p className="mt-2 text-xs text-(--text-secondary)">
+                    {messages.login.demoTemporaryCode}
                   </p>
-                </details>
+                  <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-3xl font-semibold tracking-[0.3em]">
+                      {pendingAuth?.demoCode}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleCopyDemoCode}
+                      className="theme-button-secondary inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-3 text-xs font-medium transition"
+                    >
+                      <Copy className="h-4 w-4" />
+                      {demoCodeCopied
+                        ? messages.login.codeCopied
+                        : messages.login.copyCode}
+                    </button>
+                  </div>
+                  <p className="mt-3 text-xs text-(--text-muted)">
+                    {messages.login.demoCodeLifetime.replace(
+                      "{minutes}",
+                      String(demoCodeExpirationMinutes),
+                    )}
+                  </p>
+                </div>
               )}
 
-              <div className="relative">
-                <KeyRound className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+              <div>
+                <label
+                  htmlFor="verification-code"
+                  className="mb-2 block text-sm font-medium text-(--text-primary)"
+                >
+                  {messages.login.codeLabel}
+                </label>
+                <div className="relative">
+                <KeyRound className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-(--text-muted)" />
                 <input
+                  id="verification-code"
                   type="text"
                   inputMode="numeric"
                   autoComplete="one-time-code"
@@ -1027,15 +1180,19 @@ export default function LoginPage() {
                   }
                   onFocus={() => setFocusedField("code")}
                   onBlur={() => handleBlur("code")}
-                  className="min-h-12 w-full rounded-xl border border-white/10 bg-black/40 py-3 pl-11 pr-4 text-white placeholder-zinc-500 outline-none transition-all focus:border-rose-400/50 focus:bg-black/50"
+                  aria-describedby={submitError ? "verification-error" : undefined}
+                  aria-invalid={Boolean(submitError || currentErrors.code)}
+                  disabled={challengeExpired || remainingCodeAttempts === 0}
+                  className="theme-input min-h-16 w-full rounded-2xl py-3 pl-12 pr-4 text-center text-2xl font-semibold tracking-[0.28em]"
                 />
+                </div>
               </div>
               {currentErrors.code && (
                 <p className="-mt-2 text-xs text-rose-400">{translatedErrors.code}</p>
               )}
 
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-sm">
-                <span className="text-zinc-400">
+              <div className="theme-card-soft flex flex-col gap-3 rounded-xl px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                <span className="text-(--text-muted)">
                   {resendSeconds > 0
                     ? messages.login.resendIn.replace("{seconds}", String(resendSeconds))
                     : messages.login.noCode}
@@ -1046,8 +1203,8 @@ export default function LoginPage() {
                   disabled={isResending || resendSeconds > 0}
                   className={`inline-flex items-center gap-2 rounded-full px-3 py-2 transition ${
                     isResending || resendSeconds > 0
-                      ? "text-zinc-600"
-                      : "text-rose-200 hover:bg-rose-400/10"
+                      ? "text-(--text-soft)"
+                      : "text-(--text-primary) hover:bg-(--button-secondary-hover)"
                   }`}
                 >
                   <RefreshCcw className="h-4 w-4" />
@@ -1057,22 +1214,41 @@ export default function LoginPage() {
 
               {submitError && (
                 <div
+                  id="verification-error"
                   role="alert"
-                  className="rounded-xl border border-rose-400/20 bg-rose-950/30 px-4 py-3 text-sm text-rose-200"
+                  className="theme-error flex items-start gap-2 rounded-xl px-4 py-3 text-sm"
                 >
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                   {submitError ? translateAuthMessage(locale, submitError) : submitError}
+                </div>
+              )}
+
+              {challengeExpired && !submitError && (
+                <div role="alert" className="theme-error flex items-start gap-2 rounded-xl px-4 py-3 text-sm">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  {messages.login.expiredHelp}
                 </div>
               )}
 
               <button
                 type="submit"
-                disabled={isSubmitting || !isCodeReady}
-                aria-disabled={isSubmitting || !isCodeReady}
+                disabled={
+                  isSubmitting ||
+                  !isCodeReady ||
+                  challengeExpired ||
+                  remainingCodeAttempts === 0
+                }
+                aria-disabled={
+                  isSubmitting ||
+                  !isCodeReady ||
+                  challengeExpired ||
+                  remainingCodeAttempts === 0
+                }
                 aria-busy={isSubmitting}
-                className={`min-h-12 w-full rounded-xl py-3 text-sm font-semibold text-white shadow-lg transition-all active:scale-[0.98] ${
-                  isSubmitting || !isCodeReady
-                    ? "bg-rose-500/25 text-zinc-400 shadow-none"
-                    : "bg-rose-400/80 shadow-rose-500/20 hover:bg-rose-400 hover:shadow-rose-500/30"
+                className={`min-h-12 w-full rounded-xl py-3 text-sm font-semibold transition-all active:scale-[0.98] ${
+                  isSubmitting || !isCodeReady || challengeExpired || remainingCodeAttempts === 0
+                    ? "bg-(--surface-3) text-(--text-soft) shadow-none"
+                    : "theme-button-accent"
                 }`}
               >
                 {isSubmitting ? messages.login.verifying : messages.login.validateCode}
@@ -1081,7 +1257,7 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => resetVerificationState(mode)}
-                className="w-full text-sm text-zinc-500 transition hover:text-zinc-300"
+                className="w-full rounded-xl py-2 text-sm text-(--text-muted) transition hover:text-(--text-primary) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-300"
               >
                 {messages.login.editCredentials}
               </button>

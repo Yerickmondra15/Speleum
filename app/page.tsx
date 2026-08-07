@@ -21,6 +21,7 @@ import { useAuth } from "./auth/AuthProvider";
 import { useLanguage } from "@/lib/i18n/LanguageProvider";
 import { getLocalizedCreature } from "@/lib/i18n/content";
 import { useTheme } from "@/lib/theme/ThemeProvider";
+import { ThemeSwitcher } from "@/app/components/ThemeSwitcher";
 
 const fadeUp: Variants = {
   hidden: { opacity: 0, y: 35, filter: "blur(6px)" },
@@ -122,6 +123,7 @@ export default function Home() {
   const handleLogout = async () => {
     await logout();
     setIsMobileMenuOpen(false);
+    router.replace("/");
     router.refresh();
   };
 
@@ -156,16 +158,18 @@ export default function Home() {
               <Image
                 src={logoSrc}
                 alt="Speleum logo"
-                width={36}
+                width={26}
                 height={36}
                 className="h-9 w-auto"
+                style={{ width: "auto" }}
               />
               <Image
                 src={wordmarkSrc}
                 alt="Speleum"
-                width={140}
+                width={196}
                 height={32}
                 className="h-6 w-auto sm:h-7"
+                style={{ width: "auto" }}
               />
             </div>
 
@@ -181,6 +185,7 @@ export default function Home() {
               </button>
 
               <div className="hidden flex-wrap items-center justify-start gap-2 sm:flex sm:justify-end sm:gap-3">
+              <ThemeSwitcher />
               <Link href="/ranking" className="theme-button-secondary flex h-11 w-11 items-center justify-center rounded-full p-2 transition">
                 <Trophy className="h-5 w-5" />
               </Link>
@@ -225,6 +230,11 @@ export default function Home() {
                   <div className="relative overflow-hidden rounded-3xl border border-(--border-soft) bg-(--surface-1) p-3 backdrop-blur-xl">
                     <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,var(--glow-main),transparent_65%)]" />
                     <motion.div className="relative grid gap-2">
+                      <motion.div variants={mobileMenuItemVariants}>
+                        <div className="rounded-2xl border border-(--border-soft) bg-(--surface-2) p-3">
+                          <ThemeSwitcher />
+                        </div>
+                      </motion.div>
                       <motion.div variants={mobileMenuItemVariants}>
                         <Link
                           href="/ranking"
@@ -286,11 +296,11 @@ export default function Home() {
             {messages.home.heroTag}
           </div>
 
-          <h1 className="text-4xl font-serif font-semibold tracking-[0.22em] text-(--text-primary)ext-7xl sm:tracking-[0.35em]">
+          <h1 className="text-4xl font-serif font-semibold tracking-[0.22em] text-(--text-primary) sm:text-7xl sm:tracking-[0.35em]">
             SPELEUM
           </h1>
 
-          <p className="mt-5 max-w-2xl text-sm leading-7 text-(--text-secondary)ext-base">
+          <p className="mt-5 max-w-2xl text-sm leading-7 text-(--text-secondary) sm:text-base">
             {messages.home.heroDescription}
           </p>
 
@@ -300,7 +310,8 @@ export default function Home() {
               <div
                 className="absolute bottom-0 left-0 right-0 h-32"
                 style={{
-                  background: "linear-gradient(to top, var(--app-bg), rgba(0, 0, 0, 0.3), transparent)",
+                  background:
+                    "linear-gradient(to top, var(--app-bg), var(--hero-creature-shadow), transparent)",
                 }}
               />
               <div className="relative w-full px-3 sm:px-6">
@@ -497,7 +508,14 @@ export default function Home() {
             <div>
               <motion.div animate={{ y: [0, -6, 0] }} transition={{ duration: 4.5, repeat: Infinity, ease: "easeInOut" }} className="theme-card relative flex h-44 items-center justify-center overflow-hidden rounded-4xl">
                 <div className="relative text-center">
-                  <Image src={logoSrc} alt="Speleum logo" width={100} height={50} />
+                  <Image
+                    src={logoSrc}
+                    alt="Speleum logo"
+                    width={72}
+                    height={100}
+                    className="h-25 w-auto"
+                    style={{ width: "auto" }}
+                  />
                 </div>
               </motion.div>
             </div>

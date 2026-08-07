@@ -34,6 +34,7 @@
   --logo-shadow: rgba(255, 255, 255, 0.12);
   --icon-shell-bg: rgba(244, 244, 245, 0.9);
   --icon-shell-border: rgba(255, 255, 255, 0.2);
+  --hero-creature-shadow: rgba(0, 0, 0, 0.3);
 }
 
 html[data-theme="light"] {
@@ -70,6 +71,7 @@ html[data-theme="light"] {
   --logo-shadow: rgba(0, 0, 0, 0.08);
   --icon-shell-bg: rgba(0, 0, 0, 0.9);
   --icon-shell-border: rgba(0, 0, 0, 0.2);
+  --hero-creature-shadow: transparent;
 }
 
 html {
@@ -234,4 +236,16 @@ select {
   border: 1px solid var(--border-soft);
   background: var(--surface-3);
   color: var(--text-secondary);
+}
+
+.theme-error {
+  border: 1px solid rgba(251, 113, 133, 0.32);
+  background: rgba(76, 5, 25, 0.28);
+  color: #fecdd3;
+}
+
+html[data-theme="light"] .theme-error {
+  border-color: rgba(190, 18, 60, 0.24);
+  background: rgba(255, 228, 230, 0.84);
+  color: #9f1239;
 }

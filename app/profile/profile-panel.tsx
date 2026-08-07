@@ -98,6 +98,7 @@ export function ProfilePanel() {
   const handleLogout = async () => {
     await logout();
     router.replace("/");
+    router.refresh();
   };
 
   if (status === "loading" || isLoading || !profile) {
