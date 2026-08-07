@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Script from 'next/script'
 import { AuthProvider } from './auth/AuthProvider'
 import { LanguageProvider } from '@/lib/i18n/LanguageProvider'
 import { ThemeProvider } from '@/lib/theme/ThemeProvider'
@@ -35,18 +36,21 @@ export default function RootLayout({
   return (
     <html lang="es" suppressHydrationWarning>
       <body className="font-sans antialiased">
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(() => {
+        <Script id="speleum-theme-init" strategy="beforeInteractive">
+          {`(() => {
+            try {
               const key = ${JSON.stringify(themeStorageKey)};
               const fallback = ${JSON.stringify(defaultTheme)};
               const stored = window.localStorage.getItem(key);
               const theme = stored === "light" || stored === "dark" ? stored : fallback;
               document.documentElement.dataset.theme = theme;
               document.documentElement.style.colorScheme = theme;
-            })();`,
-          }}
-        />
+            } catch {
+              document.documentElement.dataset.theme = ${JSON.stringify(defaultTheme)};
+              document.documentElement.style.colorScheme = ${JSON.stringify(defaultTheme)};
+            }
+          })();`}
+        </Script>
         <ThemeProvider>
           <LanguageProvider>
             <AuthProvider>{children}</AuthProvider>

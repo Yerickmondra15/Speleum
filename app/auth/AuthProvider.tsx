@@ -21,10 +21,20 @@ export type PendingAuthState = {
   status: "pending_email_verification" | "pending_login_verification";
   challengeId: string;
   email: string;
+  deliveryMode: "demo" | "email";
   expiresAt: string;
+  expiresInSeconds: number;
+  attemptsRemaining: number;
   resendAvailableAt: string;
   message: string;
   demoCode?: string;
+};
+
+export type AuthRequestError = Error & {
+  retryAfterSeconds?: number;
+  retryAt?: string;
+  temporaryLock?: boolean;
+  remainingAttempts?: number;
 };
 
 type AuthSuccessState = {
@@ -66,16 +76,24 @@ async function parseResponse(response: Response) {
     | (Partial<PendingAuthState> & Partial<AuthSuccessState> & {
         error?: string;
         retryAfterSeconds?: number;
+        retryAt?: string;
+        temporaryLock?: boolean;
+        remainingAttempts?: number;
       })
     | null;
 
   if (!response.ok) {
-    const error = new Error(payload?.error ?? "No se pudo completar la solicitud.");
+    const error = new Error(
+      payload?.error ?? "No se pudo completar la solicitud.",
+    ) as AuthRequestError;
 
     if (typeof payload?.retryAfterSeconds === "number") {
-      (error as Error & { retryAfterSeconds?: number }).retryAfterSeconds =
-        payload.retryAfterSeconds;
+      error.retryAfterSeconds = payload.retryAfterSeconds;
     }
+
+    error.retryAt = payload?.retryAt;
+    error.temporaryLock = payload?.temporaryLock;
+    error.remainingAttempts = payload?.remainingAttempts;
 
     throw error;
   }
@@ -188,9 +206,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function logout() {
-    await fetch("/api/auth/session", {
+    const response = await fetch("/api/auth/session", {
       method: "DELETE",
+      cache: "no-store",
+      credentials: "same-origin",
     });
+
+    if (!response.ok) {
+      throw new Error("No se pudo cerrar la sesion.");
+    }
+
     setUser(null);
     setStatus("signed-out");
   }

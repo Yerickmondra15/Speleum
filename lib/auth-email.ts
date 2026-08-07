@@ -1,21 +1,23 @@
 import "server-only";
 
+import type { AuthDeliveryConfig } from "@/lib/auth-config";
+import { getAuthChallengeConfig } from "@/lib/auth-config";
 import { AUTH_CHALLENGE_TYPES, type AuthChallengeType } from "@/lib/auth-challenge";
 
 type SendAuthCodeEmailInput = {
   email: string;
   code: string;
   type: AuthChallengeType;
+  deliveryConfig: Extract<AuthDeliveryConfig, { mode: "email" }>;
 };
 
 export type EmailDeliveryResult =
   | { ok: true; mode: "resend" }
-  | { ok: false; mode: "failed" | "not-configured"; error: string };
-
-const EMAIL_FROM = process.env.EMAIL_FROM ?? "Speleum <onboarding@resend.dev>";
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
+  | { ok: false; mode: "failed"; error: string };
 
 function getEmailCopy(type: AuthChallengeType) {
+  const expirationMinutes = getAuthChallengeConfig().expirationMinutes;
+
   if (type === AUTH_CHALLENGE_TYPES.emailVerification) {
     return {
       subject: "Verifica tu correo en Speleum",
@@ -23,7 +25,7 @@ function getEmailCopy(type: AuthChallengeType) {
       eyebrow: "Verificacion de cuenta",
       body:
         "Usa este codigo para activar tu cuenta. Solo cuando lo confirmes podras entrar a la cueva.",
-      expires: "Este codigo vence en 15 minutos.",
+      expires: `Este codigo vence en ${expirationMinutes} minutos.`,
     };
   }
 
@@ -33,7 +35,7 @@ function getEmailCopy(type: AuthChallengeType) {
     eyebrow: "Acceso protegido",
     body:
       "Usa este codigo para terminar de iniciar sesion. Si no intentaste entrar, cambia tu contrasena.",
-    expires: "Este codigo vence en 10 minutos.",
+    expires: `Este codigo vence en ${expirationMinutes} minutos.`,
   };
 }
 
@@ -127,24 +129,15 @@ export async function sendAuthCodeEmail(input: SendAuthCodeEmailInput) {
   const html = renderEmailHtml(input);
   const text = renderEmailText(input);
 
-  if (!RESEND_API_KEY) {
-    console.info(`[auth-email-preview] ${input.email} ${copy.subject} ${input.code}`);
-    return {
-      ok: false,
-      mode: "not-configured",
-      error: "No se pudo enviar el correo. Intenta de nuevo.",
-    } satisfies EmailDeliveryResult;
-  }
-
   try {
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${RESEND_API_KEY}`,
+        Authorization: `Bearer ${input.deliveryConfig.apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: EMAIL_FROM,
+        from: input.deliveryConfig.from,
         to: [input.email],
         subject: copy.subject,
         html,
@@ -153,6 +146,9 @@ export async function sendAuthCodeEmail(input: SendAuthCodeEmailInput) {
     });
 
     if (!response.ok) {
+      console.error("[auth-email] Resend rechazo el envio de autenticacion.", {
+        status: response.status,
+      });
       return {
         ok: false,
         mode: "failed",
@@ -164,7 +160,10 @@ export async function sendAuthCodeEmail(input: SendAuthCodeEmailInput) {
       ok: true,
       mode: "resend",
     } satisfies EmailDeliveryResult;
-  } catch {
+  } catch (error) {
+    console.error("[auth-email] Fallo tecnico al contactar Resend.", {
+      errorType: error instanceof Error ? error.name : "UnknownError",
+    });
     return {
       ok: false,
       mode: "failed",

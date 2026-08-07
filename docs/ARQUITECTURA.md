@@ -1,81 +1,68 @@
 # Arquitectura de Speleum
 
-## Enfoque general
+## Componentes
 
-Speleum utiliza una arquitectura cliente-servidor con frontend y backend integrados en Next.js App Router, persistencia en PostgreSQL mediante Prisma y comunicacion en tiempo real con Socket.IO para el modo multijugador.
+### Next.js
 
-## Componentes principales
+La aplicación usa App Router para interfaz y endpoints. Las rutas de autenticación, perfil, ranking, criatura activa, tickets y resultados validan datos en tiempo de ejecución con Zod. Prisma es el único acceso a PostgreSQL.
 
-### Frontend
+### Cliente de juego
 
-- Interfaz construida con React sobre Next.js.
-- Pantallas para landing, login, perfil, ranking, mundo, guia y partida.
-- Componentes de juego para radar, HUD, mapa, seleccion de criatura y salas.
+`app/play/` contiene configuración, mapa de tiles, generación de cuevas, lógica táctica pura y componentes React. El modo local ejecuta el bucle en el navegador y se declara no competitivo. El cliente multijugador muestra snapshots del servidor y envía únicamente intenciones.
 
-### Backend y API
+### Socket.IO
 
-- Route Handlers de Next.js para autenticacion, perfil, ranking y guardado de resultados.
-- Manejo de sesion desde el servidor.
-- Validacion de datos antes de escribir en base de datos.
+`server/socketServer.ts` solo inicia el proceso. La composición está en `server/createSocketServer.ts` y las responsabilidades se separan en:
 
-### Base de datos
-
-- PostgreSQL como almacenamiento principal.
-- Prisma como ORM y capa de acceso.
-- Persistencia de usuarios, retos de autenticacion, estadisticas y resultados.
-
-### Motor de logica de juego
-
-- Modulo compartido para movimiento por tiles, vision limitada, combate, radar y comportamiento de amenazas.
-- Soporta partida local y sirve como base para la sincronizacion multijugador.
-
-### Modulo de ranking
-
-- Consulta de estadisticas acumuladas.
-- Presentacion ordenada por puntuacion y actividad reciente.
-
-### Modulo de autenticacion
-
-- Registro y login con codigo enviado al correo.
-- Sesiones persistidas mediante cookies firmadas.
-
-### Modulo de multijugador
-
-- Servidor Socket.IO separado del frontend.
-- Salas privadas por codigo.
-- Sincronizacion de movimiento, ataque, defensa, enemigos y senales de radar.
-
-## Comunicacion entre componentes
-
-- El cliente consume APIs HTTP para autenticacion, perfil, ranking y resultados.
-- Prisma conecta el backend con PostgreSQL.
-- Socket.IO comunica eventos de partida y actualiza el estado de las salas en tiempo real.
-- El motor de juego alimenta tanto la partida local como la logica usada por el servidor multijugador.
-
-## Flujo resumido
-
-1. El usuario accede al frontend.
-2. El frontend consulta APIs para autenticacion y datos persistidos.
-3. El backend procesa solicitudes y usa Prisma para interactuar con PostgreSQL.
-4. Si el usuario entra a multijugador, el cliente abre conexion Socket.IO.
-5. El servidor de sockets administra salas, combate, movimiento y senales.
-6. El frontend renderiza el estado visible segun vision limitada y radar.
-
-## Diagrama Mermaid
-
-```mermaid
-flowchart TD
-  User[Usuario] --> UI[Frontend Next.js / React]
-  UI --> API[API Routes / Backend]
-  API --> Prisma[Prisma ORM]
-  Prisma --> DB[(PostgreSQL)]
-  UI <--> Socket[Socket.IO Server]
-  Socket --> GameLogic[Motor de logica de juego]
-  UI --> Game[Interfaz de partida]
+```text
+server/
+├── auth/socketAuth.ts
+├── game/scoring.ts
+├── handlers/
+│   ├── connectionHandlers.ts
+│   ├── gameplayHandlers.ts
+│   └── roomHandlers.ts
+├── rooms/
+│   ├── roomLifecycle.ts
+│   ├── roomSerialization.ts
+│   └── roomStore.ts
+├── validation/socketSchemas.ts
+├── config.ts
+└── types.ts
 ```
 
-## Observaciones de implementacion
+Las salas, referencias de sockets y tickets consumidos son memoria local del proceso.
 
-- La partida local ya funciona de forma completa como prototipo integrado.
-- El multijugador ya cuenta con base funcional en tiempo real y esta preparado para seguir ampliandose.
-- La visibilidad parcial y el radar estan pensados para sugerir actividad, no para revelar informacion perfecta.
+### Seguridad compartida sin código de navegador
+
+`lib/security/`, `lib/multiplayer/`, `lib/matches/` y `lib/validation/` contienen tokens HMAC, tickets, comprobantes, políticas y esquemas. Los módulos que manejan secretos solo se invocan desde servidor/API.
+
+## Flujo de identidad y resultado
+
+```mermaid
+sequenceDiagram
+  participant B as Navegador
+  participant N as Next.js
+  participant S as Socket.IO
+  participant P as PostgreSQL
+  B->>N: Cookie de sesión
+  N-->>B: Ticket socket (60 s, un uso)
+  B->>S: handshake con ticket
+  S-->>B: snapshots autoritativos
+  B->>S: intenciones de juego
+  S-->>B: resultado + comprobante firmado
+  B->>N: { mode: multiplayer, receipt }
+  N->>P: transacción serializable e idempotente
+```
+
+## Decisiones
+
+- Local y multijugador tienen niveles de confianza distintos.
+- `userId`, `player.id` y `socket.id` nunca se intercambian.
+- Los códigos de sala sirven para descubrimiento, no autenticación.
+- La lógica de modificadores de criatura es común; el servidor sigue siendo autoridad en multijugador.
+- El ciclo de vida usa tres intervalos cerrables, no un `setTimeout` por acción.
+
+## Límites
+
+No hay Redis, adaptador distribuido, cola ni persistencia de salas. Un reinicio invalida reconexión y partidas activas. El patrón de comprobante evita dar acceso directo a PostgreSQL al servidor de sockets, pero depende del cliente para entregar el comprobante a la API.

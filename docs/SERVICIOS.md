@@ -1,399 +1,77 @@
-# Servicios y Endpoints de Speleum
+# Servicios y contratos
 
-Este documento describe unicamente las APIs reales presentes en `app/api`.
+Todos los cuerpos modificadores se limitan en tamaño, deben ser JSON válido y pasan esquemas estrictos; campos desconocidos producen `400`.
 
-## Resumen de rutas existentes
+## Autenticación
 
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `POST /api/auth/resend-code`
-- `POST /api/auth/verify-email-code`
-- `POST /api/auth/verify-login-code`
-- `GET /api/auth/session`
-- `DELETE /api/auth/session`
-- `GET /api/profile`
-- `GET /api/ranking`
-- `POST /api/matches/results`
-- `PATCH /api/users/me/active-creature`
+| Método y ruta | Autenticación | Propósito |
+|---|---|---|
+| `POST /api/auth/register` | no | crea o recupera cuenta y desafío de correo |
+| `POST /api/auth/login` | no | valida contraseña, bloqueo y crea desafío 2FA |
+| `POST /api/auth/resend-code` | no | reenvía un desafío válido con cooldown/límites |
+| `POST /api/auth/verify-email-code` | no | consume código, verifica correo y crea sesión |
+| `POST /api/auth/verify-login-code` | no | consume código, reinicia fallos y crea sesión |
+| `GET /api/auth/session` | cookie | devuelve usuario actual |
+| `DELETE /api/auth/session` | cookie | elimina cookie de sesión |
 
-## Autenticacion
+Los códigos no aparecen en logs ni se guardan en texto claro. Las respuestas de creación y reenvío incluyen `deliveryMode`, `expiresInSeconds` y, únicamente con `AUTH_DELIVERY_MODE=demo`, `demoCode`. Las rutas de verificación nunca devuelven el código. En producción, el modo demo solo arranca con `ALLOW_PUBLIC_DEMO_AUTH=true`.
 
-### POST /api/auth/register
+Durante un bloqueo, login responde `429`, encabezado `Retry-After` y `{ temporaryLock, retryAfterSeconds, retryAt }`; el texto no confirma si existe una cuenta.
 
-Descripción:
-Registra un nuevo usuario, crea su registro inicial de estadísticas y genera un código de verificación por correo.
+## Ticket Socket.IO
 
-Entrada:
+### `POST /api/socket/ticket`
 
-```json
-{
-  "username": "string",
-  "email": "string",
-  "password": "string"
-}
-```
+Requiere sesión. Devuelve `{ ticket, expiresAt }` con `Cache-Control: no-store`. El ticket dura 60 segundos, es HMAC, de un solo uso por instancia y no contiene secretos.
 
-Reglas visibles en el código:
+## Perfil y criatura
 
-- `username` con al menos 3 caracteres
-- `email` válido
-- `password` con al menos 6 caracteres
+### `GET /api/profile?historyLimit=10`
 
-Respuesta:
+Requiere sesión. `historyLimit` acepta 1–25. Devuelve únicamente el perfil propio: email, criatura, estadísticas, porcentaje, última partida e historial con modo, resultado, score, fecha, duración y nivel de verificación.
 
-- `201` con un objeto `PendingAuthResponse`:
+### `PATCH /api/users/me/active-creature`
 
-```json
-{
-  "status": "pending_email_verification",
-  "challengeId": "string",
-  "email": "string",
-  "expiresAt": "ISO date",
-  "resendAvailableAt": "ISO date",
-  "message": "string",
-  "demoCode": "string opcional"
-}
-```
-
-Errores:
-
-- `400` si faltan datos o no cumplen validación
-- `409` si el correo o el nombre ya existen
-- `502` si el correo no pudo enviarse y no está activo el modo demo
-- `429`, `404`, `410`, `500` según fallos de retos de autenticación
-
-### POST /api/auth/login
-
-Descripción:
-Valida correo y contraseña. Si son correctos, genera un reto de verificación de correo o un código de segundo factor para completar el acceso.
-
-Entrada:
-
-```json
-{
-  "email": "string",
-  "password": "string"
-}
-```
-
-Respuesta:
-
-- `200` con `PendingAuthResponse`
-- Si el correo aún no está verificado, responde con `status: "pending_email_verification"`
-- Si el usuario ya está verificado, responde con `status: "pending_login_verification"`
-
-Errores:
-
-- `400` si faltan correo o contraseña
-- `401` si las credenciales son inválidas
-- `502` si falla el envío del correo y no está activo el modo demo
-- errores de retos como `429`, `404`, `410` o `500`
-
-### POST /api/auth/resend-code
-
-Descripción:
-Reenvía un código de verificación o de login usando un reto activo.
-
-Entrada:
-
-```json
-{
-  "challengeId": "string",
-  "email": "string"
-}
-```
-
-Respuesta:
-
-- `200` con `PendingAuthResponse` actualizado
-
-Errores:
-
-- `400` si no se encuentra un desafío válido en la entrada
-- `404` si el reto ya no existe
-- `409` si el reto ya fue usado
-- `410` si el reto expiró
-- `429` por enfriamiento, límite de reenvíos o demasiados intentos
-- `502` si falla el correo y no está activo el modo demo
-
-### POST /api/auth/verify-email-code
-
-Descripción:
-Verifica el código de activación del correo, marca el usuario como verificado y crea la sesión.
-
-Entrada:
-
-```json
-{
-  "challengeId": "string",
-  "email": "string",
-  "code": "string de 6 dígitos"
-}
-```
-
-Respuesta:
-
-- `200` con:
-
-```json
-{
-  "status": "authenticated",
-  "user": {
-    "id": "string",
-    "username": "string",
-    "email": "string",
-    "emailVerified": true,
-    "activeCreature": "string",
-    "createdAt": "ISO date"
-  }
-}
-```
-
-Errores:
-
-- `400` si el código no tiene 6 dígitos o es inválido
-- `404` si no existe reto o usuario válido
-- `409` si el código ya fue usado
-- `410` si expiró
-- `429` si se superaron intentos
-- `500` si ocurre un fallo interno
-
-### POST /api/auth/verify-login-code
-
-Descripción:
-Verifica el segundo paso del login, actualiza `lastLoginAt`, reinicia fallos de acceso y crea la sesión.
-
-Entrada:
-
-```json
-{
-  "challengeId": "string",
-  "email": "string",
-  "code": "string de 6 dígitos"
-}
-```
-
-Respuesta:
-
-- `200` con:
-
-```json
-{
-  "status": "authenticated",
-  "user": {
-    "id": "string",
-    "username": "string",
-    "email": "string",
-    "emailVerified": true,
-    "activeCreature": "string",
-    "createdAt": "ISO date"
-  }
-}
-```
-
-Errores:
-
-- `400` si el código es inválido o incompleto
-- `404` si no existe reto o usuario válido
-- `409` si el código ya fue usado
-- `410` si expiró
-- `429` si se agotaron intentos
-- `500` si ocurre un fallo interno
-
-### GET /api/auth/session
-
-Descripción:
-Consulta el usuario autenticado actualmente según la cookie de sesión.
-
-Entrada:
-No requiere body.
-
-Respuesta:
-
-- `200` con:
-
-```json
-{
-  "user": {
-    "id": "string",
-    "username": "string",
-    "email": "string",
-    "emailVerified": true,
-    "activeCreature": "string",
-    "createdAt": "ISO date"
-  }
-}
-```
-
-- Si no hay sesión:
-
-```json
-{
-  "user": null
-}
-```
-
-Errores:
-
-- No expone errores específicos en el flujo normal; responde `200`
-
-### DELETE /api/auth/session
-
-Descripción:
-Cierra la sesión eliminando la cookie del usuario.
-
-Entrada:
-No requiere body.
-
-Respuesta:
-
-- `204 No Content`
-
-Errores:
-
-- No define un flujo de error especial en la ruta
-
-## Perfil
-
-### GET /api/profile
-
-Descripción:
-Devuelve la información de perfil y estadísticas del usuario autenticado.
-
-Entrada:
-No requiere body.
-
-Respuesta:
-
-```json
-{
-  "username": "string",
-  "email": "string",
-  "activeCreature": "string",
-  "matchesPlayed": 0,
-  "wins": 0,
-  "losses": 0,
-  "score": 0,
-  "lastMatchAt": "ISO date o null"
-}
-```
-
-Errores:
-
-- `401` si no hay usuario autenticado
-- `404` si el usuario no existe en la base de datos
-
-### PATCH /api/users/me/active-creature
-
-Descripción:
-Actualiza la criatura activa del usuario autenticado.
-
-Entrada:
-
-```json
-{
-  "activeCreature": "string"
-}
-```
-
-Respuesta:
-
-```json
-{
-  "id": "string",
-  "activeCreature": "string"
-}
-```
-
-Errores:
-
-- `400` si `activeCreature` no llega informado
-- `401` si no hay sesión válida
+Requiere sesión y `{ activeCreature }` perteneciente al catálogo real.
 
 ## Ranking
 
-### GET /api/ranking
+### `GET /api/ranking?page=1&limit=20`
 
-Descripción:
-Devuelve el ranking persistido a partir de `UserStats`, enlazado con los datos visibles del usuario.
+Público. `page` empieza en 1 y `limit` acepta 1–50. Solo incluye `UserStats` con partidas competitivas, devuelve `entries` y `pagination`. No expone email.
 
-Entrada:
-No requiere body.
+## Resultados
 
-Respuesta:
+### `POST /api/matches/results`
 
-```json
-[
-  {
-    "rank": 1,
-    "userId": "string",
-    "username": "string",
-    "activeCreature": "string",
-    "matchesPlayed": 0,
-    "wins": 0,
-    "losses": 0,
-    "score": 0,
-    "lastMatchAt": "ISO date o null"
-  }
-]
-```
-
-Errores:
-
-- La ruta actual no define respuestas de error personalizadas
-
-## Resultados y puntuaciones
-
-### POST /api/matches/results
-
-Descripción:
-Guarda el resultado de una partida para el usuario autenticado. También crea o actualiza la partida y actualiza las estadísticas acumuladas.
-
-Entrada:
+Requiere sesión y admite una unión discriminada:
 
 ```json
 {
-  "matchId": "string",
-  "mode": "string",
-  "status": "string",
-  "winnerId": "string o null",
-  "startedAt": "ISO date o null",
-  "endedAt": "ISO date o null",
-  "creature": "string",
-  "result": "win o loss",
-  "scoreEarned": 0
+  "mode": "local",
+  "matchId": "uuid",
+  "status": "finished",
+  "startedAt": "ISO-8601",
+  "endedAt": "ISO-8601",
+  "creature": "cave-axolotl",
+  "result": "win"
 }
 ```
 
-Notas del flujo real:
-
-- `matchId`, `mode`, `status`, `creature` y `result` son obligatorios
-- si el resultado del mismo `matchId` y usuario ya existe, no lo duplica
-- actualiza `UserStats` en la misma transacción
-
-Respuesta:
-
-- `201` con:
+Local siempre persiste score cero, ganador nulo y no modifica ranking.
 
 ```json
-{
-  "id": "string"
-}
+{ "mode": "multiplayer", "receipt": "token-firmado" }
 ```
 
-Errores:
+Multi verifica que el comprobante pertenezca al usuario de la cookie. El cliente no puede enviar `winnerId`, `scoreEarned`, fechas o resultado por separado.
 
-- `400` si faltan datos mínimos para guardar la partida
-- `401` si el usuario no está autenticado
-- `500` si falla el guardado del resultado
+Respuestas relevantes: `201` creado, `200` repetición idempotente, `400` contrato/fecha, `401` sin sesión, `403` comprobante inválido/ajeno, `409` conflicto y `500` error inesperado.
 
-## Servicio multijugador complementario
+## Eventos Socket.IO
 
-Además de las APIs HTTP, Speleum usa [server/socketServer.ts](C:/Users/yeric/Desktop/Speleum/speleum/server/socketServer.ts) para salas en tiempo real con Socket.IO. Ese módulo en evolución no expone endpoints REST adicionales dentro de `app/api`, pero sí sincroniza:
+Cliente: `create-room`, `join-room`, `resume-room`, `player-ready`, `player-move`, `player-attack`, `player-defend`, `leave-room`.
 
-- movimiento
-- ataque
-- defensa
-- enemigos
-- señales de radar
-- estado de sala y partida
+Servidor: `game-state`, `game-over`, `player-left`, `error-message`.
+
+Todos los eventos entrantes reciben `unknown` y se validan. Ninguno acepta `userId`.

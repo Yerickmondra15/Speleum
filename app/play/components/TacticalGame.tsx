@@ -10,12 +10,8 @@ import {
   MOVEMENT_STEP_INTERVAL_MS,
   PARRY_COOLDOWN_MS,
   PARRY_WINDOW_MS,
-  PLAYER_ATTACK_DAMAGE,
   PLAYER_ATTACK_RANGE_TILES,
-  PLAYER_MAX_HEALTH,
-  PLAYER_MOVE_RANGE_TILES,
   RADAR_SIGNAL_PROFILES,
-  RADAR_SIGNAL_RANGE_TILES,
   SCORE_PER_KILL_FALLBACK,
   SCORE_PER_LOCAL_VICTORY,
   TILE_SIZE,
@@ -39,7 +35,6 @@ import { RadarPanel } from "./RadarPanel";
 import { GameOverlay } from "./GameOverlay";
 import { GameTopControls } from "./GameTopControls";
 import { PauseOverlay } from "./PauseOverlay";
-import { useAuth } from "../../auth/AuthProvider";
 import {
   buildTileMap,
   createTileLookup,
@@ -49,7 +44,13 @@ import {
   worldToTile,
 } from "../tileMap";
 import { createCaveLayout, type CaveLayout } from "../proceduralCave";
-import { createRadarSignal, upsertRadarSignal } from "../signalUtils";
+import { createRadarSignal, pruneExpiredRadarSignals, upsertRadarSignal } from "../signalUtils";
+import {
+  applyCreatureIncomingDamage,
+  applyCreatureNoise,
+  applyCreatureOutgoingDamage,
+  getCreatureGameplayModifiers,
+} from "@/lib/creature-gameplay";
 
 type TacticalGameProps = {
   selectedCharacter: CharacterOption;
@@ -112,7 +113,7 @@ export function TacticalGame({
   selectedCharacter,
   onExitToMenu,
 }: TacticalGameProps) {
-  const { user } = useAuth();
+  const creatureModifiers = getCreatureGameplayModifiers(selectedCharacter.id);
   const [caveSession, setCaveSession] = useState<LocalCaveSession>(() => createLocalCaveSession());
   const [matchId, setMatchId] = useState(() => createMatchId());
   const [matchStartedAt, setMatchStartedAt] = useState(() => new Date().toISOString());
@@ -122,7 +123,7 @@ export function TacticalGame({
   const [gameStatus, setGameStatus] = useState<GameStatus>("playing");
   const [isPaused, setIsPaused] = useState(false);
   const [isUiHidden, setIsUiHidden] = useState(false);
-  const [health, setHealth] = useState(PLAYER_MAX_HEALTH);
+  const [health, setHealth] = useState(creatureModifiers.maxHealth);
   const [moveCooldownEndsAt, setMoveCooldownEndsAt] = useState(0);
   const [attackCooldownEndsAt, setAttackCooldownEndsAt] = useState(0);
   const [parryUntil, setParryUntil] = useState(0);
@@ -208,17 +209,15 @@ export function TacticalGame({
         matchId,
         mode: "local",
         status: "finished",
-        winnerId: gameStatus === "won" ? user?.id ?? null : null,
         startedAt: matchStartedAt,
         endedAt: new Date().toISOString(),
         creature: selectedCharacter.id,
         result: gameStatus === "won" ? "win" : "loss",
-        scoreEarned: score,
       }),
     }).catch(() => {
       resultSavedRef.current = false;
     });
-  }, [gameStatus, matchId, matchStartedAt, score, selectedCharacter.id, user?.id]);
+  }, [gameStatus, matchId, matchStartedAt, selectedCharacter.id]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -228,9 +227,7 @@ export function TacticalGame({
 
       const tickNow = Date.now();
       setNow(tickNow);
-      setSignals((current) =>
-        current.filter((signal) => tickNow - signal.createdAt < signal.duration),
-      );
+      setSignals((current) => pruneExpiredRadarSignals(current, tickNow));
       setNoises((current) => current.filter((noise) => tickNow - noise.createdAt < 3200));
     }, 100);
 
@@ -251,8 +248,8 @@ export function TacticalGame({
   const attackCooldownRemaining = Math.max(0, attackCooldownEndsAt - now);
   const parryCooldownRemaining = Math.max(0, parryCooldownEndsAt - now);
   const reachableTiles = useMemo(
-    () => findReachableTiles(worldToTile(player), PLAYER_MOVE_RANGE_TILES, caveSession.lookup),
-    [caveSession.lookup, player],
+    () => findReachableTiles(worldToTile(player), creatureModifiers.moveRangeTiles, caveSession.lookup),
+    [caveSession.lookup, creatureModifiers.moveRangeTiles, player],
   );
 
   useEffect(() => {
@@ -266,10 +263,6 @@ export function TacticalGame({
 
   useEffect(() => {
     const cave = caveSession.layout;
-    console.log("CAVE SOURCE:", cave.source);
-    console.log("CAVE SEED:", cave.seed);
-    console.log("TEMPLATES:", cave.templatesUsed);
-
     if (cave.source === "fallback") {
       console.warn("[Speleum] Local cave is using fallback.", {
         seed: cave.seed,
@@ -387,7 +380,7 @@ export function TacticalGame({
 
         const resolution = resolveCombatHit({
           targetHealth: nextPlayerHealth,
-          damage: nextEnemy.damage,
+          damage: applyCreatureIncomingDamage(nextEnemy.damage, selectedCharacter.id),
           now: turnNow,
           targetParryUntil: parryUntilRef.current,
         });
@@ -488,13 +481,8 @@ export function TacticalGame({
 
         setPlayer(nextStep);
         addSignal("move", nextStep, "player");
-        addNoise(
-          "move",
-          nextStep,
-          4 + Math.round(selectedCharacter.moveSignalMultiplier * 2),
-          0.45 * selectedCharacter.moveSignalMultiplier,
-          "player",
-        );
+        const noise = applyCreatureNoise(6, 0.45, selectedCharacter.id);
+        addNoise("move", nextStep, noise.radiusTiles, noise.intensity, "player");
         setPathPreview(rest);
 
         if (rest.length === 0) {
@@ -507,7 +495,7 @@ export function TacticalGame({
     }, MOVEMENT_STEP_INTERVAL_MS);
 
     return () => window.clearInterval(interval);
-  }, [gameStatus, movementPath.length, selectedCharacter.moveSignalMultiplier]);
+  }, [gameStatus, movementPath.length, selectedCharacter.id]);
 
   function shiftGameplayTimeline(deltaMs: number) {
     if (deltaMs <= 0) {
@@ -583,7 +571,7 @@ export function TacticalGame({
     const movePlan = planMovementPath(
       playerRef.current,
       target,
-      PLAYER_MOVE_RANGE_TILES,
+      creatureModifiers.moveRangeTiles,
       caveSession.lookup,
       selectedCharacter.moveCooldownMultiplier,
     );
@@ -645,7 +633,8 @@ export function TacticalGame({
     setAttackCooldownEndsAt(Date.now() + ATTACK_COOLDOWN);
     setActiveAction("attack");
     addSignal("attack", playerRef.current, "player");
-    addNoise("attack", playerRef.current, 9, 1.2, "player");
+    const attackNoise = applyCreatureNoise(9, 1.2, selectedCharacter.id);
+    addNoise("attack", playerRef.current, attackNoise.radiusTiles, attackNoise.intensity, "player");
 
     if (!target) {
       setMessage("Golpeas la oscuridad, pero no hay enemigos dentro del rango.");
@@ -658,7 +647,8 @@ export function TacticalGame({
         return enemy;
       }
 
-      const nextHp = Math.max(0, enemy.hp - PLAYER_ATTACK_DAMAGE);
+      const damage = applyCreatureOutgoingDamage(30, selectedCharacter.id);
+      const nextHp = Math.max(0, enemy.hp - damage);
 
       if (nextHp <= 0) {
         const config = caveSession.layout.enemyConfigs.find((entry) => entry.id === enemy.id);
@@ -667,7 +657,7 @@ export function TacticalGame({
         setScore((current) => current + earnedScore);
         setKills((current) => current + 1);
         setMessage(`${enemy.name} cae y desaparece entre los ecos de roca.`);
-        showCombatFlash(`-${PLAYER_ATTACK_DAMAGE} HP · baja`);
+        showCombatFlash(`-${damage} HP · baja`);
 
         return {
           ...enemy,
@@ -678,7 +668,7 @@ export function TacticalGame({
       }
 
       setMessage(`Impacto confirmado sobre ${enemy.name}.`);
-      showCombatFlash(`-${PLAYER_ATTACK_DAMAGE} HP`);
+      showCombatFlash(`-${damage} HP`);
 
       return {
         ...enemy,
@@ -719,7 +709,8 @@ export function TacticalGame({
     setParryCooldownEndsAt(activatedAt + PARRY_COOLDOWN_MS);
     setActiveAction("defend");
     addSignal("defend", playerRef.current, "player");
-    addNoise("defend", playerRef.current, 6, 0.65, "player");
+    const defendNoise = applyCreatureNoise(6, 0.65, selectedCharacter.id);
+    addNoise("defend", playerRef.current, defendNoise.radiusTiles, defendNoise.intensity, "player");
     setMessage("Abres una ventana corta de parry.");
     showCombatFlash("Parry activo");
   }
@@ -772,7 +763,7 @@ export function TacticalGame({
     setGameStatus("playing");
     setIsPaused(false);
     setIsUiHidden(false);
-    setHealth(PLAYER_MAX_HEALTH);
+    setHealth(creatureModifiers.maxHealth);
     setMoveCooldownEndsAt(0);
     setAttackCooldownEndsAt(0);
     setParryUntil(0);
@@ -808,7 +799,7 @@ export function TacticalGame({
     : null;
   const detectedEnemies = aliveEnemies.filter(
     (enemy) =>
-      tileDistance(worldToTile(player), worldToTile(enemy)) <= RADAR_SIGNAL_RANGE_TILES,
+      tileDistance(worldToTile(player), worldToTile(enemy)) <= creatureModifiers.radarRangeTiles,
   ).length;
   const activeHostiles = aliveEnemies.filter(
     (enemy) =>
@@ -881,7 +872,7 @@ export function TacticalGame({
           message={message}
           zoneMessage={zoneMessage}
           health={health}
-          maxHealth={PLAYER_MAX_HEALTH}
+          maxHealth={creatureModifiers.maxHealth}
           aliveCount={aliveEnemies.length + (gameStatus === "lost" ? 0 : 1)}
           enemyStateLabel={threatSummary}
           isPaused={isPaused}
@@ -910,6 +901,7 @@ export function TacticalGame({
             player={player}
             signals={signals}
             moveCooldownRemaining={moveCooldownRemaining}
+            rangeTiles={creatureModifiers.radarRangeTiles}
           />
         </div>
       )}

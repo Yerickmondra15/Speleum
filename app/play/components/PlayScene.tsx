@@ -13,6 +13,11 @@ import { MultiplayerMenu } from "./MultiplayerMenu";
 import { MultiplayerGame } from "./MultiplayerGame";
 import { useAuth } from "../../auth/AuthProvider";
 import { useLanguage } from "@/lib/i18n/LanguageProvider";
+import {
+  clearMultiplayerSession,
+  readMultiplayerSession,
+  writeMultiplayerSession,
+} from "@/lib/multiplayer/client-session";
 
 type Screen =
   | "menu"
@@ -29,15 +34,11 @@ export function PlayScene() {
   const router = useRouter();
   const { user, status, updateActiveCreature } = useAuth();
   const { locale, messages } = useLanguage();
-  const [screen, setScreen] = useState<Screen>("menu");
+  const [multiplayerSession, setMultiplayerSession] = useState(() => readMultiplayerSession());
+  const [screen, setScreen] = useState<Screen>(() =>
+    readMultiplayerSession() ? "multiplayer-game" : "menu",
+  );
   const [playMode, setPlayMode] = useState<PlayMode>("local");
-  const [multiplayerSession, setMultiplayerSession] = useState<{
-    matchId: string;
-    roomCode: string;
-    playerId: string;
-    playerName: string;
-    characterId: string;
-  } | null>(null);
   const [storedCharacterId, setStoredCharacterId] = useState(() => {
     if (typeof window === "undefined") return "cave-axolotl";
 
@@ -145,6 +146,7 @@ export function PlayScene() {
           onBack={() => setScreen("menu")}
           onGameStart={(session) => {
             setMultiplayerSession(session);
+            writeMultiplayerSession(session);
             setScreen("multiplayer-game");
           }}
         />
@@ -163,6 +165,7 @@ export function PlayScene() {
           roomCode={multiplayerSession.roomCode}
           selectedCharacter={selectedCharacter}
           onExitToMenu={() => {
+            clearMultiplayerSession();
             setMultiplayerSession(null);
             setScreen("menu");
           }}

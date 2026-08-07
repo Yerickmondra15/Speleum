@@ -1,21 +1,29 @@
-# Diseno de Juego Speleum
-
-Speleum es un juego web de supervivencia en cuevas con vision limitada. La propuesta combina exploracion, lectura parcial del entorno, combate, defensa, criaturas hostiles, ranking y persistencia de resultados.
+# Diseño de juego de Speleum
 
 ## Idea central
 
-Cada jugador percibe solo una parte cercana del mapa. El resto de la cueva permanece oculto, por lo que moverse, atacar o defenderse implica tomar decisiones con informacion incompleta.
+Speleum es supervivencia táctica de información incompleta. El jugador se desplaza por tiles, interpreta ecos y ruido, administra cooldowns y decide cuándo atacar o abrir una ventana de parry.
 
-## Base jugable actual
+## Sistemas implementados
 
-- Vision limitada alrededor de la criatura.
-- Movimiento por tiles con rutas validas.
-- Radar de senales para detectar actividad cercana.
-- Ataque y defensa con tiempos de recuperacion.
-- Amenazas de cueva controladas por logica del juego.
-- Perfil, ranking y persistencia de resultados.
-- Base funcional de salas multijugador en tiempo real.
+- Cueva generada de forma reproducible por semilla, con fallback estático seguro.
+- Movimiento con búsqueda de ruta y alcance por criatura.
+- Visión limitada, radar temporal, ruido y comportamiento de enemigos.
+- Daño, vida, parry, stun, cooldowns, kills y final de partida.
+- Multijugador 2–6 con el mismo lenguaje táctico y autoridad del servidor.
+- Cinco criaturas diferenciadas mediante modificadores pequeños y centralizados.
 
-## Enfoque de avance
+## Criaturas
 
-El proyecto no se presenta como un sistema cerrado, sino como una base funcional integrada preparada para seguir ampliandose en jugabilidad, variedad de criaturas, equilibrio y profundidad competitiva.
+Las “habilidades” actuales son pasivas: combinaciones de vida, movimiento, ruido, ataque, defensa y radar. No hay dash, salto, contraataque automático o emboscada activa. La tabla exacta vive en `MATRIZ_FUNCIONALIDADES.md`.
+
+## Confianza y competencia
+
+El modo local es práctica/historial y no afecta score competitivo porque su simulación vive en el navegador. El multijugador calcula resultados en Socket.IO y es la única fuente nueva de `UserStats`.
+
+## Principios de evolución
+
+1. Toda mecánica multijugador debe ser validada por el servidor.
+2. Un texto de interfaz no debe prometer una habilidad sin implementación y prueba.
+3. El balance debe cambiar en `lib/creature-gameplay.ts`, no dispersarse en componentes.
+4. Antes de añadir habilidades complejas, medir las pasivas actuales y ampliar pruebas.

@@ -19,8 +19,19 @@ type ProfileData = {
   matchesPlayed: number;
   wins: number;
   losses: number;
+  winRate: number;
   score: number;
   lastMatchAt: string | null;
+  history: Array<{
+    id: string;
+    mode: string;
+    verificationLevel: string;
+    creature: string;
+    result: string;
+    scoreEarned: number;
+    date: string;
+    durationMs: number | null;
+  }>;
 };
 
 type ProfileFieldRowProps = {
@@ -87,6 +98,7 @@ export function ProfilePanel() {
   const handleLogout = async () => {
     await logout();
     router.replace("/");
+    router.refresh();
   };
 
   if (status === "loading" || isLoading || !profile) {
@@ -184,6 +196,10 @@ export function ProfilePanel() {
               value={profile.losses}
             />
             <ProfileFieldRow
+              label={messages.profile.winRate}
+              value={`${profile.winRate}%`}
+            />
+            <ProfileFieldRow
               label="Score"
               value={profile.score}
             />
@@ -196,6 +212,51 @@ export function ProfilePanel() {
               }
               valueClassName="wrap-break-word sm:max-w-56"
             />
+          </div>
+
+          <div className="mt-7 rounded-3xl border border-(--border-soft) bg-(--surface-2) p-5">
+            <p className="text-xs tracking-[0.28em] text-(--text-muted)">
+              {messages.profile.recentHistory}
+            </p>
+            {profile.history.length === 0 ? (
+              <p className="mt-4 text-sm text-(--text-muted)">{messages.profile.noMatches}</p>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {profile.history.map((entry) => {
+                  const creature = getLocalizedCreature(
+                    locale,
+                    getCreatureById(entry.creature).id,
+                  );
+                  return (
+                    <div
+                      key={entry.id}
+                      className="rounded-2xl border border-(--border-soft) bg-(--surface-1) px-4 py-3 text-sm"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-medium text-(--text-primary)">
+                          {entry.result === "win" ? messages.profile.victory : messages.profile.defeat}
+                        </span>
+                        <span className="text-(--text-muted)">
+                          {entry.mode === "multiplayer" ? messages.play.multiplayer : messages.play.local}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-(--text-secondary)">
+                        {creature.nombre} · {entry.scoreEarned} pts ·{" "}
+                        {entry.verificationLevel === "server_verified"
+                          ? messages.profile.verified
+                          : messages.profile.localUnverified}
+                      </p>
+                      <p className="mt-1 text-xs text-(--text-muted)">
+                        {new Date(entry.date).toLocaleString(locale === "es" ? "es-CR" : "en-US")}
+                        {entry.durationMs !== null
+                          ? ` · ${Math.max(1, Math.round(entry.durationMs / 1000))}s`
+                          : ""}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div className="mt-7 rounded-3xl border border-(--border-soft) bg-(--surface-2) p-5">

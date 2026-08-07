@@ -1,46 +1,60 @@
 import "server-only";
 
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
+import { z } from "zod";
+
+import { getSessionSecret } from "@/lib/security/secrets";
+import { createSignedToken, readSignedToken } from "@/lib/security/signed-token";
 
 const SESSION_COOKIE_NAME = "speleum_session";
-const SESSION_SECRET =
-  process.env.SESSION_SECRET ?? "dev-only-speleum-session-secret-change-me";
+export const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
 
-function sign(value: string) {
-  return createHmac("sha256", SESSION_SECRET).update(value).digest("hex");
+const sessionPayloadSchema = z
+  .object({
+    v: z.literal(1),
+    sub: z.string().min(1).max(128),
+    iat: z.number().int().nonnegative(),
+    exp: z.number().int().positive(),
+  })
+  .strict();
+
+export function encodeSession(userId: string, nowMs = Date.now()) {
+  const iat = Math.floor(nowMs / 1_000);
+  return createSignedToken(
+    {
+      v: 1,
+      sub: userId,
+      iat,
+      exp: iat + SESSION_TTL_SECONDS,
+    },
+    getSessionSecret(),
+  );
 }
 
-function encodeSession(userId: string) {
-  const payload = Buffer.from(userId, "utf8").toString("base64url");
-  return `${payload}.${sign(payload)}`;
-}
-
-function decodeSession(token: string | undefined) {
+export function decodeSession(token: string | undefined, nowMs = Date.now()) {
   if (!token) {
     return null;
   }
 
-  const [payload, signature] = token.split(".");
+  const parsed = sessionPayloadSchema.safeParse(readSignedToken(token, getSessionSecret()));
 
-  if (!payload || !signature) {
+  if (!parsed.success) {
     return null;
   }
 
-  const expected = sign(payload);
+  const now = Math.floor(nowMs / 1_000);
+  const payload = parsed.data;
 
   if (
-    signature.length !== expected.length ||
-    !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))
+    payload.exp <= now ||
+    payload.iat > now + 5 ||
+    payload.exp <= payload.iat ||
+    payload.exp - payload.iat > SESSION_TTL_SECONDS
   ) {
     return null;
   }
 
-  try {
-    return Buffer.from(payload, "base64url").toString("utf8");
-  } catch {
-    return null;
-  }
+  return payload.sub;
 }
 
 export async function createUserSession(userId: string) {
@@ -51,6 +65,7 @@ export async function createUserSession(userId: string) {
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
+    maxAge: SESSION_TTL_SECONDS,
   });
 }
 

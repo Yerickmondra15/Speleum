@@ -18,6 +18,7 @@ model User {
   twoFactorEnabled Boolean     @default(true)
   lastLoginAt    DateTime?
   failedLoginAttempts Int      @default(0)
+  lockedUntil    DateTime?
   activeCreature String        @default("cave-axolotl")
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
@@ -68,11 +69,13 @@ model Match {
   winnerId  String?
   startedAt DateTime      @default(now())
   endedAt   DateTime?
+  verificationLevel String     @default("local_unverified")
   winner    User?         @relation("MatchWinner", fields: [winnerId], references: [id], onDelete: SetNull)
   results   MatchResult[]
 
   @@index([winnerId])
   @@index([startedAt])
+  @@index([mode, verificationLevel, endedAt])
 }
 
 model MatchResult {

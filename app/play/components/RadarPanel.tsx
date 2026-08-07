@@ -11,6 +11,7 @@ type RadarPanelProps = {
   player: PlayerPosition;
   signals: RadarSignal[];
   moveCooldownRemaining: number;
+  rangeTiles?: number;
 };
 
 function signalClass(type: RadarSignal["type"]) {
@@ -33,11 +34,12 @@ export function RadarPanel({
   player,
   signals,
   moveCooldownRemaining,
+  rangeTiles = RADAR_SIGNAL_RANGE_TILES,
 }: RadarPanelProps) {
   const { messages } = useLanguage();
   const playerTile = worldToTile(player);
   const nearbySignals = signals.filter(
-    (signal) => tileDistance(playerTile, worldToTile(signal)) <= RADAR_SIGNAL_RANGE_TILES,
+    (signal) => tileDistance(playerTile, worldToTile(signal)) <= rangeTiles,
   );
   const latestSignal = nearbySignals[nearbySignals.length - 1];
   const hostileCount = nearbySignals.filter(

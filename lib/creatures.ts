@@ -27,7 +27,7 @@ export const creatures: Creature[] = [
     nombre: "Ajolote de cueva",
     descripcionCorta: "Explorador equilibrado y sensible a las vibraciones cercanas.",
     rol: "Explorador sensible",
-    habilidad: "Detecta vibraciones cercanas.",
+    habilidad: "Radar amplio y resistencia equilibrada.",
     stats: {
       vida: 72,
       velocidad: 62,
@@ -43,7 +43,7 @@ export const creatures: Creature[] = [
     nombre: "Camaron de cueva",
     descripcionCorta: "Criatura rapida y evasiva, util para reposicionarse.",
     rol: "Rapido / evasivo",
-    habilidad: "Embestida rapida o escape corto.",
+    habilidad: "Movimiento rapido y ruido reducido, a cambio de menor vida.",
     stats: {
       vida: 44,
       velocidad: 94,
@@ -59,7 +59,7 @@ export const creatures: Creature[] = [
     nombre: "Pez ciego",
     descripcionCorta: "Rastrea el entorno en silencio y evita el combate frontal.",
     rol: "Rastreador / silencioso",
-    habilidad: "Percibe corrientes o presencia cercana.",
+    habilidad: "El radar de mayor alcance y movimiento silencioso.",
     stats: {
       vida: 52,
       velocidad: 76,
@@ -75,7 +75,7 @@ export const creatures: Creature[] = [
     nombre: "Cangrejo cavernicola",
     descripcionCorta: "Controla pasillos estrechos y resiste mejor los encuentros directos.",
     rol: "Defensivo / tanque",
-    habilidad: "Bloqueo o contraataque.",
+    habilidad: "Mayor vida y armadura, con desplazamiento mas corto.",
     stats: {
       vida: 91,
       velocidad: 36,
@@ -91,7 +91,7 @@ export const creatures: Creature[] = [
     nombre: "Arana cavernicola",
     descripcionCorta: "Cazadora sigilosa que rinde mejor cuando ya gano posicion.",
     rol: "Cazadora / sigilosa",
-    habilidad: "Salto corto o emboscada.",
+    habilidad: "Ataques mas fuertes y desplazamiento sigiloso.",
     stats: {
       vida: 50,
       velocidad: 78,
