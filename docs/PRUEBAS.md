@@ -13,7 +13,7 @@ npm run build
 
 ## Cobertura funcional
 
-La suite contiene 44 casos en cinco archivos:
+La suite contiene 72 casos en ocho archivos:
 
 - coordenadas, rutas, bloqueos, ataque, visión, daño, parry, stun y cooldown;
 - radar, fusión de pulsos y eliminación de señales vencidas;
@@ -22,6 +22,8 @@ La suite contiene 44 casos en cinco archivos:
 - firma, alteración y expiración de tickets;
 - contrato local/multijugador, duración y pertenencia del comprobante;
 - 20 integraciones Socket.IO: autenticación, replay, salas, capacidad, ready/start, movimiento, ataque, parry, desconexión/reanudación/salida, final, limpieza, suplantación y payload inválido.
+- 10 casos del bloqueo progresivo: incremento, umbral, expiración, 429, omisión de bcrypt, privacidad de respuesta, limpieza, concurrencia y tope.
+- 18 casos de desafíos: código criptográfico, hash ligado al ID, intentos, expiración, consumo único, separación de flujos, reenvío, entrega demo/email y seguridad de configuración/logs.
 
 Las integraciones levantan HTTP y Socket.IO en un puerto efímero. Cada prueba desconecta clientes, limpia salas y el cierre final detiene los tres intervalos del servidor.
 

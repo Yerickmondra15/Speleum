@@ -14,7 +14,9 @@ Todos los cuerpos modificadores se limitan en tamaño, deben ser JSON válido y 
 | `GET /api/auth/session` | cookie | devuelve usuario actual |
 | `DELETE /api/auth/session` | cookie | elimina cookie de sesión |
 
-Los códigos no aparecen en logs. El modo demo debe mantenerse desactivado en producción.
+Los códigos no aparecen en logs ni se guardan en texto claro. Las respuestas de creación y reenvío incluyen `deliveryMode`, `expiresInSeconds` y, únicamente con `AUTH_DELIVERY_MODE=demo`, `demoCode`. Las rutas de verificación nunca devuelven el código. En producción, el modo demo solo arranca con `ALLOW_PUBLIC_DEMO_AUTH=true`.
+
+Durante un bloqueo, login responde `429`, encabezado `Retry-After` y `{ temporaryLock, retryAfterSeconds, retryAt }`; el texto no confirma si existe una cuenta.
 
 ## Ticket Socket.IO
 

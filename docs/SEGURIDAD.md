@@ -14,12 +14,16 @@ El navegador no es una fuente confiable para identidad, puntuación ni ganador. 
 
 ## Login y códigos
 
-- Los códigos de seis dígitos se generan con `crypto.randomInt`, se almacenan como hash HMAC y vencen.
+- Los códigos de seis dígitos se generan con `crypto.randomInt`, se enlazan al `challengeId`, se almacenan únicamente como hash HMAC y vencen según `AUTH_CODE_EXPIRATION_MINUTES`.
 - Un desafío consumido, vencido o con demasiados intentos no puede reutilizarse.
 - Registro, login, verificación y reenvío usan esquemas Zod estrictos y límite del cuerpo HTTP.
-- Tras cinco contraseñas incorrectas, `lockedUntil` aplica un bloqueo exponencial desde 30 segundos hasta 15 minutos. El bloqueo no es permanente y se reinicia después de verificar el acceso.
+- Cada contraseña incorrecta se registra mediante un `UPDATE` atómico. Tras cinco fallos, `lockedUntil` aplica bloqueos progresivos de 30, 60, 120 segundos y así sucesivamente hasta 15 minutos. Durante el bloqueo no se ejecuta bcrypt; el contador y `lockedUntil` se reinician después de verificar el acceso.
 - Al operar autenticación se eliminan oportunísticamente desafíos con más de siete días.
-- Si el correo de registro falla, la cuenta queda recuperable por reenvío; la API lo declara y no registra el código secreto.
+- Si Resend falla, el desafío recién emitido se invalida y la API devuelve un mensaje seguro sin registrar correo, código ni cuerpo del proveedor.
+
+### Riesgo explícito del modo demo
+
+`AUTH_DELIVERY_MODE=demo` entrega el código solamente en la respuesta de creación/reenvío y la interfaz lo conserva únicamente en estado React. No usa URL, cookies, `localStorage` ni `sessionStorage`; recargar obliga a pedir otro código. Aun así, no verifica propiedad del correo, no equivale a 2FA y cualquier persona con la contraseña válida puede leer el código en esa pantalla. En producción requiere la aceptación explícita `ALLOW_PUBLIC_DEMO_AUTH=true` y debe sustituirse por `email` cuando haya un dominio verificado.
 
 ## Socket.IO
 

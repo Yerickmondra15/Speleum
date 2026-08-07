@@ -10,7 +10,7 @@ Speleum es un juego web táctico con partidas locales y salas multijugador en ti
 - Resultados locales guardados como `local_unverified` y excluidos del ranking competitivo.
 - Resultados multijugador aceptados únicamente mediante un comprobante firmado por Socket.IO; el navegador no decide ganador ni puntuación.
 - Perfil con estadísticas e historial reciente; ranking competitivo paginado.
-- 44 pruebas automatizadas, incluidas las 20 situaciones de integración Socket.IO solicitadas.
+- 72 pruebas automatizadas, incluidas las políticas completas de bloqueo/códigos y las 20 situaciones de integración Socket.IO solicitadas.
 - CI para pull requests y pushes a `main` con Node.js 20.
 
 ## Límites conocidos
@@ -54,8 +54,11 @@ El punto de entrada del servidor de sockets es deliberadamente pequeño. La aute
 3. En producción define cuatro secretos diferentes de al menos 32 caracteres:
    `SESSION_SECRET`, `AUTH_CODE_SECRET`, `SOCKET_AUTH_SECRET` y `MULTIPLAYER_RESULT_SECRET`.
 4. Configura `NEXT_PUBLIC_SOCKET_URL`, `FRONTEND_URL` y `ALLOWED_ORIGINS` si frontend y sockets usan orígenes distintos.
+5. Elige explícitamente `AUTH_DELIVERY_MODE=demo` o `AUTH_DELIVERY_MODE=email`. El modo `demo` muestra el código únicamente en el estado de la pantalla que lo solicitó; en producción exige además `ALLOW_PUBLIC_DEMO_AUTH=true`.
 
 En desarrollo se generan secretos efímeros si faltan. En producción la aplicación falla de forma explícita; nunca usa un secreto predeterminado.
+
+El modo `demo` sirve para desarrollo y presentaciones sin dominio de correo, pero no verifica la propiedad del correo y no equivale a 2FA. Para entrega real configura `RESEND_API_KEY` y `AUTH_EMAIL_FROM`, y cambia explícitamente a `AUTH_DELIVERY_MODE=email`.
 
 ## Instalación y base de datos
 
