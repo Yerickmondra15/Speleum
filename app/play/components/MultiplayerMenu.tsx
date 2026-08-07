@@ -9,6 +9,12 @@ import {
   type CharacterOption,
 } from "../gameConfig";
 import type { MultiplayerStatePayload } from "../types";
+import {
+  clearMultiplayerSession,
+  multiplayerSessionFromState,
+  writeMultiplayerSession,
+} from "@/lib/multiplayer/client-session";
+import type { ResumeRoomResult } from "@/lib/multiplayer/events";
 import { ensureSocketConnection, getSocket, isSocketMultiplayerAvailable } from "@/lib/socket";
 
 type MultiplayerMenuProps = {
@@ -74,7 +80,22 @@ export function MultiplayerMenu({
       const currentRoom = roomStateRef.current;
 
       if (currentRoom) {
-        socket.emit("resume-room", { roomCode: currentRoom.roomCode });
+        socket.emit(
+          "resume-room",
+          { roomCode: currentRoom.roomCode },
+          (result: ResumeRoomResult) => {
+            if (result.ok) {
+              setErrorMessage(null);
+              return;
+            }
+
+            setErrorMessage(result.message);
+            if (result.terminal) {
+              clearMultiplayerSession();
+              setRoomState(null);
+            }
+          },
+        );
       }
     };
     const handleDisconnect = () => {
@@ -88,6 +109,7 @@ export function MultiplayerMenu({
       setErrorMessage(message);
     };
     const handleGameState = (state: MultiplayerStatePayload) => {
+      writeMultiplayerSession(multiplayerSessionFromState(state));
       setRoomState(state);
       setIsCreatingRoom(false);
       setIsJoiningRoom(false);
@@ -249,6 +271,7 @@ export function MultiplayerMenu({
     }
 
     setRoomState(null);
+    clearMultiplayerSession();
     setErrorMessage(null);
     setCopied(false);
     setIsCreatingRoom(false);

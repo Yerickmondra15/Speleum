@@ -3,6 +3,7 @@ import { io as createClient, type Socket } from "socket.io-client";
 
 import type { MultiplayerStatePayload } from "@/app/play/types";
 import { findReachableTiles, tileToWorld, worldToTile } from "@/app/play/tileMap";
+import type { ResumeRoomResult } from "@/lib/multiplayer/events";
 import { createSocketTicket } from "@/lib/multiplayer/tickets";
 import { createSocketGameServer } from "@/server/createSocketServer";
 import { finishRoom, processRoomLifecycle } from "@/server/rooms/roomLifecycle";
@@ -113,6 +114,19 @@ describe("integracion Socket.IO autoritativa", () => {
     const statePromise = waitForEvent<MultiplayerStatePayload>(client, "game-state");
     client.emit("join-room", { roomCode, name: "Guest", characterId });
     return statePromise;
+  }
+
+  function resumeRoom(client: Socket, roomCode: string) {
+    return new Promise<ResumeRoomResult>((resolve, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error("Timeout esperando ack de resume-room")),
+        4_000,
+      );
+      client.emit("resume-room", { roomCode }, (result: ResumeRoomResult) => {
+        clearTimeout(timeout);
+        resolve(result);
+      });
+    });
   }
 
   async function setupLobby() {
@@ -279,12 +293,143 @@ describe("integracion Socket.IO autoritativa", () => {
     const originalPosition = { ...player.position };
     game.first.client.disconnect();
     await waitUntil(() => !player.connected);
+    player.reconnectDeadline = Date.now() + 1_000;
     const resumedClient = await connect(game.first.userId, "Player resumed");
     const statePromise = waitForEvent<MultiplayerStatePayload>(resumedClient.client, "game-state");
-    resumedClient.client.emit("resume-room", { roomCode: game.roomCode });
+    const resumeResultPromise = resumeRoom(resumedClient.client, game.roomCode);
     const state = await statePromise;
+    await expect(resumeResultPromise).resolves.toMatchObject({
+      ok: true,
+      matchId: room.matchId,
+      playerId: originalId,
+    });
     expect(state.self).toMatchObject({ id: originalId, position: originalPosition });
     expect(state.self.combat).toMatchObject({ health: 55, kills: 3 });
+  });
+
+  it("14a. permite takeover autenticado antes del disconnect y neutraliza el evento tardio", async () => {
+    const game = await setupPlayingRoom();
+    const room = server.store.get(game.roomCode)!;
+    const player = server.store.findPlayerByUser(room, game.first.userId)!;
+    const originalSocketId = player.socketId!;
+    const originalId = player.id;
+    const originalPosition = { ...player.position };
+    player.combat.health = 47;
+    player.combat.kills = 4;
+
+    const oldDisconnectPromise = waitForEvent<string>(game.first.client, "disconnect");
+    const replacement = await connect(game.first.userId, "Host replacement");
+    const statePromise = waitForEvent<MultiplayerStatePayload>(
+      replacement.client,
+      "game-state",
+      (state) => state.self.id === originalId,
+    );
+    const resultPromise = resumeRoom(replacement.client, game.roomCode);
+    const [result, state] = await Promise.all([resultPromise, statePromise]);
+
+    expect(result).toMatchObject({
+      ok: true,
+      playerId: originalId,
+      tookOverSocket: true,
+    });
+    expect(state.self).toMatchObject({
+      id: originalId,
+      position: originalPosition,
+      combat: expect.objectContaining({ health: 47, kills: 4 }),
+    });
+    await oldDisconnectPromise;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(server.store.getBySocket(originalSocketId)).toBeNull();
+    expect(server.store.getBySocket(replacement.client.id!)?.player.id).toBe(originalId);
+    expect(player).toMatchObject({
+      connected: true,
+      socketId: replacement.client.id,
+      disconnectedAt: null,
+      reconnectDeadline: null,
+    });
+    expect(room.players.size).toBe(2);
+    expect(new Set(room.players.keys()).size).toBe(room.players.size);
+  });
+
+  it("14b. restaura a ambos usuarios sin duplicar IDs ni perder su estado", async () => {
+    const game = await setupPlayingRoom();
+    const room = server.store.get(game.roomCode)!;
+    const firstPlayer = server.store.findPlayerByUser(room, game.first.userId)!;
+    const secondPlayer = server.store.findPlayerByUser(room, game.second.userId)!;
+    const firstId = firstPlayer.id;
+    const secondId = secondPlayer.id;
+    const firstPosition = { ...firstPlayer.position };
+    const secondPosition = { ...secondPlayer.position };
+
+    game.first.client.disconnect();
+    game.second.client.disconnect();
+    await waitUntil(() => !firstPlayer.connected && !secondPlayer.connected);
+    firstPlayer.reconnectDeadline = Date.now() + 1_000;
+    secondPlayer.reconnectDeadline = Date.now() + 1_000;
+    firstPlayer.combat.health = 63;
+    firstPlayer.combat.kills = 2;
+    secondPlayer.combat.health = 71;
+    secondPlayer.combat.kills = 1;
+
+    const firstReplacement = await connect(game.first.userId, "Host resumed");
+    const secondReplacement = await connect(game.second.userId, "Guest resumed");
+    const firstStatePromise = waitForEvent<MultiplayerStatePayload>(
+      firstReplacement.client,
+      "game-state",
+      (state) => state.self.id === firstId,
+    );
+    const secondStatePromise = waitForEvent<MultiplayerStatePayload>(
+      secondReplacement.client,
+      "game-state",
+      (state) => state.self.id === secondId,
+    );
+
+    const [firstResult, secondResult, firstState, secondState] = await Promise.all([
+      resumeRoom(firstReplacement.client, game.roomCode),
+      resumeRoom(secondReplacement.client, game.roomCode),
+      firstStatePromise,
+      secondStatePromise,
+    ]);
+
+    expect(firstResult).toMatchObject({ ok: true, playerId: firstId });
+    expect(secondResult).toMatchObject({ ok: true, playerId: secondId });
+    expect(firstState.self).toMatchObject({
+      id: firstId,
+      position: firstPosition,
+      combat: expect.objectContaining({ health: 63, kills: 2 }),
+    });
+    expect(secondState.self).toMatchObject({
+      id: secondId,
+      position: secondPosition,
+      combat: expect.objectContaining({ health: 71, kills: 1 }),
+    });
+    expect(room.players.size).toBe(2);
+    expect(new Set(room.players.keys())).toEqual(new Set([firstId, secondId]));
+    expect([...room.players.values()].every((entry) => entry.connected)).toBe(true);
+  });
+
+  it("14c. responde con ack terminal cuando la ventana de reconexion expiro", async () => {
+    const game = await setupPlayingRoom();
+    const room = server.store.get(game.roomCode)!;
+    const player = server.store.findPlayerByUser(room, game.first.userId)!;
+    game.first.client.disconnect();
+    await waitUntil(() => !player.connected);
+
+    // Conserva el registro durante esta asercion para probar el motivo preciso
+    // del handler, antes de que el recolector del ciclo de vida lo elimine.
+    player.connected = true;
+    player.reconnectDeadline = Date.now() - 1;
+    const replacement = await connect(game.first.userId, "Expired player");
+    const result = await resumeRoom(replacement.client, game.roomCode);
+
+    expect(result).toEqual({
+      ok: false,
+      reason: "reconnect-expired",
+      message: "La ventana de reconexion ya termino.",
+      terminal: true,
+    });
+    expect(server.store.getBySocket(replacement.client.id!)).toBeNull();
   });
 
   it("15. convierte en derrota una desconexion que supera la gracia", async () => {

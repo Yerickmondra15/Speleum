@@ -1,4 +1,4 @@
-import type { MultiplayerSession } from "@/app/play/types";
+import type { MultiplayerSession, MultiplayerStatePayload } from "@/app/play/types";
 
 const MULTIPLAYER_SESSION_KEY = "speleum.multiplayer.session.v1";
 const roomCodePattern = /^[A-HJ-NP-Z2-9]{6}$/;
@@ -37,6 +37,18 @@ export function readMultiplayerSession() {
 
 export function writeMultiplayerSession(session: MultiplayerSession) {
   window.sessionStorage.setItem(MULTIPLAYER_SESSION_KEY, JSON.stringify(session));
+}
+
+export function multiplayerSessionFromState(
+  state: Pick<MultiplayerStatePayload, "matchId" | "roomCode" | "self">,
+): MultiplayerSession {
+  return {
+    matchId: state.matchId,
+    roomCode: state.roomCode,
+    playerId: state.self.id,
+    playerName: state.self.name,
+    characterId: state.self.characterId,
+  };
 }
 
 export function clearMultiplayerSession() {

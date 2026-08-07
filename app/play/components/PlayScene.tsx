@@ -54,6 +54,12 @@ export function PlayScene() {
       characterOptions[0]
     );
   }, [selectedCharacterId]);
+  const multiplayerCharacter = useMemo<CharacterOption>(() => {
+    return (
+      characterOptions.find((option) => option.id === multiplayerSession?.characterId) ??
+      selectedCharacter
+    );
+  }, [multiplayerSession?.characterId, selectedCharacter]);
 
   const selectCharacter = (character: CharacterOption) => {
     setStoredCharacterId(character.id);
@@ -163,7 +169,7 @@ export function PlayScene() {
         <MultiplayerGame
           matchId={multiplayerSession.matchId}
           roomCode={multiplayerSession.roomCode}
-          selectedCharacter={selectedCharacter}
+          selectedCharacter={multiplayerCharacter}
           onExitToMenu={() => {
             clearMultiplayerSession();
             setMultiplayerSession(null);

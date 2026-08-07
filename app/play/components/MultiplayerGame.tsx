@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Radio, Skull } from "lucide-react";
 import type { CharacterOption, GameStatus, PlayerPosition } from "../gameConfig";
 import {
@@ -13,9 +13,14 @@ import {
 import { distanceBetween, getZoneForPosition, planMovementPath } from "../gameLogic";
 import type { MatchResultEntry, MultiplayerStatePayload } from "../types";
 import { getCharacterName } from "../types";
-import { ensureSocketConnection, getSocket, isSocketMultiplayerAvailable } from "@/lib/socket";
+import { getSocket, isSocketMultiplayerAvailable } from "@/lib/socket";
 import { appendLocalRanking } from "@/lib/ranking";
-import { clearMultiplayerSession } from "@/lib/multiplayer/client-session";
+import {
+  clearMultiplayerSession,
+  multiplayerSessionFromState,
+  writeMultiplayerSession,
+} from "@/lib/multiplayer/client-session";
+import type { ResumeRoomResult } from "@/lib/multiplayer/events";
 import { ActionControls } from "./ActionControls";
 import { GameHud } from "./GameHud";
 import { GameMap } from "./GameMap";
@@ -64,8 +69,14 @@ export function MultiplayerGame({
   selectedCharacter,
   onExitToMenu,
 }: MultiplayerGameProps) {
-  const creatureModifiers = getCreatureGameplayModifiers(selectedCharacter.id);
   const [gameState, setGameState] = useState<MultiplayerStatePayload | null>(null);
+  const authoritativeCharacter = useMemo(
+    () =>
+      characterOptions.find((character) => character.id === gameState?.self.characterId) ??
+      selectedCharacter,
+    [gameState?.self.characterId, selectedCharacter],
+  );
+  const creatureModifiers = getCreatureGameplayModifiers(authoritativeCharacter.id);
   const [socketConnected, setSocketConnected] = useState(() => getSocket()?.connected ?? false);
   const [message, setMessage] = useState(() =>
     isSocketMultiplayerAvailable()
@@ -75,13 +86,106 @@ export function MultiplayerGame({
   const [activeAction, setActiveAction] = useState<"move" | "attack" | "defend">("move");
   const [isUiHidden, setIsUiHidden] = useState(false);
   const [disconnectedMessage, setDisconnectedMessage] = useState<string | null>(null);
+  const [resumeFailure, setResumeFailure] = useState<{
+    message: string;
+    terminal: boolean;
+  } | null>(null);
   const [pendingMoveTarget, setPendingMoveTarget] = useState<PlayerPosition | null>(null);
   const [pathPreview, setPathPreview] = useState<PlayerPosition[]>([]);
+  const pendingMoveTargetRef = useRef<PlayerPosition | null>(null);
+  const resumeAttemptRef = useRef(0);
+  const resumeTimeoutRef = useRef<number | null>(null);
   const rankingStoredRef = useRef(false);
   const resultSavedRef = useRef(false);
 
+  const requestResume = useCallback(() => {
+    const socket = getSocket();
+
+    if (!socket) {
+      const nextMessage = "No hay un servidor multijugador disponible para restaurar la sesion.";
+      setSocketConnected(false);
+      setResumeFailure({ message: nextMessage, terminal: false });
+      setDisconnectedMessage(nextMessage);
+      setMessage(nextMessage);
+      return;
+    }
+
+    if (!socket.connected) {
+      setSocketConnected(false);
+      setResumeFailure(null);
+      setDisconnectedMessage("Reconectando con el servidor...");
+      setMessage("Reconectando con el servidor...");
+      if (!socket.active) {
+        socket.connect();
+      }
+      return;
+    }
+
+    if (resumeTimeoutRef.current !== null) {
+      window.clearTimeout(resumeTimeoutRef.current);
+    }
+
+    const attempt = resumeAttemptRef.current + 1;
+    resumeAttemptRef.current = attempt;
+    setResumeFailure(null);
+    setMessage("Conexion restablecida. Validando tu sesion...");
+
+    resumeTimeoutRef.current = window.setTimeout(() => {
+      if (resumeAttemptRef.current !== attempt) {
+        return;
+      }
+
+      const nextMessage = "El servidor no confirmo la restauracion. Puedes intentarlo de nuevo.";
+      setResumeFailure({ message: nextMessage, terminal: false });
+      setDisconnectedMessage(nextMessage);
+      setMessage(nextMessage);
+    }, 5_000);
+
+    socket.emit("resume-room", { roomCode }, (result: ResumeRoomResult) => {
+      if (resumeAttemptRef.current !== attempt) {
+        return;
+      }
+
+      if (resumeTimeoutRef.current !== null) {
+        window.clearTimeout(resumeTimeoutRef.current);
+        resumeTimeoutRef.current = null;
+      }
+
+      if (!result.ok) {
+        setResumeFailure({ message: result.message, terminal: result.terminal });
+        setDisconnectedMessage(result.message);
+        setMessage(result.message);
+
+        if (result.terminal) {
+          clearMultiplayerSession();
+          pendingMoveTargetRef.current = null;
+          setPendingMoveTarget(null);
+          setPathPreview([]);
+          setGameState(null);
+        }
+        return;
+      }
+
+      if (result.roomCode !== roomCode || result.matchId !== matchId) {
+        const nextMessage = "La sesion guardada ya no corresponde a esta partida.";
+        clearMultiplayerSession();
+        setResumeFailure({ message: nextMessage, terminal: true });
+        setDisconnectedMessage(nextMessage);
+        setMessage(nextMessage);
+        setGameState(null);
+        return;
+      }
+
+      setSocketConnected(true);
+      setResumeFailure(null);
+      setDisconnectedMessage(null);
+      setMessage("Sesion restaurada. Sincronizando el estado de la cueva...");
+    });
+  }, [matchId, roomCode]);
+
   useEffect(() => {
-    const socket = ensureSocketConnection();
+    const socket = getSocket();
+    let initialResumeTimer: number | null = null;
 
     if (!socket) {
       return;
@@ -90,7 +194,7 @@ export function MultiplayerGame({
     const handleConnect = () => {
       setSocketConnected(true);
       setMessage("Conexion restablecida. Reanudando sincronizacion...");
-      socket.emit("resume-room", { roomCode });
+      requestResume();
     };
     const handleDisconnect = () => {
       setSocketConnected(false);
@@ -103,9 +207,14 @@ export function MultiplayerGame({
       }
 
       setSocketConnected(true);
+      writeMultiplayerSession(multiplayerSessionFromState(state));
       setGameState(state);
+      setResumeFailure(null);
+      setDisconnectedMessage(null);
       setMessage(state.message ?? "La cueva escucha todos tus movimientos.");
+      const pendingMoveTarget = pendingMoveTargetRef.current;
       if (pendingMoveTarget && distanceBetween(state.self.position, pendingMoveTarget) <= TILE_SIZE * 0.35) {
+        pendingMoveTargetRef.current = null;
         setPendingMoveTarget(null);
         setPathPreview([]);
       }
@@ -122,6 +231,7 @@ export function MultiplayerGame({
       setMessage(payload.message ?? "La partida termino.");
     };
     const handleError = (nextMessage: string) => {
+      pendingMoveTargetRef.current = null;
       setPendingMoveTarget(null);
       setPathPreview([]);
       setMessage(nextMessage);
@@ -146,7 +256,21 @@ export function MultiplayerGame({
     socket.on("game-over", handleGameOver);
     socket.on("error-message", handleError);
 
+    if (socket.connected) {
+      initialResumeTimer = window.setTimeout(requestResume, 0);
+    } else {
+      socket.connect();
+    }
+
     return () => {
+      if (initialResumeTimer !== null) {
+        window.clearTimeout(initialResumeTimer);
+      }
+      resumeAttemptRef.current += 1;
+      if (resumeTimeoutRef.current !== null) {
+        window.clearTimeout(resumeTimeoutRef.current);
+        resumeTimeoutRef.current = null;
+      }
       socket.off("connect", handleConnect);
       socket.off("disconnect", handleDisconnect);
       socket.off("connect_error", handleConnectError);
@@ -156,7 +280,7 @@ export function MultiplayerGame({
       socket.off("game-over", handleGameOver);
       socket.off("error-message", handleError);
     };
-  }, [matchId, pendingMoveTarget, roomCode]);
+  }, [matchId, requestResume, roomCode]);
 
   useEffect(() => {
     if (!gameState || gameState.status !== "finished" || rankingStoredRef.current) {
@@ -257,6 +381,10 @@ export function MultiplayerGame({
     () => (self ? findReachableTiles(worldToTile(self.position), creatureModifiers.moveRangeTiles, tileLookup) : new Map()),
     [creatureModifiers.moveRangeTiles, self, tileLookup],
   );
+  const attackableTiles = useMemo(
+    () => (self ? findReachableTiles(worldToTile(self.position), PLAYER_ATTACK_RANGE_TILES, tileLookup) : new Map()),
+    [self, tileLookup],
+  );
   const isMoveReady = gameStatus === "playing" && moveCooldownRemaining <= 0 && !isStunned;
   const nearestThreatTiles = enemy
     ? Math.max(1, Math.round(distanceBetween(player, enemy) / TILE_SIZE))
@@ -288,6 +416,7 @@ export function MultiplayerGame({
     }
 
     socket.emit("player-move", { roomCode, target });
+    pendingMoveTargetRef.current = target;
     setPendingMoveTarget(target);
     setActiveAction("move");
   };
@@ -303,7 +432,7 @@ export function MultiplayerGame({
       target,
       creatureModifiers.moveRangeTiles,
       tileLookup,
-      selectedCharacter.moveCooldownMultiplier,
+      authoritativeCharacter.moveCooldownMultiplier,
     );
 
     if (!movePlan) {
@@ -421,8 +550,28 @@ export function MultiplayerGame({
   if (!gameState || !self) {
     return (
       <section className="relative z-10 flex min-h-screen items-center justify-center px-5 text-white">
-        <div className="rounded-[1.8rem] border border-white/10 bg-black/45 px-6 py-5 text-sm text-zinc-300 backdrop-blur-md">
-          Conectando a la sala {roomCode}...
+        <div className="max-w-md rounded-[1.8rem] border border-white/10 bg-black/45 px-6 py-5 text-sm text-zinc-300 backdrop-blur-md">
+          <p>{resumeFailure?.message ?? `Conectando a la sala ${roomCode}...`}</p>
+          {resumeFailure && (
+            <div className="mt-4 flex flex-wrap gap-3">
+              {!resumeFailure.terminal && (
+                <button
+                  type="button"
+                  onClick={requestResume}
+                  className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-cyan-100"
+                >
+                  Reintentar
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleExit}
+                className="rounded-full border border-white/15 px-4 py-2 text-zinc-200"
+              >
+                Volver al menu
+              </button>
+            </div>
+          )}
         </div>
       </section>
     );
@@ -461,7 +610,7 @@ export function MultiplayerGame({
 
       <GameMap
         player={player}
-        playerCharacterId={selectedCharacter.id}
+        playerCharacterId={authoritativeCharacter.id}
         enemy={enemy}
         enemies={gameState.enemies}
         otherPlayers={gameState.otherPlayers}
@@ -473,6 +622,7 @@ export function MultiplayerGame({
         visionRadius={VISION_RADIUS}
         tiles={caveTiles}
         reachableTiles={reachableTiles}
+        attackableTiles={attackableTiles}
         selectedPath={pathPreview}
         isMoveReady={isMoveReady}
         onChooseDestination={handleMoveIntent}
@@ -480,7 +630,7 @@ export function MultiplayerGame({
 
       {!isUiHidden && (
         <GameHud
-          selectedCharacter={selectedCharacter}
+          selectedCharacter={authoritativeCharacter}
           zone={currentZone}
           objective={objective}
           message={message}

@@ -3,6 +3,10 @@ import { randomUUID } from "node:crypto";
 import { createEnemyState, pickSeparatedSpawns } from "../../app/play/gameLogic";
 import { createCaveLayout } from "../../app/play/proceduralCave";
 import { buildTileMap, createTileLookup } from "../../app/play/tileMap";
+import type {
+  ResumeRoomAck,
+  ResumeRoomFailureReason,
+} from "../../lib/multiplayer/events";
 import type { ServerContext, ServerPlayerState, ServerRoomState, GameSocket } from "../types";
 import {
   createInitialCombatState,
@@ -172,43 +176,79 @@ export function registerRoomHandlers(socket: GameSocket, context: ServerContext)
     emitState(room, context);
   });
 
-  socket.on("resume-room", (payload) => {
+  socket.on("resume-room", (payload, ack?: ResumeRoomAck) => {
+    const rejectResume = (
+      reason: ResumeRoomFailureReason,
+      message: string,
+      terminal: boolean,
+    ) => {
+      ack?.({ ok: false, reason, message, terminal });
+      socket.emit("error-message", message);
+    };
     const input = parseSocketPayload(resumeRoomSchema, payload);
 
     if (!input) {
-      socket.emit("error-message", "El codigo de sala para reconectar no es valido.");
+      rejectResume(
+        "invalid-payload",
+        "El codigo de sala para reconectar no es valido.",
+        true,
+      );
       return;
     }
 
     const currentMembership = context.store.getBySocket(socket.id);
     if (currentMembership && currentMembership.room.code !== input.roomCode) {
-      socket.emit("error-message", "El socket ya esta asociado a otra sala.");
+      rejectResume(
+        "membership-conflict",
+        "El socket ya esta asociado a otra sala.",
+        false,
+      );
       return;
     }
 
     const room = context.store.get(input.roomCode);
     const player = room ? context.store.findPlayerByUser(room, socket.data.userId) : null;
 
-    if (!room || !player || player.intentionalLeave) {
-      socket.emit("error-message", "No existe una sesion recuperable para este usuario.");
+    if (
+      !room ||
+      !player ||
+      player.intentionalLeave ||
+      player.status === "left" ||
+      (!player.connected && player.reconnectDeadline === null)
+    ) {
+      rejectResume(
+        "session-not-found",
+        "No existe una sesion recuperable para este usuario.",
+        true,
+      );
       return;
     }
 
-    if (player.connected && player.socketId !== socket.id) {
-      socket.emit("error-message", "Este usuario ya esta conectado en la sala.");
+    if (currentMembership && currentMembership.player.id !== player.id) {
+      rejectResume(
+        "membership-conflict",
+        "El socket ya esta asociado a otra identidad de la sala.",
+        false,
+      );
       return;
     }
 
     const now = Date.now();
-    if (
-      room.status !== "finished" &&
-      player.reconnectDeadline !== null &&
-      player.reconnectDeadline < now
-    ) {
-      socket.emit("error-message", "La ventana de reconexion ya termino.");
+    if (player.reconnectDeadline !== null && player.reconnectDeadline <= now) {
+      rejectResume(
+        "reconnect-expired",
+        "La ventana de reconexion ya termino.",
+        true,
+      );
       return;
     }
 
+    const replacedSocketId = player.socketId && player.socketId !== socket.id
+      ? player.socketId
+      : null;
+
+    // bindSocket revoca primero el indice anterior. Si el disconnect del socket
+    // reemplazado llega despues, ya no puede marcar como desconectada esta sesion.
     context.store.bindSocket(room, player, socket.id);
     player.connected = true;
     player.connectedAt = now;
@@ -222,6 +262,25 @@ export function registerRoomHandlers(socket: GameSocket, context: ServerContext)
         ? "La partida termino mientras estabas desconectado."
         : `${player.name} recupero su sesion.`;
     syncLobbyState(room, context, now);
+
+    ack?.({
+      ok: true,
+      roomCode: room.code,
+      matchId: room.matchId,
+      playerId: player.id,
+      status: room.status,
+      tookOverSocket: Boolean(replacedSocketId),
+    });
+
+    if (replacedSocketId) {
+      const replacedSocket = context.io.sockets.sockets.get(replacedSocketId);
+      replacedSocket?.emit(
+        "error-message",
+        "Esta sesion se restauro en otra conexion autenticada.",
+      );
+      replacedSocket?.disconnect(true);
+    }
+
     emitState(room, context);
   });
 

@@ -14,6 +14,7 @@ import type {
 import type { TileLookup } from "../app/play/tileMap";
 import type { ServerTimings } from "./config";
 import type { RoomStore } from "./rooms/roomStore";
+import type { ResumeRoomAck } from "../lib/multiplayer/events";
 
 export type SocketData = {
   userId: string;
@@ -24,7 +25,7 @@ export type SocketData = {
 export type ClientToServerEvents = {
   "create-room": (payload: unknown) => void;
   "join-room": (payload: unknown) => void;
-  "resume-room": (payload: unknown) => void;
+  "resume-room": (payload: unknown, ack?: ResumeRoomAck) => void;
   "player-ready": (payload: unknown) => void;
   "player-move": (payload: unknown) => void;
   "player-attack": (payload: unknown) => void;
