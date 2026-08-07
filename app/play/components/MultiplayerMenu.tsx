@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Copy, Radio, Users } from "lucide-react";
 import {
   MAX_ROOM_PLAYERS,
@@ -49,6 +49,11 @@ export function MultiplayerMenu({
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
   const [isJoiningRoom, setIsJoiningRoom] = useState(false);
   const [isSendingReady, setIsSendingReady] = useState(false);
+  const roomStateRef = useRef(roomState);
+
+  useEffect(() => {
+    roomStateRef.current = roomState;
+  }, [roomState]);
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 500);
@@ -66,6 +71,11 @@ export function MultiplayerMenu({
     const handleConnect = () => {
       setSocketConnected(true);
       setErrorMessage(null);
+      const currentRoom = roomStateRef.current;
+
+      if (currentRoom) {
+        socket.emit("resume-room", { roomCode: currentRoom.roomCode });
+      }
     };
     const handleDisconnect = () => {
       setSocketConnected(false);
@@ -145,7 +155,7 @@ export function MultiplayerMenu({
       return "Iniciando partida...";
     }
 
-    if (roomState.playerCount < requiredPlayers || roomState.status === "waiting") {
+    if (roomState.connectedCount < requiredPlayers || roomState.status === "waiting") {
       return `Esperando minimo ${requiredPlayers} jugadores`;
     }
 
@@ -390,10 +400,10 @@ export function MultiplayerMenu({
                   <div className="rounded-[1.2rem] border border-white/10 bg-black/35 p-4">
                     <p className="text-xs tracking-[0.22em] text-zinc-500">JUGADORES</p>
                     <p className="mt-2 text-sm text-zinc-200">
-                      {roomState.playerCount}/{maxPlayers} conectados
+                      {roomState.connectedCount}/{maxPlayers} conectados
                     </p>
                     <p className="mt-2 text-xs text-zinc-500">
-                      Confirmados: {roomState.readyCount}/{roomState.playerCount}
+                      Confirmados: {roomState.readyCount}/{roomState.connectedCount}
                     </p>
                   </div>
                 </div>
@@ -403,7 +413,7 @@ export function MultiplayerMenu({
                   onClick={markReady}
                   disabled={
                     roomState.self.isReady ||
-                    roomState.playerCount < requiredPlayers ||
+                    roomState.connectedCount < requiredPlayers ||
                     isSendingReady ||
                     roomState.status === "starting" ||
                     roomState.status === "playing"

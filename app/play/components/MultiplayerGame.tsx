@@ -5,9 +5,7 @@ import { ArrowLeft, Radio, Skull } from "lucide-react";
 import type { CharacterOption, GameStatus, PlayerPosition } from "../gameConfig";
 import {
   MAX_ROOM_PLAYERS,
-  MAX_HEALTH,
   PLAYER_ATTACK_RANGE_TILES,
-  PLAYER_MOVE_RANGE_TILES,
   TILE_SIZE,
   VISION_RADIUS,
   characterOptions,
@@ -17,7 +15,7 @@ import type { MatchResultEntry, MultiplayerStatePayload } from "../types";
 import { getCharacterName } from "../types";
 import { ensureSocketConnection, getSocket, isSocketMultiplayerAvailable } from "@/lib/socket";
 import { appendLocalRanking } from "@/lib/ranking";
-import { useAuth } from "../../auth/AuthProvider";
+import { clearMultiplayerSession } from "@/lib/multiplayer/client-session";
 import { ActionControls } from "./ActionControls";
 import { GameHud } from "./GameHud";
 import { GameMap } from "./GameMap";
@@ -25,6 +23,7 @@ import { GameOverlay } from "./GameOverlay";
 import { GameTopControls } from "./GameTopControls";
 import { RadarPanel } from "./RadarPanel";
 import { buildTileMap, createTileLookup, findReachableTiles, tileToWorld, worldToTile } from "../tileMap";
+import { getCreatureGameplayModifiers } from "@/lib/creature-gameplay";
 
 type MultiplayerGameProps = {
   matchId: string;
@@ -65,7 +64,7 @@ export function MultiplayerGame({
   selectedCharacter,
   onExitToMenu,
 }: MultiplayerGameProps) {
-  const { user } = useAuth();
+  const creatureModifiers = getCreatureGameplayModifiers(selectedCharacter.id);
   const [gameState, setGameState] = useState<MultiplayerStatePayload | null>(null);
   const [socketConnected, setSocketConnected] = useState(() => getSocket()?.connected ?? false);
   const [message, setMessage] = useState(() =>
@@ -91,6 +90,7 @@ export function MultiplayerGame({
     const handleConnect = () => {
       setSocketConnected(true);
       setMessage("Conexion restablecida. Reanudando sincronizacion...");
+      socket.emit("resume-room", { roomCode });
     };
     const handleDisconnect = () => {
       setSocketConnected(false);
@@ -98,7 +98,7 @@ export function MultiplayerGame({
       setMessage("Reconectando con el servidor...");
     };
     const handleGameState = (state: MultiplayerStatePayload) => {
-      if (state.roomCode !== roomCode) {
+      if (state.roomCode !== roomCode || state.matchId !== matchId) {
         return;
       }
 
@@ -156,7 +156,7 @@ export function MultiplayerGame({
       socket.off("game-over", handleGameOver);
       socket.off("error-message", handleError);
     };
-  }, [pendingMoveTarget, roomCode]);
+  }, [matchId, pendingMoveTarget, roomCode]);
 
   useEffect(() => {
     if (!gameState || gameState.status !== "finished" || rankingStoredRef.current) {
@@ -187,39 +187,26 @@ export function MultiplayerGame({
       return;
     }
 
-    const selfResult = gameState.results.find((entry) => entry.playerId === gameState.self.id);
-
-    if (!selfResult) {
+    if (!gameState.resultReceipt) {
       return;
     }
-
-    const didWin = gameState.winnerId === gameState.self.id;
-    const scoreEarned = Math.max(
-      didWin ? 120 : 35,
-      didWin ? 120 + selfResult.kills * 20 : 20 + selfResult.kills * 10,
-    );
 
     resultSavedRef.current = true;
     void fetch("/api/matches/results", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        matchId,
-        mode: "multiplayer",
-        status: gameState.status,
-        winnerId: didWin ? user?.id ?? null : null,
-        startedAt: new Date(
-          Date.now() - Math.max(...gameState.results.map((entry) => entry.survivedMs)),
-        ).toISOString(),
-        endedAt: new Date().toISOString(),
-        creature: selectedCharacter.id,
-        result: didWin ? "win" : "loss",
-        scoreEarned,
-      }),
-    }).catch(() => {
-      resultSavedRef.current = false;
-    });
-  }, [gameState, matchId, selectedCharacter.id, user?.id]);
+      body: JSON.stringify({ mode: "multiplayer", receipt: gameState.resultReceipt }),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("RESULT_NOT_SAVED");
+        }
+      })
+      .catch(() => {
+        resultSavedRef.current = false;
+        setMessage("La partida termino, pero el resultado aun no pudo guardarse.");
+      });
+  }, [gameState]);
 
   const self = gameState?.self ?? null;
   const maxPlayers = gameState?.maxPlayers ?? MAX_ROOM_PLAYERS;
@@ -260,15 +247,15 @@ export function MultiplayerGame({
         ? "La cadena de la vida continuo sin ti."
         : "Sobrevive y conviertete en la ultima criatura viva.";
 
-  const health = self?.combat.health ?? MAX_HEALTH;
+  const health = self?.combat.health ?? creatureModifiers.maxHealth;
   const moveCooldownRemaining = self?.combat.moveCooldownRemaining ?? 0;
   const attackCooldownRemaining = self?.combat.attackCooldownRemaining ?? 0;
   const parryCooldownRemaining = self?.combat.parryCooldownRemaining ?? 0;
   const isParrying = Boolean(self?.combat.isParrying);
   const isStunned = Boolean(self?.combat.isStunned);
   const reachableTiles = useMemo(
-    () => (self ? findReachableTiles(worldToTile(self.position), PLAYER_MOVE_RANGE_TILES, tileLookup) : new Map()),
-    [self, tileLookup],
+    () => (self ? findReachableTiles(worldToTile(self.position), creatureModifiers.moveRangeTiles, tileLookup) : new Map()),
+    [creatureModifiers.moveRangeTiles, self, tileLookup],
   );
   const isMoveReady = gameStatus === "playing" && moveCooldownRemaining <= 0 && !isStunned;
   const nearestThreatTiles = enemy
@@ -314,7 +301,7 @@ export function MultiplayerGame({
     const movePlan = planMovementPath(
       self.position,
       target,
-      PLAYER_MOVE_RANGE_TILES,
+      creatureModifiers.moveRangeTiles,
       tileLookup,
       selectedCharacter.moveCooldownMultiplier,
     );
@@ -413,6 +400,7 @@ export function MultiplayerGame({
 
   const handleExit = () => {
     getSocket()?.emit("leave-room", { roomCode });
+    clearMultiplayerSession();
     onExitToMenu();
   };
 
@@ -498,7 +486,7 @@ export function MultiplayerGame({
           message={message}
           zoneMessage={disconnectedMessage}
           health={health}
-          maxHealth={MAX_HEALTH}
+          maxHealth={self.combat.maxHealth}
           aliveCount={gameState.aliveCount}
           enemyStateLabel={`rivales ${gameState.otherPlayers.length} / ecos ${gameState.enemies.length}`}
           isPaused={false}
@@ -532,6 +520,7 @@ export function MultiplayerGame({
             player={player}
             signals={gameState.signals}
             moveCooldownRemaining={moveCooldownRemaining}
+            rangeTiles={creatureModifiers.radarRangeTiles}
           />
         </div>
       )}

@@ -106,7 +106,10 @@ export type MultiplayerStatePayload = {
   maxPlayers: number;
   requiredPlayers: number;
   readyCount: number;
+  connectedCount: number;
   results: MatchResultEntry[];
+  resultReceipt: string | null;
+  reconnectGraceMs: number;
   message: string | null;
 };
 
