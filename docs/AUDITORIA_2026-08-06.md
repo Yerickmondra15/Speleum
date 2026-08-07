@@ -42,7 +42,7 @@ Se inspeccionaron README, documentación técnica, esquema y migraciones Prisma,
 - ESLint: pasa sin errores ni advertencias.
 - TypeScript: pasa con `tsc --noEmit`.
 - Vitest: 5 archivos, 44 pruebas pasadas.
-- Build: debe constar en el cierre/PR después de la ejecución final obligatoria.
+- Build: Next.js 16.3.0 compiló, validó TypeScript y generó las 20 rutas correctamente.
 
 ## Limitaciones y hallazgos abiertos
 
