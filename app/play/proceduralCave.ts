@@ -181,7 +181,7 @@ function rotateEntrance(
     case "right":
       return { side: "bottom", offset: height - 1 - entrance.offset };
     case "bottom":
-      return { side: "left", offset: width - 1 - entrance.offset };
+      return { side: "left", offset: entrance.offset };
     case "left":
       return { side: "top", offset: height - 1 - entrance.offset };
   }
@@ -264,6 +264,38 @@ function weightedPick<T extends { weight: number }>(
   return items[items.length - 1];
 }
 
+function weightedOrder<T extends { weight: number }>(
+  random: () => number,
+  items: T[],
+) {
+  const pool = [...items];
+  const ordered: T[] = [];
+
+  while (pool.length > 0) {
+    const picked = weightedPick(random, pool);
+
+    if (!picked) {
+      break;
+    }
+
+    ordered.push(picked);
+    pool.splice(pool.indexOf(picked), 1);
+  }
+
+  return ordered;
+}
+
+function shuffled<T>(random: () => number, items: T[]) {
+  const entries = [...items];
+
+  for (let index = entries.length - 1; index > 0; index -= 1) {
+    const otherIndex = Math.floor(random() * (index + 1));
+    [entries[index], entries[otherIndex]] = [entries[otherIndex]!, entries[index]!];
+  }
+
+  return entries;
+}
+
 const baseTemplates: CaveRoomTemplate[] = [
   {
     id: "start-refuge",
@@ -272,13 +304,13 @@ const baseTemplates: CaveRoomTemplate[] = [
     width: 11,
     height: 9,
     tiles: [
-      "###########",
+      "#####.#####",
       "#..R...S..#",
+      "#.S.....S.#",
       "#.........#",
+      "...........",
       "#..###....#",
-      "..........#",
       "#....###..#",
-      "#.........#",
       "#..S...R..#",
       "###########",
     ],
@@ -346,10 +378,10 @@ const baseTemplates: CaveRoomTemplate[] = [
     height: 7,
     tiles: [
       "#########",
+      "#.......#",
+      "....N....",
       "#..###..#",
-      "...#N#...",
-      "..##.##..",
-      "...#.#...",
+      "#.......#",
       "#..###..#",
       "#########",
     ],
@@ -524,9 +556,9 @@ const baseTemplates: CaveRoomTemplate[] = [
     height: 5,
     tiles: [
       "#########",
-      "..##H##..",
-      "...#.#...",
-      "..##H##..",
+      "#..#H#..#",
+      ".........",
+      "#..#H#..#",
       "#########",
     ],
     entrances: [
@@ -741,35 +773,81 @@ function pointDistanceTiles(a: PlayerPosition, b: PlayerPosition) {
   );
 }
 
+function isEntitySafeChar(char: string) {
+  return char !== WALL_TILE && char !== HAZARD_TILE && char !== WATER_TILE;
+}
+
+function safeTilesForPlacement(placement: TemplatePlacement) {
+  const tiles: Array<{ col: number; row: number }> = [];
+
+  for (let row = 0; row < placement.template.height; row += 1) {
+    for (let col = 0; col < placement.template.width; col += 1) {
+      if (!isEntitySafeChar(charAt(placement.template, col, row))) {
+        continue;
+      }
+
+      tiles.push({
+        col: placement.originCol + col,
+        row: placement.originRow + row,
+      });
+    }
+  }
+
+  return tiles;
+}
+
+function closestUniqueSafeTile(
+  safeTiles: Array<{ col: number; row: number }>,
+  desired: { col: number; row: number },
+  used: Set<string>,
+) {
+  return safeTiles
+    .filter((tile) => !used.has(`${tile.col},${tile.row}`))
+    .sort((left, right) => {
+      const leftDistance = Math.abs(left.col - desired.col) + Math.abs(left.row - desired.row);
+      const rightDistance = Math.abs(right.col - desired.col) + Math.abs(right.row - desired.row);
+
+      return (
+        leftDistance - rightDistance ||
+        left.row - right.row ||
+        left.col - right.col
+      );
+    })[0] ?? null;
+}
+
 function createEnemyConfigFromRule(
   placement: TemplatePlacement,
   rule: CaveRoomSpawnRule,
   index: number,
   zoneName: string,
 ): EnemyConfig {
-  const start = centerOfTile(
-    placement.originCol + rule.localCol,
-    placement.originRow + rule.localRow,
-  );
+  const safeTiles = safeTilesForPlacement(placement);
+  const requestedStart = {
+    col: placement.originCol + rule.localCol,
+    row: placement.originRow + rule.localRow,
+  };
+  const startTile = closestUniqueSafeTile(safeTiles, requestedStart, new Set()) ?? requestedStart;
+  const start = centerOfTile(startTile.col, startTile.row);
   const territoryRadius = rule.territoryRadiusTiles ?? 4;
-  const patrolPoints: PlayerPosition[] = [
-    centerOfTile(
-      Math.max(1, placement.originCol + Math.max(0, rule.localCol - 2)),
-      Math.max(1, placement.originRow + rule.localRow),
-    ),
-    centerOfTile(
-      Math.min(MAP_COLS - 2, placement.originCol + Math.min(placement.template.width - 1, rule.localCol + 2)),
-      Math.max(1, placement.originRow + rule.localRow),
-    ),
-    centerOfTile(
-      Math.max(1, placement.originCol + rule.localCol),
-      Math.max(1, placement.originRow + Math.max(0, rule.localRow - 2)),
-    ),
-    centerOfTile(
-      Math.max(1, placement.originCol + rule.localCol),
-      Math.min(MAP_ROWS - 2, placement.originRow + Math.min(placement.template.height - 1, rule.localRow + 2)),
-    ),
+  const usedPatrolTiles = new Set<string>([`${startTile.col},${startTile.row}`]);
+  const requestedPatrolTiles = [
+    { col: requestedStart.col - 2, row: requestedStart.row },
+    { col: requestedStart.col + 2, row: requestedStart.row },
+    { col: requestedStart.col, row: requestedStart.row - 2 },
+    { col: requestedStart.col, row: requestedStart.row + 2 },
   ];
+  const patrolPoints: PlayerPosition[] = [];
+
+  for (const requestedPatrol of requestedPatrolTiles) {
+    const patrolTile = closestUniqueSafeTile(safeTiles, requestedPatrol, usedPatrolTiles);
+
+    if (!patrolTile) {
+      continue;
+    }
+
+    usedPatrolTiles.add(`${patrolTile.col},${patrolTile.row}`);
+    patrolPoints.push(centerOfTile(patrolTile.col, patrolTile.row));
+  }
 
   const spriteCharacterId =
     rule.behavior === "territorial" || rule.behavior === "ambusher"
@@ -785,7 +863,7 @@ function createEnemyConfigFromRule(
   const baseHp = 42 + rule.strength * 10;
 
   return {
-    id: `${placement.template.id}-${index}`,
+    id: `${placement.id}-${placement.template.id}-enemy-${index}`,
     name: `${zoneName} ${index + 1}`,
     behavior: rule.behavior,
     spriteCharacterId,
@@ -980,18 +1058,28 @@ function buildLayoutFromPlacements(
       placements[0]?.originRow + Math.floor(placements[0]!.template.height / 2),
     );
   const startPoint = startPositionCandidate ?? startPosition;
-  const playerSpawns = spawnCandidates
-    .filter((candidate) => pointDistanceTiles(candidate, startPoint) <= 5)
+  const startPlacement = placements[0];
+  const startRoomSafeTiles = startPlacement ? safeTilesForPlacement(startPlacement) : [];
+  const multiplayerSpawnCandidates = [
+    startPoint,
+    ...spawnCandidates,
+    ...startRoomSafeTiles.map((tile) => centerOfTile(tile.col, tile.row)),
+  ];
+  const seenSpawnTiles = new Set<string>();
+  const multiplayerSpawns = multiplayerSpawnCandidates
+    .filter((candidate) => {
+      const col = Math.floor(candidate.x / TILE_SIZE);
+      const row = Math.floor(candidate.y / TILE_SIZE);
+      const key = `${col},${row}`;
+
+      if (seenSpawnTiles.has(key)) {
+        return false;
+      }
+
+      seenSpawnTiles.add(key);
+      return isEntitySafeChar(tileRows[row]?.[col] ?? WALL_TILE);
+    })
     .slice(0, 6);
-  const multiplayerSpawns =
-    playerSpawns.length >= 6
-      ? playerSpawns
-      : [
-          startPoint,
-          ...spawnCandidates
-            .filter((candidate) => candidate !== startPoint)
-            .slice(0, 5),
-        ].slice(0, 6);
   const safeEnemyConfigs = enemyConfigs.filter(
     (enemy) => pointDistanceTiles(enemy.start, startPoint) >= 6,
   );
@@ -1043,19 +1131,21 @@ function pickCandidatesForStage(
   });
 }
 
-function validateConnectivity(tileRows: string[], start: PlayerPosition) {
+export type CaveConnectivityValidation = {
+  connectedOpenTiles: number;
+  openTiles: number;
+  isConnected: boolean;
+};
+
+function collectReachableOpenTiles(tileRows: string[], start: PlayerPosition) {
   const startCol = Math.floor(start.x / TILE_SIZE);
   const startRow = Math.floor(start.y / TILE_SIZE);
-  const queue = [[startCol, startRow]];
+  const queue: Array<[number, number]> = [[startCol, startRow]];
   const visited = new Set<string>();
+  let queueIndex = 0;
 
-  while (queue.length > 0) {
-    const current = queue.shift();
-
-    if (!current) {
-      break;
-    }
-
+  while (queueIndex < queue.length) {
+    const current = queue[queueIndex++]!;
     const [col, row] = current;
     const key = `${col},${row}`;
 
@@ -1094,6 +1184,14 @@ function validateConnectivity(tileRows: string[], start: PlayerPosition) {
     }
   }
 
+  return visited;
+}
+
+export function validateCaveConnectivity(
+  tileRows: string[],
+  start: PlayerPosition,
+): CaveConnectivityValidation {
+  const visited = collectReachableOpenTiles(tileRows, start);
   let openTiles = 0;
 
   for (const row of tileRows) {
@@ -1107,7 +1205,128 @@ function validateConnectivity(tileRows: string[], start: PlayerPosition) {
   return {
     connectedOpenTiles: visited.size,
     openTiles,
-    isConnected: visited.size >= openTiles * 0.95,
+    isConnected: openTiles > 0 && visited.size === openTiles,
+  };
+}
+
+export type CaveLayoutValidation = CaveConnectivityValidation & {
+  isValid: boolean;
+  dimensionsValid: boolean;
+  boundaryClosed: boolean;
+  issues: string[];
+};
+
+export function validateCaveLayout(layout: CaveLayout): CaveLayoutValidation {
+  const issues: string[] = [];
+  const dimensionsValid =
+    layout.tileRows.length === MAP_ROWS &&
+    layout.tileRows.every((row) => row.length === MAP_COLS);
+
+  if (!dimensionsValid) {
+    issues.push(`expected a ${MAP_COLS}x${MAP_ROWS} tile grid`);
+  }
+
+  const boundaryClosed =
+    dimensionsValid &&
+    [...(layout.tileRows[0] ?? ""), ...(layout.tileRows[MAP_ROWS - 1] ?? "")].every(
+      (char) => char === WALL_TILE,
+    ) &&
+    layout.tileRows.every(
+      (row) => row[0] === WALL_TILE && row[MAP_COLS - 1] === WALL_TILE,
+    );
+
+  if (!boundaryClosed) {
+    issues.push("outer boundary must be completely closed");
+  }
+
+  const connectivity = validateCaveConnectivity(
+    layout.tileRows,
+    layout.startPosition,
+  );
+  const reachableTiles = collectReachableOpenTiles(
+    layout.tileRows,
+    layout.startPosition,
+  );
+
+  if (!connectivity.isConnected) {
+    issues.push(
+      `only ${connectivity.connectedOpenTiles}/${connectivity.openTiles} open tiles are reachable`,
+    );
+  }
+
+  const validateEntityPosition = (label: string, position: PlayerPosition) => {
+    const col = Math.floor(position.x / TILE_SIZE);
+    const row = Math.floor(position.y / TILE_SIZE);
+    const char = layout.tileRows[row]?.[col] ?? WALL_TILE;
+    const key = `${col},${row}`;
+
+    if (!isEntitySafeChar(char)) {
+      issues.push(`${label} is not on a safe walkable tile (${key})`);
+    } else if (!reachableTiles.has(key)) {
+      issues.push(`${label} is outside the start component (${key})`);
+    }
+  };
+
+  validateEntityPosition("startPosition", layout.startPosition);
+
+  if (layout.multiplayerSpawnPositions.length !== 6) {
+    issues.push(
+      `expected 6 multiplayer spawns, found ${layout.multiplayerSpawnPositions.length}`,
+    );
+  }
+
+  const spawnKeys = new Set<string>();
+
+  layout.multiplayerSpawnPositions.forEach((spawn, index) => {
+    validateEntityPosition(`multiplayerSpawnPositions[${index}]`, spawn);
+    spawnKeys.add(`${Math.floor(spawn.x / TILE_SIZE)},${Math.floor(spawn.y / TILE_SIZE)}`);
+  });
+
+  if (spawnKeys.size !== layout.multiplayerSpawnPositions.length) {
+    issues.push("multiplayer spawns must occupy unique tiles");
+  }
+
+  const enemyIds = new Set<string>();
+
+  layout.enemyConfigs.forEach((enemy, enemyIndex) => {
+    if (enemyIds.has(enemy.id)) {
+      issues.push(`duplicate enemy id: ${enemy.id}`);
+    }
+
+    enemyIds.add(enemy.id);
+    validateEntityPosition(`enemyConfigs[${enemyIndex}].start`, enemy.start);
+
+    if (enemy.patrolPoints.length === 0) {
+      issues.push(`enemy ${enemy.id} has no patrol points`);
+    }
+
+    const patrolKeys = new Set<string>();
+
+    enemy.patrolPoints.forEach((patrolPoint, patrolIndex) => {
+      validateEntityPosition(
+        `enemyConfigs[${enemyIndex}].patrolPoints[${patrolIndex}]`,
+        patrolPoint,
+      );
+      patrolKeys.add(
+        `${Math.floor(patrolPoint.x / TILE_SIZE)},${Math.floor(patrolPoint.y / TILE_SIZE)}`,
+      );
+    });
+
+    if (patrolKeys.size !== enemy.patrolPoints.length) {
+      issues.push(`enemy ${enemy.id} has duplicate patrol points`);
+    }
+  });
+
+  if (layout.enemyConfigs.length === 0) {
+    issues.push("layout must contain at least one enemy");
+  }
+
+  return {
+    ...connectivity,
+    dimensionsValid,
+    boundaryClosed,
+    issues,
+    isValid: issues.length === 0,
   };
 }
 
@@ -1218,56 +1437,69 @@ export function generateProceduralCave(seed: string): CaveLayout {
         distanceFromSpawn,
         requiredSide,
       );
+      const hasCombatRoom = placements.some(
+        (placement) => placement.template.type === "combat",
+      );
+      const hasNestRoom = placements.some(
+        (placement) => placement.template.type === "nest",
+      );
+      const mandatoryCandidates =
+        placements.length >= 3 && !hasCombatRoom
+          ? candidates.filter((candidate) => candidate.type === "combat")
+          : placements.length >= 4 && !hasNestRoom
+            ? candidates.filter((candidate) => candidate.type === "nest")
+            : [];
+      const eligibleCandidates =
+        mandatoryCandidates.length > 0 ? mandatoryCandidates : candidates;
       let placed = false;
 
-      for (let localAttempt = 0; localAttempt < Math.max(6, candidates.length); localAttempt += 1) {
-        const candidate =
-          weightedPick(
-            random,
-            candidates.length > 0 ? candidates : CAVE_ROOM_TEMPLATES.filter((template) =>
+      const candidatePool =
+        eligibleCandidates.length > 0
+          ? eligibleCandidates
+          : CAVE_ROOM_TEMPLATES.filter((template) =>
               template.entrances.some((entry) => entry.side === requiredSide),
-            ),
-          ) ?? null;
+            );
 
-        if (!candidate) {
-          break;
-        }
+      for (const candidate of weightedOrder(random, candidatePool)) {
+        const matchingEntrances = shuffled(
+          random,
+          candidate.entrances.filter((entry) => entry.side === requiredSide),
+        );
 
-        const matchingEntrances = candidate.entrances.filter((entry) => entry.side === requiredSide);
-        const entrance = matchingEntrances[Math.floor(random() * matchingEntrances.length)];
+        for (const entrance of matchingEntrances) {
+          const local = entranceLocalPosition(candidate, entrance);
+          const originCol = frontier.col - local.col;
+          const originRow = frontier.row - local.row;
 
-        if (!entrance) {
-          continue;
-        }
-
-        const local = entranceLocalPosition(candidate, entrance);
-        const originCol = frontier.col - local.col;
-        const originRow = frontier.row - local.row;
-
-        if (!canPlaceTemplate(grid, candidate, originCol, originRow)) {
-          continue;
-        }
-
-        const placement: TemplatePlacement = {
-          template: candidate,
-          id: `section-${sectionIndex}`,
-          originCol,
-          originRow,
-        };
-        placeTemplate(grid, placement);
-        placements.push(placement);
-        sectionIndex += 1;
-
-        for (const nextEntrance of candidate.entrances) {
-          if (nextEntrance === entrance) {
+          if (!canPlaceTemplate(grid, candidate, originCol, originRow)) {
             continue;
           }
 
-          frontiers.push(frontierFromPlacement(placement, nextEntrance));
+          const placement: TemplatePlacement = {
+            template: candidate,
+            id: `section-${sectionIndex}`,
+            originCol,
+            originRow,
+          };
+          placeTemplate(grid, placement);
+          placements.push(placement);
+          sectionIndex += 1;
+
+          for (const nextEntrance of candidate.entrances) {
+            if (nextEntrance === entrance) {
+              continue;
+            }
+
+            frontiers.push(frontierFromPlacement(placement, nextEntrance));
+          }
+
+          placed = true;
+          break;
         }
 
-        placed = true;
-        break;
+        if (placed) {
+          break;
+        }
       }
 
       if (!placed) {
@@ -1281,21 +1513,22 @@ export function generateProceduralCave(seed: string): CaveLayout {
     }
 
     const layout = buildLayoutFromPlacements(seed, grid, placements);
-    const connectivity = validateConnectivity(layout.tileRows, layout.startPosition);
+    const validation = validateCaveLayout(layout);
     const nestCount = placements.filter((placement) => placement.template.type === "nest").length;
     const openCount = placements.filter((placement) => placement.template.type === "combat").length;
 
     if (
-      !connectivity.isConnected ||
-      connectivity.openTiles < 280 ||
-      connectivity.openTiles > 1320 ||
+      !validation.isValid ||
+      validation.openTiles < 280 ||
+      validation.openTiles > 1320 ||
       nestCount === 0 ||
       openCount === 0 ||
       layout.enemyConfigs.length === 0
     ) {
       fallbackReason =
-        `attempt ${attempt + 1}: invalid layout connected=${connectivity.isConnected} ` +
-        `openTiles=${connectivity.openTiles} nests=${nestCount} combat=${openCount} enemies=${layout.enemyConfigs.length}`;
+        `attempt ${attempt + 1}: invalid layout connected=${validation.isConnected} ` +
+        `openTiles=${validation.openTiles} nests=${nestCount} combat=${openCount} ` +
+        `enemies=${layout.enemyConfigs.length} issues=${validation.issues.join("; ") || "none"}`;
       continue;
     }
 
