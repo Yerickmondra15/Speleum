@@ -1,6 +1,6 @@
 # Registro de bugs de gameplay
 
-## Corregidos o en validación
+## Corregidos y validados
 
 | Bug | Causa raíz | Corrección |
 | --- | --- | --- |
@@ -23,3 +23,4 @@
 - La visión todavía no tiene línea de visión/oclusión por pared; ambos modos son coherentes, pero esta mejora queda para balance posterior.
 - El payload multijugador reenvía el layout inmutable completo en cada snapshot. Separar `room-init` de estado dinámico es una optimización posterior.
 - Los valores visuales 0–100 del catálogo de criaturas y los modificadores efectivos todavía son dos representaciones que deben consolidarse.
+- `npm audit` informa una vulnerabilidad baja de desarrollo en `esbuild 0.27.7` (lectura de archivos al ejecutar el dev server en Windows). No se aplicó un cambio automático de lockfile dentro de esta rama de gameplay.

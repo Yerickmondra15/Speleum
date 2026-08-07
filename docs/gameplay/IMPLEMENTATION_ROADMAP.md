@@ -1,14 +1,15 @@
 # Hoja de ruta de gameplay
 
-## Entrega actual
+## Completado en `agent/gameplay-overhaul`
 
-1. Unificar constantes, rangos, IDs y geometría de visión.
-2. Hacer temporalmente determinista la IA y cerrar su ciclo de percepción/muerte.
-3. Reparar reconexión, takeover y recuperación de sesiones obsoletas.
-4. Activar de verdad el generador procedural y validar conectividad total.
-5. Probar paridad offline/servidor y reducir la obstrucción del HUD.
+1. Constantes, rangos, IDs, catálogo de criaturas y geometría de visión unificados.
+2. IA determinista por entidad con percepción, memoria, cooldown y muerte terminal.
+3. Reconexión con ACK, takeover autenticado y recuperación de sesiones obsoletas.
+4. Generación procedural determinista, variada y 100% conectada.
+5. Pruebas de paridad y HUD de escritorio compacto con detalles colapsables.
+6. Motores puros y probados para habilidades y cordura, todavía sin activación en runtime.
 
-## Siguiente incremento: habilidades
+## Siguiente incremento: activar habilidades
 
 Crear un contrato pequeño, compartido y data-driven:
 
@@ -24,7 +25,7 @@ type AbilityDefinition = {
 
 El cliente envía una intención; offline o el servidor ejecutan el mismo validador/resolutor. Primero se implementará una familia de efectos reutilizables —pulso, mitigación breve, desplazamiento corto o señuelo de ruido— antes de cinco sistemas especiales independientes.
 
-## Siguiente incremento: cordura
+## Siguiente incremento: activar cordura
 
 La cordura será un reducer por eventos, no un contador que decrece cada segundo.
 
