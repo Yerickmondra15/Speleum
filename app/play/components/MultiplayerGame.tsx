@@ -1,10 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Radio, Skull } from "lucide-react";
-import type { CharacterOption, GameStatus, PlayerPosition } from "../gameConfig";
+import { ArrowLeft } from "lucide-react";
+import type { ActionKind, CharacterOption, GameStatus, PlayerPosition } from "../gameConfig";
 import {
-  MAX_ROOM_PLAYERS,
   PLAYER_ATTACK_RANGE_TILES,
   TILE_SIZE,
   VISION_RADIUS,
@@ -12,7 +11,6 @@ import {
 } from "../gameConfig";
 import { distanceBetween, getZoneForPosition, planMovementPath } from "../gameLogic";
 import type { MatchResultEntry, MultiplayerStatePayload } from "../types";
-import { getCharacterName } from "../types";
 import { getSocket, isSocketMultiplayerAvailable } from "@/lib/socket";
 import { appendLocalRanking } from "@/lib/ranking";
 import {
@@ -29,6 +27,8 @@ import { GameTopControls } from "./GameTopControls";
 import { RadarPanel } from "./RadarPanel";
 import { buildTileMap, createTileLookup, findReachableTiles, tileToWorld, worldToTile } from "../tileMap";
 import { getCreatureGameplayModifiers } from "@/lib/creature-gameplay";
+import { creatureAbilities } from "@/lib/gameplay/abilities";
+import { terrainNameAt } from "@/lib/gameplay/survival";
 
 type MultiplayerGameProps = {
   matchId: string;
@@ -77,20 +77,20 @@ export function MultiplayerGame({
     [gameState?.self.characterId, selectedCharacter],
   );
   const creatureModifiers = getCreatureGameplayModifiers(authoritativeCharacter.id);
-  const [socketConnected, setSocketConnected] = useState(() => getSocket()?.connected ?? false);
+  const [, setSocketConnected] = useState(() => getSocket()?.connected ?? false);
   const [message, setMessage] = useState(() =>
     isSocketMultiplayerAvailable()
       ? "Conectando con la sala..."
       : "El modo multijugador necesita una URL de Socket.IO para habilitar salas en tiempo real.",
   );
-  const [activeAction, setActiveAction] = useState<"move" | "attack" | "defend">("move");
+  const [activeAction, setActiveAction] = useState<ActionKind>("move");
   const [isUiHidden, setIsUiHidden] = useState(false);
   const [disconnectedMessage, setDisconnectedMessage] = useState<string | null>(null);
   const [resumeFailure, setResumeFailure] = useState<{
     message: string;
     terminal: boolean;
   } | null>(null);
-  const [pendingMoveTarget, setPendingMoveTarget] = useState<PlayerPosition | null>(null);
+  const [, setPendingMoveTarget] = useState<PlayerPosition | null>(null);
   const [pathPreview, setPathPreview] = useState<PlayerPosition[]>([]);
   const pendingMoveTargetRef = useRef<PlayerPosition | null>(null);
   const resumeAttemptRef = useRef(0);
@@ -333,7 +333,6 @@ export function MultiplayerGame({
   }, [gameState]);
 
   const self = gameState?.self ?? null;
-  const maxPlayers = gameState?.maxPlayers ?? MAX_ROOM_PLAYERS;
   const player = useMemo(() => self?.position ?? { x: 0, y: 0 }, [self?.position]);
   const enemy = gameState?.enemy ?? null;
   const caveTiles = useMemo(() => (gameState ? buildTileMap(gameState.cave) : []), [gameState]);
@@ -375,29 +374,27 @@ export function MultiplayerGame({
   const moveCooldownRemaining = self?.combat.moveCooldownRemaining ?? 0;
   const attackCooldownRemaining = self?.combat.attackCooldownRemaining ?? 0;
   const parryCooldownRemaining = self?.combat.parryCooldownRemaining ?? 0;
+  const abilityCooldownRemaining = self?.combat.abilityCooldownRemaining ?? 0;
+  const abilityIsActive = (self?.combat.abilityActiveRemaining ?? 0) > 0;
+  const moveRangeBonus = authoritativeCharacter.id === "cave-shrimp" && abilityIsActive ? 2 : 0;
+  const radarRangeBonus = authoritativeCharacter.id === "blind-fish" && abilityIsActive ? 10 : 0;
+  const radarPrecision = authoritativeCharacter.id === "blind-fish" && abilityIsActive ? 0.35 : 1;
+  const visionRangeBonus = authoritativeCharacter.id === "blind-fish" && abilityIsActive ? 6 : 0;
+  const movementLocked = authoritativeCharacter.id === "cave-crab" && abilityIsActive;
   const isParrying = Boolean(self?.combat.isParrying);
   const isStunned = Boolean(self?.combat.isStunned);
   const reachableTiles = useMemo(
-    () => (self ? findReachableTiles(worldToTile(self.position), creatureModifiers.moveRangeTiles, tileLookup) : new Map()),
-    [creatureModifiers.moveRangeTiles, self, tileLookup],
+    () => (self ? findReachableTiles(worldToTile(self.position), creatureModifiers.moveRangeTiles + moveRangeBonus, tileLookup) : new Map()),
+    [creatureModifiers.moveRangeTiles, moveRangeBonus, self, tileLookup],
   );
   const attackableTiles = useMemo(
     () => (self ? findReachableTiles(worldToTile(self.position), PLAYER_ATTACK_RANGE_TILES, tileLookup) : new Map()),
     [self, tileLookup],
   );
-  const isMoveReady = gameStatus === "playing" && moveCooldownRemaining <= 0 && !isStunned;
+  const isMoveReady = gameStatus === "playing" && moveCooldownRemaining <= 0 && !isStunned && !movementLocked;
   const nearestThreatTiles = enemy
     ? Math.max(1, Math.round(distanceBetween(player, enemy) / TILE_SIZE))
     : null;
-
-  const nearestPoint = useMemo(() => {
-    return (gameState?.cave.pointsOfInterest ?? [])
-      .map((point) => ({
-        ...point,
-        distance: Math.round(Math.hypot(player.x - point.x, player.y - point.y)),
-      }))
-      .sort((a, b) => a.distance - b.distance)[0];
-  }, [gameState?.cave.pointsOfInterest, player]);
 
   const otherPlayersSummary = (gameState?.otherPlayers ?? []).map((otherPlayer) => ({
     id: otherPlayer.id,
@@ -407,6 +404,14 @@ export function MultiplayerGame({
     isParrying: otherPlayer.combat.isParrying,
     isStunned: otherPlayer.combat.isStunned,
   }));
+
+  const currentPlayerTile = worldToTile(player);
+  const currentShelterKey = `${currentPlayerTile.col},${currentPlayerTile.row}`;
+  const baseTerrainName = terrainNameAt(player, tileLookup);
+  const currentTerrainName =
+    baseTerrainName === "Refugio" && gameState?.exhaustedShelters.includes(currentShelterKey)
+      ? "Refugio agotado"
+      : baseTerrainName;
 
   const emitMoveTarget = (target: PlayerPosition) => {
     const socket = getSocket();
@@ -430,7 +435,7 @@ export function MultiplayerGame({
     const movePlan = planMovementPath(
       self.position,
       target,
-      creatureModifiers.moveRangeTiles,
+      creatureModifiers.moveRangeTiles + moveRangeBonus,
       tileLookup,
       authoritativeCharacter.moveCooldownMultiplier,
     );
@@ -476,6 +481,9 @@ export function MultiplayerGame({
     } else if (event.key.toLowerCase() === "shift" || event.key.toLowerCase() === "q") {
       event.preventDefault();
       handleDefend();
+    } else if (event.key.toLowerCase() === "r" || event.key.toLowerCase() === "f") {
+      event.preventDefault();
+      handleAbility();
     }
 
     if (target) {
@@ -524,8 +532,17 @@ export function MultiplayerGame({
 
     socket.emit("player-defend", { roomCode });
     setActiveAction("defend");
-    setMessage("Abres una ventana corta de parry.");
+    setMessage("Parry activo: si no interceptas un golpe, quedarás aturdido.");
   };
+
+  function handleAbility() {
+    if (!self || gameStatus !== "playing" || abilityCooldownRemaining > 0 || isStunned) return;
+    const socket = getSocket();
+    if (!socket) return;
+    socket.emit("player-ability", { roomCode, target: self.position });
+    setActiveAction("ability");
+    setMessage(`Activas ${creatureAbilities[authoritativeCharacter.id].name}.`);
+  }
 
   const handleExit = () => {
     getSocket()?.emit("leave-room", { roomCode });
@@ -608,136 +625,94 @@ export function MultiplayerGame({
         </div>
       </header>
 
-      <GameMap
-        player={player}
-        playerCharacterId={authoritativeCharacter.id}
-        enemy={enemy}
-        enemies={gameState.enemies}
-        otherPlayers={gameState.otherPlayers}
-        signals={gameState.signals}
-        activeAction={activeAction}
-        isDefending={isParrying}
-        currentZone={currentZone}
-        gameStatus={gameStatus}
-        visionRadius={VISION_RADIUS}
-        tiles={caveTiles}
-        reachableTiles={reachableTiles}
-        attackableTiles={attackableTiles}
-        selectedPath={pathPreview}
-        isMoveReady={isMoveReady}
-        onChooseDestination={handleMoveIntent}
-      />
-
-      {!isUiHidden && (
-        <GameHud
-          selectedCharacter={authoritativeCharacter}
-          zone={currentZone}
-          objective={objective}
-          message={message}
-          zoneMessage={disconnectedMessage}
-          health={health}
-          maxHealth={self.combat.maxHealth}
-          aliveCount={gameState.aliveCount}
-          enemyStateLabel={`rivales ${gameState.otherPlayers.length} / ecos ${gameState.enemies.length}`}
-          isPaused={false}
-          parryActive={isParrying}
-          isStunned={isStunned}
-          moveCooldownRemaining={moveCooldownRemaining}
-          attackCooldownRemaining={attackCooldownRemaining}
-          parryCooldownRemaining={parryCooldownRemaining}
-          parryWindowRemaining={self.combat.parryWindowRemaining}
-          stunRemaining={self.combat.stunRemaining}
-          nearestThreatTiles={nearestThreatTiles}
-          nearbyDangerLabel={
-            enemy?.state === "attacking"
-              ? "alto"
-              : enemy?.state === "chasing" || enemy?.state === "investigating"
-                ? "medio"
-                : "bajo"
-          }
-          detectedEnemies={gameState.enemies.length}
-          attackRangeLabel={`${PLAYER_ATTACK_RANGE_TILES} casillas`}
-          otherPlayersSummary={otherPlayersSummary}
-        />
-      )}
-
-      {!isUiHidden && (
-        <div
-          className="absolute bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] right-2 z-70 w-28 max-w-[calc(100vw-1rem)] sm:right-4 sm:top-24 sm:bottom-auto sm:w-64 sm:max-w-[calc(100vw-2rem)]"
-          style={{ bottom: "calc(env(safe-area-inset-bottom) + 5.5rem)" }}
-        >
-          <RadarPanel
-            player={player}
-            signals={gameState.signals}
-            moveCooldownRemaining={moveCooldownRemaining}
-            rangeTiles={creatureModifiers.radarRangeTiles}
-          />
-        </div>
-      )}
-
-      {!isUiHidden && (
-        <div className="pointer-events-none absolute right-4 top-88 z-70 hidden max-w-xs rounded-[1.25rem] border border-white/10 bg-black/45 p-4 text-sm text-zinc-300 backdrop-blur-md lg:block">
-          <p className="text-xs tracking-[0.25em] text-zinc-500">CADENA DE VIDA</p>
-          <p className="mt-2">Conexion: {socketConnected ? "estable" : "reconectando"}</p>
-          <p className="mt-2">Criaturas en sala: {gameState.playerCount}/{maxPlayers}</p>
-          <p className="mt-2">Ultimos vivos: {gameState.aliveCount}</p>
-          <p className="mt-2">Punto cercano: {nearestPoint?.label ?? currentZone.name}</p>
-          <p className="mt-2">Vision: 8 casillas alrededor.</p>
-          <div className="mt-3 inline-flex items-center gap-2 text-xs tracking-[0.2em] text-cyan-100">
-            <Radio className="h-4 w-4" />
-            {self.combat.kills} bajas
-          </div>
-          {pendingMoveTarget && (
-            <p className="mt-2 text-xs text-zinc-500">
-              Trayecto pendiente hacia {worldToTile(pendingMoveTarget).col},{worldToTile(pendingMoveTarget).row}
-            </p>
-          )}
-        </div>
-      )}
-
-      {!isUiHidden && (
-        <div className="absolute bottom-28 left-4 z-70 hidden w-88 rounded-[1.25rem] border border-white/10 bg-black/45 p-4 text-sm text-zinc-300 backdrop-blur-md xl:block">
-          <div className="flex items-center justify-between">
-            <p className="text-xs tracking-[0.25em] text-zinc-500">RESULTADOS PARCIALES</p>
-            <Skull className="h-4 w-4 text-zinc-500" />
-          </div>
-          <div className="mt-4 space-y-3">
-            {gameState.results.slice(0, 4).map((entry) => (
-              <div
-                key={entry.playerId}
-                className="flex items-center justify-between rounded-xl border border-white/10 bg-black/35 px-3 py-2"
-              >
-                <div>
-                  <p className="text-sm text-white">
-                    #{entry.placement} {entry.name}
-                  </p>
-                  <p className="text-xs text-zinc-500">
-                    {getCharacterName(characterOptions, entry.characterId)}
-                  </p>
-                </div>
-                <div className="text-right text-xs text-zinc-400">
-                  <p>{entry.kills} kills</p>
-                  <p>{entry.status}</p>
-                </div>
+      <div className={isUiHidden ? "h-full min-h-0 min-w-0" : "grid h-full min-h-0 min-w-0 gap-2 p-2 pt-[calc(env(safe-area-inset-top)+3.8rem)] pb-[calc(env(safe-area-inset-bottom)+.5rem)] md:grid-cols-[minmax(15rem,18rem)_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)_auto]"}>
+        {!isUiHidden && (
+          <aside className="absolute left-2 top-[calc(env(safe-area-inset-top)+3.8rem)] z-60 max-h-[42dvh] w-[min(17rem,calc(100vw-1rem))] overflow-auto md:static md:row-span-2 md:max-h-none md:w-auto md:min-h-0">
+            <div className="grid gap-2">
+              <GameHud
+                selectedCharacter={authoritativeCharacter}
+                zone={currentZone}
+                objective={objective}
+                message={message}
+                zoneMessage={disconnectedMessage}
+                health={health}
+                maxHealth={self.combat.maxHealth}
+                aliveCount={gameState.aliveCount}
+                enemyStateLabel={`rivales ${gameState.otherPlayers.length} / ecos ${gameState.enemies.length}`}
+                isPaused={false}
+                score={self.combat.damageDealt}
+                kills={self.combat.kills}
+                parryActive={isParrying}
+                isStunned={isStunned}
+                moveCooldownRemaining={moveCooldownRemaining}
+                attackCooldownRemaining={attackCooldownRemaining}
+                parryCooldownRemaining={parryCooldownRemaining}
+                nearestThreatTiles={nearestThreatTiles}
+                nearbyDangerLabel={enemy?.state === "attacking" ? "alto" : enemy?.state === "chasing" || enemy?.state === "investigating" ? "medio" : "bajo"}
+                detectedEnemies={gameState.enemies.length}
+                terrainName={currentTerrainName}
+                sanityStage={self.combat.sanityStage}
+                idleDurationMs={self.combat.idleDurationMs}
+                shelterProgress={self.combat.shelterProgress}
+                abilityName={creatureAbilities[authoritativeCharacter.id].name}
+                abilityCooldownRemaining={abilityCooldownRemaining}
+                otherPlayersSummary={otherPlayersSummary}
+              />
+              <div className="hidden md:block">
+                <RadarPanel player={player} signals={gameState.signals} ownerId={self.id} rangeTiles={creatureModifiers.radarRangeTiles + radarRangeBonus} precisionMultiplier={radarPrecision} />
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+              <div className="w-28 md:hidden">
+                <RadarPanel player={player} signals={gameState.signals} ownerId={self.id} rangeTiles={creatureModifiers.radarRangeTiles + radarRangeBonus} precisionMultiplier={radarPrecision} />
+              </div>
+            </div>
+          </aside>
+        )}
 
-      {!isUiHidden && (
-        <ActionControls
-          activeAction={activeAction}
-          cooldownRemaining={attackCooldownRemaining}
-          moveCooldownRemaining={moveCooldownRemaining}
-          parryCooldownRemaining={parryCooldownRemaining}
-          isRecovering={attackCooldownRemaining > 0 || isStunned}
-          isParrying={isParrying}
-          onMove={() => setActiveAction("move")}
-          onAttack={handleAttack}
-          onDefend={handleDefend}
-        />
-      )}
+        <main className="min-h-0 min-w-0 overflow-hidden rounded-[1.15rem] border border-white/5 md:col-start-2">
+          <GameMap
+            player={player}
+            playerCharacterId={authoritativeCharacter.id}
+            enemy={enemy}
+            enemies={gameState.enemies}
+            otherPlayers={gameState.otherPlayers}
+            signals={gameState.signals}
+            activeAction={activeAction}
+            isDefending={isParrying}
+            currentZone={currentZone}
+            gameStatus={gameStatus}
+            visionRadius={VISION_RADIUS + visionRangeBonus * TILE_SIZE}
+            tiles={caveTiles}
+            traps={gameState.traps}
+            sanityStage={self.combat.sanityStage}
+            exhaustedShelters={gameState.exhaustedShelters}
+            reachableTiles={reachableTiles}
+            attackableTiles={attackableTiles}
+            selectedPath={pathPreview}
+            isMoveReady={isMoveReady}
+            onChooseDestination={handleMoveIntent}
+          />
+        </main>
+
+        {!isUiHidden && (
+          <div className="min-w-0 md:col-start-2 md:row-start-2">
+            <ActionControls
+              activeAction={activeAction}
+              cooldownRemaining={attackCooldownRemaining}
+              moveCooldownRemaining={moveCooldownRemaining}
+              parryCooldownRemaining={parryCooldownRemaining}
+              isRecovering={attackCooldownRemaining > 0 || isStunned}
+              isParrying={isParrying}
+              onMove={() => setActiveAction("move")}
+              onAttack={handleAttack}
+              onDefend={handleDefend}
+              abilityName={creatureAbilities[authoritativeCharacter.id].name}
+              abilityCooldownRemaining={abilityCooldownRemaining}
+              abilityDisabled={isStunned}
+              onAbility={handleAbility}
+            />
+          </div>
+        )}
+      </div>
 
       <GameOverlay
         status={gameStatus}

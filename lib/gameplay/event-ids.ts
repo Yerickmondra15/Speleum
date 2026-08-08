@@ -10,7 +10,7 @@ function normalizePart(value: string) {
  * event is created only by the active authority (server or offline session).
  */
 export function createGameplayEventId(
-  kind: "signal" | "noise",
+  kind: "signal" | "noise" | "trap",
   ownerId: string | undefined,
   createdAt: number,
 ) {

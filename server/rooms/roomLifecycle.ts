@@ -15,6 +15,7 @@ import {
   hitHazard,
   pickSeparatedSpawns,
   resolveCombatHit,
+  resolveMissedParry,
   selectNearestReachableTarget,
   transitionEnemyToDead,
   updateEnemyState,
@@ -29,6 +30,21 @@ import {
 } from "../../lib/creature-gameplay";
 import { createResultReceipt } from "../../lib/multiplayer/tickets";
 import { createGameplayEventId } from "../../lib/gameplay/event-ids";
+import {
+  cancelRegenerationOnDamage,
+  createAbilityState,
+  getAbilityModifiers,
+  pruneAbilityState,
+} from "../../lib/gameplay/abilities";
+import { createSanityState, updateSanityForPosition } from "../../lib/gameplay/sanity";
+import {
+  clampHealing,
+  noiseTerrainMultiplier,
+  percentageHealing,
+  updateShelterRecovery,
+} from "../../lib/gameplay/survival";
+import { SURVIVAL_RULES } from "../../lib/gameplay/rules";
+import { worldToTile } from "../../app/play/tileMap";
 import { calculateCompetitiveScore } from "../game/scoring";
 import type { ServerContext, ServerPlayerState, ServerRoomState } from "../types";
 import {
@@ -52,6 +68,11 @@ export function createInitialCombatState(characterId: string) {
     parryCooldownRemaining: 0,
     parryWindowRemaining: 0,
     stunRemaining: 0,
+    abilityCooldownRemaining: 0,
+    abilityActiveRemaining: 0,
+    sanityStage: "stable" as const,
+    idleDurationMs: 0,
+    shelterProgress: 0,
     kills: 0,
     damageDealt: 0,
     eliminatedAt: null,
@@ -153,8 +174,20 @@ export function startRoom(room: ServerRoomState, context: ServerContext, now = D
   room.finishedAt = null;
   room.winnerId = null;
   room.message = "La cueva se cierra. Sobrevive la ultima criatura.";
-  const entries = [...room.players.values()].filter((player) => player.connected);
-  const spawns = pickSeparatedSpawns(room.cave, room.tileLookup, entries.length);
+  const entries = [...room.players.values()]
+    .filter((player) => player.connected)
+    .sort((left, right) => {
+      const leftKey = `${room.matchId}:${left.id}`;
+      const rightKey = `${room.matchId}:${right.id}`;
+      return leftKey.localeCompare(rightKey);
+    });
+  const spawns = pickSeparatedSpawns(
+    room.cave,
+    room.tileLookup,
+    entries.length,
+    undefined,
+    `${room.cave.seed}:${room.matchId}`,
+  );
 
   entries.forEach((player, index) => {
     player.status = "playing";
@@ -166,13 +199,21 @@ export function startRoom(room: ServerRoomState, context: ServerContext, now = D
     player.lastParryAt = 0;
     player.moveCooldownUntil = 0;
     player.movementPath = [];
+    player.movementNoiseMultiplier = 1;
     player.parryUntil = 0;
     player.stunnedUntil = 0;
     player.resultReceipt = null;
+    player.abilityState = createAbilityState();
+    player.lastAbilityTickAt = now;
+    const spawnTile = worldToTile(player.position);
+    player.sanityState = createSanityState(now, `${spawnTile.col},${spawnTile.row}`);
+    player.shelterState = { shelterKey: null, enteredAt: null, progress: 0 };
   });
 
   room.noises = [];
   room.signals = [];
+  room.traps = [];
+  room.exhaustedShelters.clear();
   room.enemies = room.cave.enemyConfigs.map((config) => createEnemyState(config, now));
   markRoomActivity(room, context, now);
 }
@@ -243,6 +284,14 @@ export function eliminatePlayer(
 
   if (attacker && attacker.id !== player.id) {
     attacker.combat.kills += 1;
+    attacker.combat.health = clampHealing(
+      attacker.combat.health,
+      attacker.combat.maxHealth,
+      percentageHealing(
+        attacker.combat.maxHealth,
+        SURVIVAL_RULES.multiplayer.playerKillHealFraction,
+      ),
+    );
   }
 
   return true;
@@ -311,7 +360,40 @@ export function evaluateRoom(room: ServerRoomState, context: ServerContext, now 
     return;
   }
 
+  room.traps = room.traps.filter((trap) => trap.expiresAt > now);
+
   for (const player of room.players.values()) {
+    const missedParry = resolveMissedParry({
+      parryUntil: player.parryUntil,
+      stunnedUntil: player.stunnedUntil,
+      now,
+    });
+    if (missedParry.missed) {
+      player.parryUntil = missedParry.nextParryUntil;
+      player.stunnedUntil = missedParry.nextStunnedUntil;
+      player.movementPath = [];
+      room.message = `${player.name} bloqueó en falso y quedó expuesto.`;
+    }
+    const regeneration = player.abilityState.activeEffects.find(
+      (effect) => effect.kind === "health-regeneration" && effect.expiresAt > player.lastAbilityTickAt,
+    );
+    if (regeneration && player.status === "playing") {
+      const overlapEnd = Math.min(now, regeneration.expiresAt);
+      const elapsed = Math.max(0, overlapEnd - Math.max(player.lastAbilityTickAt, regeneration.startedAt));
+      const totalDuration = Math.max(1, regeneration.expiresAt - regeneration.startedAt);
+      player.combat.health = clampHealing(
+        player.combat.health,
+        player.combat.maxHealth,
+        player.combat.maxHealth * regeneration.value * (elapsed / totalDuration),
+      );
+    }
+    player.lastAbilityTickAt = now;
+    player.abilityState = pruneAbilityState(player.abilityState, now);
+    player.combat.abilityCooldownRemaining = Math.max(0, player.abilityState.cooldownUntil - now);
+    player.combat.abilityActiveRemaining = Math.max(
+      0,
+      ...player.abilityState.activeEffects.map((effect) => effect.expiresAt - now),
+    );
     player.combat.isParrying = player.parryUntil > now;
     player.combat.isStunned = player.stunnedUntil > now;
     player.combat.moveCooldownRemaining = Math.max(0, player.moveCooldownUntil - now);
@@ -330,9 +412,80 @@ export function evaluateRoom(room: ServerRoomState, context: ServerContext, now 
       if (nextStep) {
         player.position = nextStep;
         player.lastMoveAt = now;
+        const playerTile = worldToTile(player.position);
+        const trap = room.traps.find((entry) => {
+          const trapTile = worldToTile(entry.position);
+          return (
+            entry.ownerId !== player.id &&
+            trapTile.col === playerTile.col &&
+            trapTile.row === playerTile.row
+          );
+        });
+        if (trap) {
+          player.stunnedUntil = Math.max(player.stunnedUntil, now + trap.stunMs);
+          player.movementPath = [];
+          room.traps = room.traps.filter((entry) => entry.id !== trap.id);
+          room.message = `${player.name} quedó atrapado en seda.`;
+        }
         addSignal(room, "move", player.position, player.id);
         const noise = applyCreatureNoise(6, 0.45, player.characterId);
-        addNoise(room, "move", player.position, noise.radiusTiles, noise.intensity, player.id, now);
+        const terrainNoise = noiseTerrainMultiplier(player.position, room.tileLookup);
+        addNoise(
+          room,
+          "move",
+          player.position,
+          Math.max(
+            1,
+            Math.round(noise.radiusTiles * terrainNoise * player.movementNoiseMultiplier),
+          ),
+          noise.intensity * terrainNoise * player.movementNoiseMultiplier,
+          player.id,
+          now,
+        );
+        if (player.movementPath.length === 0) {
+          player.movementNoiseMultiplier = 1;
+        }
+      }
+    }
+
+    if (player.connected && player.status === "playing") {
+      const shelter = updateShelterRecovery({
+        state: player.shelterState,
+        position: player.position,
+        lookup: room.tileLookup,
+        now,
+        exhaustedShelters: room.exhaustedShelters,
+      });
+      player.shelterState = shelter.state;
+      player.combat.shelterProgress = shelter.state.progress;
+      if (shelter.ready && shelter.state.shelterKey) {
+        player.combat.health = clampHealing(
+          player.combat.health,
+          player.combat.maxHealth,
+          percentageHealing(player.combat.maxHealth, SURVIVAL_RULES.shelter.healFraction),
+        );
+        room.exhaustedShelters.add(shelter.state.shelterKey);
+        player.shelterState = { ...shelter.state, enteredAt: null, progress: 0 };
+        player.combat.shelterProgress = 0;
+        room.message = `${player.name} agotó la energía de un refugio.`;
+      }
+
+      const tile = worldToTile(player.position);
+      const sanity = updateSanityForPosition({
+        state: player.sanityState,
+        positionKey: `${tile.col},${tile.row}`,
+        now,
+        maxHealth: player.combat.maxHealth,
+      });
+      player.sanityState = sanity.state;
+      player.combat.sanityStage = sanity.state.stage;
+      player.combat.idleDurationMs = sanity.state.idleDurationMs;
+      if (sanity.damage > 0) {
+        player.combat.health = Math.max(0, player.combat.health - sanity.damage);
+        room.message = `${player.name} escucha a la cueva acercarse: debe moverse.`;
+        if (player.combat.health <= 0) {
+          eliminatePlayer(room, player, `${player.name} cedió al encierro de la cueva.`, null, now);
+        }
       }
     }
   }
@@ -414,7 +567,11 @@ export function evaluateRoom(room: ServerRoomState, context: ServerContext, now 
       updated.state === "attacking" &&
       now >= updated.nextAttackAt
     ) {
-      const damage = applyCreatureIncomingDamage(updated.damage, target.characterId);
+      const abilityDefense = getAbilityModifiers(target.abilityState, now).incomingDamageMultiplier;
+      const damage = Math.max(
+        0,
+        Math.round(applyCreatureIncomingDamage(updated.damage, target.characterId) * abilityDefense),
+      );
       const resolution = resolveCombatHit({
         targetHealth: target.combat.health,
         damage,
@@ -422,6 +579,11 @@ export function evaluateRoom(room: ServerRoomState, context: ServerContext, now 
         targetParryUntil: target.parryUntil,
       });
       target.combat.health = resolution.nextHealth;
+      target.abilityState = cancelRegenerationOnDamage(
+        target.abilityState,
+        resolution.damageApplied,
+        target.combat.maxHealth,
+      );
       target.parryUntil = resolution.nextParryUntil;
       addSignal(room, "attack", updated, enemy.id);
       addNoise(room, "attack", updated, 8, 1.1, enemy.id, now);
@@ -450,6 +612,18 @@ export function evaluateRoom(room: ServerRoomState, context: ServerContext, now 
     }
 
     if (moved) {
+      const enemyTile = worldToTile(updated);
+      const trap = room.traps.find(
+        (entry) =>
+          entry.ownerId !== updated.id &&
+          worldToTile(entry.position).col === enemyTile.col &&
+          worldToTile(entry.position).row === enemyTile.row,
+      );
+      if (trap) {
+        updated.stunnedUntil = Math.max(updated.stunnedUntil, now + trap.stunMs);
+        room.traps = room.traps.filter((entry) => entry.id !== trap.id);
+        room.message = `${updated.name} quedó atrapada en seda.`;
+      }
       addSignal(room, "move", updated, enemy.id);
     }
 
@@ -582,7 +756,11 @@ export function attackPlayerTargets(
   let inflictedDamage = 0;
 
   if (target.kind === "player") {
-    const defendedDamage = applyCreatureIncomingDamage(attackDamage, target.player.characterId);
+    const abilityDefense = getAbilityModifiers(target.player.abilityState, now).incomingDamageMultiplier;
+    const defendedDamage = Math.max(
+      0,
+      Math.round(applyCreatureIncomingDamage(attackDamage, target.player.characterId) * abilityDefense),
+    );
     const resolution = resolveCombatHit({
       targetHealth: target.player.combat.health,
       damage: defendedDamage,
@@ -591,6 +769,11 @@ export function attackPlayerTargets(
       attackerStunnedUntil: attacker.stunnedUntil,
     });
     target.player.combat.health = resolution.nextHealth;
+    target.player.abilityState = cancelRegenerationOnDamage(
+      target.player.abilityState,
+      resolution.damageApplied,
+      target.player.combat.maxHealth,
+    );
     target.player.parryUntil = resolution.nextParryUntil;
     attacker.stunnedUntil = resolution.attackerStunnedUntil;
     inflictedDamage = resolution.damageApplied;

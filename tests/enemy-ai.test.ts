@@ -4,6 +4,7 @@ import type { EnemyConfig } from "@/app/play/gameConfig";
 import { TILE_SIZE } from "@/app/play/gameConfig";
 import {
   createEnemyState,
+  createLocalEnemyTargets,
   selectNearestReachableTarget,
   updateEnemyState,
 } from "@/app/play/gameLogic";
@@ -88,7 +89,9 @@ describe("IA autoritativa y determinista", () => {
     expect(worldToTile(first)).toEqual({ col: 1, row: 1 });
     expect({ x: second.x, y: second.y }).toEqual({ x: first.x, y: first.y });
     expect(second.lastMoveAt).toBe(now);
-    expect(second.nextMoveAt).toBe(now + calculateEnemyMoveCooldown(config.chaseSpeed));
+    expect(second.nextMoveAt).toBe(
+      now + calculateEnemyMoveCooldown(config.chaseSpeed, config.behavior, config.id, true),
+    );
   });
 
   it("un salto grande de reloj produce como maximo un paso, sin catch-up", () => {
@@ -111,9 +114,14 @@ describe("IA autoritativa y determinista", () => {
     const patrolling = update(createEnemyState(config, now), config, now, null, lookup);
     const chasing = update(createEnemyState(config, now), config, now, 5, lookup);
 
-    expect(patrolling.nextMoveAt - now).toBe(calculateEnemyMoveCooldown(config.speed));
-    expect(chasing.nextMoveAt - now).toBe(calculateEnemyMoveCooldown(config.chaseSpeed));
-    expect(chasing.nextMoveAt - now).toBeLessThan(patrolling.nextMoveAt - now);
+    expect(patrolling.nextMoveAt - now).toBe(
+      calculateEnemyMoveCooldown(config.speed, config.behavior, config.id, false),
+    );
+    expect(chasing.nextMoveAt - now).toBe(
+      calculateEnemyMoveCooldown(config.chaseSpeed, config.behavior, config.id, true),
+    );
+    expect(chasing.nextMoveAt - now).toBeGreaterThanOrEqual(900);
+    expect(chasing.nextMoveAt - now).toBeLessThanOrEqual(1_020);
   });
 
   it("congela la ultima posicion vista cuando el objetivo sale de deteccion", () => {
@@ -203,5 +211,21 @@ describe("IA autoritativa y determinista", () => {
     );
 
     expect(selected?.id).toBe("a-target");
+  });
+
+  it("offline solo entrega al jugador humano como objetivo, nunca otra IA", () => {
+    expect(createLocalEnemyTargets(tileToWorld({ col: 2, row: 1 }))).toEqual([
+      { id: "player", position: tileToWorld({ col: 2, row: 1 }), alive: true },
+    ]);
+  });
+
+  it("respeta paredes y nunca atraviesa más de una celda", () => {
+    const now = 80_000;
+    const config = enemyConfig({ detectionRange: TILE_SIZE * 20 });
+    const lookup = lookupFromGrid(["............", ".#..........", "............"]);
+    const initial = createEnemyState(config, now);
+    const moved = update(initial, config, now, 5, lookup);
+    expect(worldToTile(moved)).not.toEqual({ col: 1, row: 1 });
+    expect(tileDistance(worldToTile(initial), worldToTile(moved))).toBe(1);
   });
 });

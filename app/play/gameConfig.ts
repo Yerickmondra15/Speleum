@@ -18,6 +18,7 @@ import {
   MAP_COLS,
   MAP_ROWS,
   MAX_HEALTH,
+  MISSED_PARRY_STUN_MS,
   MOVE_BASE_COOLDOWN,
   MOVE_BURST_IDLE_MS,
   MOVE_DISTANCE_COOLDOWN,
@@ -54,6 +55,7 @@ export {
   MAP_COLS,
   MAP_ROWS,
   MAX_HEALTH,
+  MISSED_PARRY_STUN_MS,
   MOVE_BASE_COOLDOWN,
   MOVE_BURST_IDLE_MS,
   MOVE_DISTANCE_COOLDOWN,
@@ -106,7 +108,7 @@ export type CharacterOption = {
   imageIllustration: string;
 };
 
-export type ActionKind = "move" | "attack" | "defend";
+export type ActionKind = "move" | "attack" | "defend" | "ability";
 export type GameStatus = "playing" | "won" | "lost" | "paused";
 
 export type PlayerPosition = {
@@ -176,7 +178,7 @@ export const MAX_ROOM_PLAYERS = MAX_PLAYERS;
 export const SCORE_PER_KILL_FALLBACK = 80;
 export const SCORE_PER_LOCAL_VICTORY = 180;
 export const ENEMY_CLOSE_DANGER_TILES = 4;
-export const PLAYER_SPAWN_MIN_DISTANCE_TILES = 10;
+export const PLAYER_SPAWN_MIN_DISTANCE_TILES = 6;
 export const SPAWN_HAZARD_BUFFER_TILES = 2;
 export const SPAWN_ENEMY_BUFFER_TILES = 3;
 

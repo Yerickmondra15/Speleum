@@ -12,6 +12,8 @@ import { TILE_SIZE } from "@/app/play/gameConfig";
 import {
   buildTileMap,
   createTileLookup,
+  getTileAt,
+  getTileNeighbors,
   tileDistance,
   worldToTile,
 } from "@/app/play/tileMap";
@@ -95,6 +97,31 @@ describe("generacion de cuevas", () => {
         0,
       );
       expect(countConnectedTemplateTiles(template), template.id).toBe(openTiles);
+      expect(template.entrances.length, template.id).toBeGreaterThanOrEqual(4);
+    }
+  });
+
+  it("mantiene accesibles todos los tiles seguros sin obligar a cruzar H", () => {
+    for (let index = 0; index < 32; index += 1) {
+      const layout = createCaveLayout(`safe-route-${index}`);
+      const lookup = createTileLookup(buildTileMap(layout));
+      const queue = [worldToTile(layout.startPosition)];
+      const visited = new Set<string>();
+
+      for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 1) {
+        const tile = queue[queueIndex]!;
+        const key = `${tile.col},${tile.row}`;
+        if (visited.has(key)) continue;
+        const cell = getTileAt(tile, lookup);
+        if (!cell?.walkable || cell.type === "hazard") continue;
+        visited.add(key);
+        queue.push(...getTileNeighbors(tile));
+      }
+
+      const safeTiles = lookup.tiles.filter(
+        (tile) => tile.walkable && tile.type !== "hazard",
+      );
+      expect(visited.size, layout.seed).toBe(safeTiles.length);
     }
   });
 
@@ -194,6 +221,49 @@ describe("generacion de cuevas", () => {
         expect(
           tileDistance(worldToTile(spawns[left]!), worldToTile(spawns[right]!)),
         ).toBeGreaterThanOrEqual(4);
+      }
+    }
+  });
+
+  it("conserva significado mecánico distinto para H, W, R, N y S", () => {
+    const layout = createCaveLayout("tile-semantics");
+    const rows = layout.tileRows.map((row) => [...row]);
+    ["H", "W", "R", "N", "S"].forEach((char, index) => {
+      rows[1]![index + 1] = char;
+    });
+    const lookup = createTileLookup(buildTileMap({ ...layout, tileRows: rows.map((row) => row.join("")) }));
+    expect(getTileAt({ col: 1, row: 1 }, lookup)).toMatchObject({ type: "hazard", walkable: true });
+    expect(getTileAt({ col: 2, row: 1 }, lookup)).toMatchObject({ type: "water", walkable: true });
+    expect(getTileAt({ col: 3, row: 1 }, lookup)).toMatchObject({ type: "shelter", walkable: true });
+    expect(getTileAt({ col: 4, row: 1 }, lookup)).toMatchObject({ type: "nest", walkable: true });
+    expect(getTileAt({ col: 5, row: 1 }, lookup)).toMatchObject({ type: "spawn", walkable: true });
+  });
+
+  it("elige conjuntos reproducibles pero diferentes por partida", () => {
+    const layout = createCaveLayout("spawn-randomization");
+    const lookup = createTileLookup(buildTileMap(layout));
+    const first = pickSeparatedSpawns(layout, lookup, 4, 4, "match-a");
+    const repeated = pickSeparatedSpawns(layout, lookup, 4, 4, "match-a");
+    const second = pickSeparatedSpawns(layout, lookup, 4, 4, "match-b");
+    expect(repeated).toEqual(first);
+    expect(second).not.toEqual(first);
+    for (const spawn of [...first, ...second]) {
+      const cell = getTileAt(worldToTile(spawn), lookup);
+      expect(cell?.walkable).toBe(true);
+      expect(["wall", "obstacle", "hazard"]).not.toContain(cell?.type);
+    }
+  });
+
+  it("encuentra seis spawns con separación mínima para una sala llena", () => {
+    for (let index = 0; index < 24; index += 1) {
+      const layout = createCaveLayout(`full-room-spawns-${index}`);
+      const lookup = createTileLookup(buildTileMap(layout));
+      const spawns = pickSeparatedSpawns(layout, lookup, 6, 6, `match-${index}`);
+      expect(spawns, layout.seed).toHaveLength(6);
+      for (let left = 0; left < spawns.length; left += 1) {
+        for (let right = left + 1; right < spawns.length; right += 1) {
+          expect(tileDistance(worldToTile(spawns[left]!), worldToTile(spawns[right]!))).toBeGreaterThanOrEqual(6);
+        }
       }
     }
   });

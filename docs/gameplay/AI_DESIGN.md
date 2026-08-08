@@ -24,7 +24,7 @@ Cada enemigo conserva `lastMoveAt`, `nextMoveAt`, `lastAttackAt` y `nextAttackAt
 - Si `now < nextAttackAt`, no hay golpe ni señal de ataque.
 - Cada evaluación permite como máximo un paso y un golpe.
 - Tras lag se programa desde `now + cooldown`; nunca se usa un bucle de recuperación.
-- `speed` y `chaseSpeed` se convierten en milisegundos por tile mediante la regla compartida.
+- En persecución, el cooldown queda entre 900 y 1.020 ms según comportamiento: apenas más rápido que el mínimo de 1.000 ms del jugador. Fuera de persecución baja el ritmo a 1.000–1.400 ms.
 
 ## Percepción sin omnisciencia
 
@@ -37,6 +37,8 @@ El ruido se puntúa por tipo, intensidad, radio y distancia. Un evento inaudible
 Los waypoints procedurales deben ser tiles caminables y estar en el componente conectado del mapa. Si un camino deja de existir, la IA avanza al siguiente waypoint en vez de oscilar indefinidamente.
 
 `territorial` puede quedarse quieta en su origen y `ambusher` puede esperar sin estímulo: esos son comportamientos intencionales, no un fallo de timer.
+
+Offline construye la lista de objetivos exclusivamente con el jugador humano. Multijugador la construye con jugadores vivos y conectados. Una IA nunca recibe otra IA como objetivo.
 
 ## Muerte
 

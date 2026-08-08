@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { createRadarSignal, pruneExpiredRadarSignals, upsertRadarSignal } from "@/app/play/signalUtils";
+import {
+  collapseRadarSignals,
+  createRadarSignal,
+  pruneExpiredRadarSignals,
+  upsertRadarSignal,
+} from "@/app/play/signalUtils";
 import {
   applyCreatureIncomingDamage,
   applyCreatureNoise,
@@ -10,6 +15,9 @@ import {
 } from "@/lib/creature-gameplay";
 import { creatures } from "@/lib/creatures";
 import { creatureIdSchema } from "@/lib/validation/schemas";
+import { creatureAbilities } from "@/lib/gameplay/abilities";
+import { approximateRadarPosition, tileDistance } from "@/app/play/tileMap";
+import { TILE_VISION_RADIUS } from "@/app/play/gameConfig";
 
 describe("radar y criaturas", () => {
   it("crea y combina pulsos de movimiento cercanos", () => {
@@ -34,6 +42,29 @@ describe("radar y criaturas", () => {
     const signals = upsertRadarSignal([first], next);
     expect(signals).toHaveLength(1);
     expect(signals[0]).toMatchObject({ x: 110, y: 110, createdAt: 1_100 });
+  });
+
+  it("mantiene un solo eco relevante por criatura", () => {
+    const move = createRadarSignal({
+      type: "move",
+      strength: "low",
+      position: { x: 100, y: 100 },
+      duration: 1_050,
+      radarJitter: 1,
+      ownerId: "enemy-1",
+      createdAt: 1_000,
+    });
+    const danger = createRadarSignal({
+      type: "danger",
+      strength: "medium",
+      position: { x: 110, y: 110 },
+      duration: 1_450,
+      radarJitter: 1,
+      ownerId: "enemy-1",
+      createdAt: 1_050,
+    });
+
+    expect(collapseRadarSignals([move, danger])).toEqual([danger]);
   });
 
   it("asigna IDs distintos a eventos creados en el mismo milisegundo", () => {
@@ -91,5 +122,25 @@ describe("radar y criaturas", () => {
     expect(applyCreatureIncomingDamage(30, "cave-crab")).toBeLessThan(30);
     expect(applyCreatureOutgoingDamage(30, "cave-spider")).toBeGreaterThan(30);
     expect(applyCreatureNoise(6, 1, "cave-shrimp")).toMatchObject({ radiusTiles: 3, intensity: 0.55 });
+  });
+
+  it("mantiene actualizada la habilidad mostrada en las páginas públicas", () => {
+    for (const creature of creatures) {
+      expect(creature.habilidad).toContain(creatureAbilities[creature.id].name);
+      expect(creature.habilidad).toMatch(/Cooldown:/);
+    }
+  });
+
+  it("el radar detecta fuera de la visión y escala con el rango real", () => {
+    const origin = { col: 10, row: 10 };
+    const distant = { col: 22, row: 10 };
+    expect(tileDistance(origin, distant)).toBeGreaterThan(TILE_VISION_RADIUS);
+    expect(tileDistance(origin, distant)).toBeLessThanOrEqual(
+      getCreatureGameplayModifiers("cave-axolotl").radarRangeTiles,
+    );
+    expect(approximateRadarPosition(origin, distant, 0, 1, 18)).not.toEqual(
+      approximateRadarPosition(origin, distant, 0, 1, 12),
+    );
+    expect(getCreatureGameplayModifiers("blind-fish").radarRangeTiles).toBe(22);
   });
 });

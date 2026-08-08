@@ -2,28 +2,25 @@ import type { CreatureId } from "@/lib/creatures";
 import { TILE_SIZE } from "@/lib/gameplay/rules";
 
 export type AbilityEffectKind =
+  | "health-regeneration"
   | "radar-range"
   | "radar-precision"
+  | "vision-range"
   | "move-range"
   | "noise-multiplier"
-  | "incoming-damage-multiplier";
+  | "incoming-damage-multiplier"
+  | "movement-locked";
 
 export type AbilityDefinition = {
   id: string;
   creatureId: CreatureId;
   name: string;
+  description: string;
   cooldownMs: number;
   durationMs: number;
   targetRangeTiles: number;
-  effects: Array<{
-    kind: AbilityEffectKind;
-    value: number;
-    consumesOn?: "move";
-  }>;
-  emitsDecoyNoise?: {
-    radiusTiles: number;
-    intensity: number;
-  };
+  effects: Array<{ kind: AbilityEffectKind; value: number; consumesOn?: "move" }>;
+  trap?: { durationMs: number; stunMs: number };
 };
 
 export type ActiveAbilityEffect = {
@@ -31,31 +28,31 @@ export type ActiveAbilityEffect = {
   kind: AbilityEffectKind;
   value: number;
   expiresAt: number;
+  startedAt: number;
   consumesOn?: "move";
 };
 
-export type AbilityState = {
-  cooldownUntil: number;
-  activeEffects: ActiveAbilityEffect[];
+export type AbilityState = { cooldownUntil: number; activeEffects: ActiveAbilityEffect[] };
+export type AbilityPosition = { x: number; y: number };
+export type SilkTrap = {
+  id: string;
+  ownerId: string;
+  position: AbilityPosition;
+  createdAt: number;
+  expiresAt: number;
+  stunMs: number;
 };
 
-export type AbilityPosition = { x: number; y: number };
-
 export type AbilityGameplayEvent = {
-  type: "decoy-noise";
+  type: "silk-trap";
   abilityId: string;
   position: AbilityPosition;
-  radiusTiles: number;
-  intensity: number;
+  durationMs: number;
+  stunMs: number;
 };
 
 export type AbilityActivationResult =
-  | {
-      ok: true;
-      definition: AbilityDefinition;
-      state: AbilityState;
-      events: AbilityGameplayEvent[];
-    }
+  | { ok: true; definition: AbilityDefinition; state: AbilityState; events: AbilityGameplayEvent[] }
   | {
       ok: false;
       reason: "dead" | "stunned" | "cooldown" | "target-required" | "target-out-of-range";
@@ -64,62 +61,65 @@ export type AbilityActivationResult =
 
 export const creatureAbilities: Record<CreatureId, AbilityDefinition> = {
   "cave-axolotl": {
-    id: "echo-focus",
+    id: "cavern-regeneration",
     creatureId: "cave-axolotl",
-    name: "Enfoque de eco",
-    cooldownMs: 12_000,
-    durationMs: 5_000,
+    name: "Regeneración cavernícola",
+    description: "Recupera 18% de la vida máxima durante 4.5 s; un golpe de 12% o más la cancela.",
+    cooldownMs: 32_000,
+    durationMs: 4_500,
     targetRangeTiles: 0,
-    effects: [
-      { kind: "radar-range", value: 3 },
-      { kind: "radar-precision", value: 0.65 },
-    ],
+    effects: [{ kind: "health-regeneration", value: 0.18 }],
   },
   "cave-shrimp": {
-    id: "silent-surge",
+    id: "ghost-surge",
     creatureId: "cave-shrimp",
-    name: "Impulso silencioso",
-    cooldownMs: 10_000,
-    durationMs: 4_000,
+    name: "Impulso fantasma",
+    description: "El siguiente desplazamiento gana 2 tiles y apenas produce ruido.",
+    cooldownMs: 17_000,
+    durationMs: 6_000,
     targetRangeTiles: 0,
     effects: [
-      { kind: "move-range", value: 1, consumesOn: "move" },
-      { kind: "noise-multiplier", value: 0.25, consumesOn: "move" },
+      { kind: "move-range", value: 2, consumesOn: "move" },
+      { kind: "noise-multiplier", value: 0.15, consumesOn: "move" },
     ],
   },
   "blind-fish": {
-    id: "current-sense",
+    id: "echolocation",
     creatureId: "blind-fish",
-    name: "Lectura de corrientes",
-    cooldownMs: 14_000,
+    name: "Ecolocalización",
+    description: "Amplía la visión 6 tiles, extiende el radar y reduce su imprecisión durante 5 s.",
+    cooldownMs: 22_000,
     durationMs: 5_000,
     targetRangeTiles: 0,
     effects: [
-      { kind: "radar-range", value: 5 },
-      { kind: "radar-precision", value: 0.4 },
+      { kind: "radar-range", value: 10 },
+      { kind: "radar-precision", value: 0.35 },
+      { kind: "vision-range", value: 6 },
     ],
   },
   "cave-crab": {
-    id: "stone-shell",
+    id: "fortified-shell",
     creatureId: "cave-crab",
-    name: "Caparazón pétreo",
-    cooldownMs: 15_000,
-    durationMs: 3_000,
+    name: "Caparazón",
+    description: "Reduce 70% del daño durante 2.5 s, pero inmoviliza mientras está cerrado.",
+    cooldownMs: 24_000,
+    durationMs: 2_500,
     targetRangeTiles: 0,
-    effects: [{ kind: "incoming-damage-multiplier", value: 0.55 }],
+    effects: [
+      { kind: "incoming-damage-multiplier", value: 0.3 },
+      { kind: "movement-locked", value: 1 },
+    ],
   },
   "cave-spider": {
-    id: "false-echo",
+    id: "silk-trap",
     creatureId: "cave-spider",
-    name: "Eco falso",
-    cooldownMs: 13_000,
+    name: "Trampa de seda",
+    description: "Deja una trampa 11 s; el primer hostil que la pisa queda aturdido 1.5 s.",
+    cooldownMs: 28_000,
     durationMs: 0,
-    targetRangeTiles: 4,
+    targetRangeTiles: 1,
     effects: [],
-    emitsDecoyNoise: {
-      radiusTiles: 9,
-      intensity: 1.05,
-    },
+    trap: { durationMs: 11_000, stunMs: 1_500 },
   },
 };
 
@@ -128,10 +128,7 @@ export function createAbilityState(): AbilityState {
 }
 
 export function pruneAbilityState(state: AbilityState, now: number): AbilityState {
-  return {
-    ...state,
-    activeEffects: state.activeEffects.filter((effect) => effect.expiresAt > now),
-  };
+  return { ...state, activeEffects: state.activeEffects.filter((effect) => effect.expiresAt > now) };
 }
 
 function positionDistanceTiles(left: AbilityPosition, right: AbilityPosition) {
@@ -160,87 +157,67 @@ export function activateCreatureAbility({
 }): AbilityActivationResult {
   const current = pruneAbilityState(state, now);
   const definition = creatureAbilities[creatureId];
-
-  if (!alive) {
-    return { ok: false, reason: "dead", state: current };
-  }
-  if (stunned) {
-    return { ok: false, reason: "stunned", state: current };
-  }
-  if (current.cooldownUntil > now) {
-    return { ok: false, reason: "cooldown", state: current };
-  }
+  if (!alive) return { ok: false, reason: "dead", state: current };
+  if (stunned) return { ok: false, reason: "stunned", state: current };
+  if (current.cooldownUntil > now) return { ok: false, reason: "cooldown", state: current };
   if (definition.targetRangeTiles > 0 && !targetPosition) {
     return { ok: false, reason: "target-required", state: current };
   }
   if (
-    targetPosition &&
-    definition.targetRangeTiles > 0 &&
+    targetPosition && definition.targetRangeTiles > 0 &&
     positionDistanceTiles(actorPosition, targetPosition) > definition.targetRangeTiles
   ) {
     return { ok: false, reason: "target-out-of-range", state: current };
   }
 
   const activeEffects = definition.effects.map((effect) => ({
+    ...effect,
     abilityId: definition.id,
-    kind: effect.kind,
-    value: effect.value,
+    startedAt: now,
     expiresAt: now + definition.durationMs,
-    consumesOn: effect.consumesOn,
   }));
   const events: AbilityGameplayEvent[] = [];
-
-  if (definition.emitsDecoyNoise && targetPosition) {
+  if (definition.trap && targetPosition) {
     events.push({
-      type: "decoy-noise",
+      type: "silk-trap",
       abilityId: definition.id,
       position: targetPosition,
-      ...definition.emitsDecoyNoise,
+      ...definition.trap,
     });
   }
 
   return {
     ok: true,
     definition,
-    state: {
-      cooldownUntil: now + definition.cooldownMs,
-      activeEffects: [...current.activeEffects, ...activeEffects],
-    },
+    state: { cooldownUntil: now + definition.cooldownMs, activeEffects: [...current.activeEffects, ...activeEffects] },
     events,
   };
 }
 
 export function getAbilityModifiers(state: AbilityState, now: number) {
   const active = pruneAbilityState(state, now).activeEffects;
-  const values = (kind: AbilityEffectKind) =>
-    active.filter((effect) => effect.kind === kind).map((effect) => effect.value);
-
+  const values = (kind: AbilityEffectKind) => active.filter((effect) => effect.kind === kind).map((effect) => effect.value);
   return {
     radarRangeBonusTiles: values("radar-range").reduce((sum, value) => sum + value, 0),
-    radarPrecisionMultiplier: values("radar-precision").reduce(
-      (result, value) => result * value,
-      1,
-    ),
+    radarPrecisionMultiplier: values("radar-precision").reduce((result, value) => result * value, 1),
+    visionRangeBonusTiles: values("vision-range").reduce((sum, value) => sum + value, 0),
     moveRangeBonusTiles: values("move-range").reduce((sum, value) => sum + value, 0),
-    noiseMultiplier: values("noise-multiplier").reduce(
-      (result, value) => result * value,
-      1,
-    ),
-    incomingDamageMultiplier: values("incoming-damage-multiplier").reduce(
-      (result, value) => result * value,
-      1,
-    ),
+    noiseMultiplier: values("noise-multiplier").reduce((result, value) => result * value, 1),
+    incomingDamageMultiplier: values("incoming-damage-multiplier").reduce((result, value) => result * value, 1),
+    movementLocked: values("movement-locked").some((value) => value > 0),
+    regenerationFraction: values("health-regeneration").reduce((sum, value) => sum + value, 0),
   };
 }
 
-export function consumeAbilityEffects(
-  state: AbilityState,
-  trigger: "move",
-  now: number,
-): AbilityState {
-  const current = pruneAbilityState(state, now);
+export function cancelRegenerationOnDamage(state: AbilityState, damage: number, maxHealth: number) {
+  if (damage < maxHealth * 0.12) return state;
   return {
-    ...current,
-    activeEffects: current.activeEffects.filter((effect) => effect.consumesOn !== trigger),
+    ...state,
+    activeEffects: state.activeEffects.filter((effect) => effect.kind !== "health-regeneration"),
   };
+}
+
+export function consumeAbilityEffects(state: AbilityState, trigger: "move", now: number): AbilityState {
+  const current = pruneAbilityState(state, now);
+  return { ...current, activeEffects: current.activeEffects.filter((effect) => effect.consumesOn !== trigger) };
 }

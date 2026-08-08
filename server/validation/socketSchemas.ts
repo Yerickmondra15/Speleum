@@ -61,6 +61,13 @@ export const playerMoveSchema = z
     message: "Se requiere un destino o direccion.",
   });
 
+export const playerAbilitySchema = z
+  .object({
+    roomCode: roomCodeSchema,
+    target: targetSchema.optional(),
+  })
+  .strict();
+
 export function parseSocketPayload<T>(schema: z.ZodType<T>, payload: unknown) {
   const parsed = schema.safeParse(payload);
   return parsed.success ? parsed.data : null;

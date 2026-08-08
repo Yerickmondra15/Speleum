@@ -25,6 +25,9 @@ export type TileType =
   | "wall"
   | "obstacle"
   | "hazard"
+  | "water"
+  | "shelter"
+  | "nest"
   | "spawn"
   | "goal"
   | "dark";
@@ -115,9 +118,13 @@ function tileTypeFromChar(char: string): TileType {
     return "wall";
   }
 
-  if (char === "H" || char === "W") {
+  if (char === "H") {
     return "hazard";
   }
+
+  if (char === "W") return "water";
+  if (char === "R") return "shelter";
+  if (char === "N") return "nest";
 
   if (char === "S") {
     return "spawn";
@@ -218,8 +225,12 @@ export function manhattanDistance(a: TileCoordinate, b: TileCoordinate) {
   return Math.abs(a.col - b.col) + Math.abs(a.row - b.row);
 }
 
-export function isTileVisible(origin: TileCoordinate, target: TileCoordinate) {
-  return tileDistance(origin, target) <= TILE_VISION_RADIUS;
+export function isTileVisible(
+  origin: TileCoordinate,
+  target: TileCoordinate,
+  radiusTiles = TILE_VISION_RADIUS,
+) {
+  return tileDistance(origin, target) <= radiusTiles;
 }
 
 export function stepTowardTile(
@@ -244,22 +255,25 @@ export function approximateRadarPosition(
   target: TileCoordinate,
   jitterTiles = 0,
   seed = 0,
+  rangeTiles = RADAR_SIGNAL_RANGE_TILES,
 ) {
   const deltaCol = Math.max(
-    -RADAR_SIGNAL_RANGE_TILES,
-    Math.min(RADAR_SIGNAL_RANGE_TILES, target.col - origin.col),
+    -rangeTiles,
+    Math.min(rangeTiles, target.col - origin.col),
   );
   const deltaRow = Math.max(
-    -RADAR_SIGNAL_RANGE_TILES,
-    Math.min(RADAR_SIGNAL_RANGE_TILES, target.row - origin.row),
+    -rangeTiles,
+    Math.min(rangeTiles, target.row - origin.row),
   );
-  const offsetX = (radarJitter(seed + target.col) - 0.5) * jitterTiles;
-  const offsetY = (radarJitter(seed + target.row + 99) - 0.5) * jitterTiles;
+  const distanceRatio = Math.min(1, tileDistance(origin, target) / Math.max(1, rangeTiles));
+  const distanceJitter = jitterTiles * (0.45 + distanceRatio * 0.85);
+  const offsetX = (radarJitter(seed + target.col) - 0.5) * distanceJitter;
+  const offsetY = (radarJitter(seed + target.row + 99) - 0.5) * distanceJitter;
 
   const normalizedX =
-    50 + ((deltaCol + offsetX) / RADAR_SIGNAL_RANGE_TILES) * 34;
+    50 + ((deltaCol + offsetX) / rangeTiles) * 42;
   const normalizedY =
-    50 + ((deltaRow + offsetY) / RADAR_SIGNAL_RANGE_TILES) * 34;
+    50 + ((deltaRow + offsetY) / rangeTiles) * 42;
 
   return {
     left: `${Math.round(normalizedX / 4) * 4}%`,

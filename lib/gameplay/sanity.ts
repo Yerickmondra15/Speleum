@@ -1,99 +1,92 @@
-export type SanityBand = "stable" | "tense" | "distorted" | "crisis";
+import { SURVIVAL_RULES } from "@/lib/gameplay/rules";
+
+export type SanityStage = "stable" | "warning" | "pressure" | "damaging";
+export type SanityBand = SanityStage;
 
 export type SanityState = {
-  value: number;
-  lastMeaningfulActionAt: number;
-  lastAppliedAt: Partial<Record<SanityEvent["type"], number>>;
+  lastMeaningfulMoveAt: number;
+  lastPositionKey: string;
+  idleDurationMs: number;
+  stage: SanityStage;
+  nextDamageAt: number;
 };
 
-export type SanityEvent =
-  | { type: "move" | "attack" | "defend" | "ability"; now: number }
-  | { type: "safe-zone"; now: number }
-  | { type: "took-damage"; now: number; amount: number }
-  | { type: "hostile-nearby"; now: number; distanceTiles: number }
-  | { type: "prolonged-idle"; now: number };
-
-const EVENT_COOLDOWNS: Partial<Record<SanityEvent["type"], number>> = {
-  "safe-zone": 5_000,
-  "hostile-nearby": 5_000,
-  "prolonged-idle": 7_000,
+export type SanityUpdate = {
+  state: SanityState;
+  damage: number;
 };
 
-function clampSanity(value: number) {
-  return Math.max(0, Math.min(100, Math.round(value)));
+export function createSanityState(now = 0, positionKey = "unknown"): SanityState {
+  return {
+    lastMeaningfulMoveAt: now,
+    lastPositionKey: positionKey,
+    idleDurationMs: 0,
+    stage: "stable",
+    nextDamageAt: now + SURVIVAL_RULES.sanity.damageAfterMs,
+  };
 }
 
-export function createSanityState(now = 0): SanityState {
+export function sanityStageForIdle(idleDurationMs: number): SanityStage {
+  if (idleDurationMs < SURVIVAL_RULES.sanity.warningAfterMs) return "stable";
+  if (idleDurationMs < 15_000) return "warning";
+  if (idleDurationMs < SURVIVAL_RULES.sanity.damageAfterMs) return "pressure";
+  return "damaging";
+}
+
+export function updateSanityForPosition({
+  state,
+  positionKey,
+  now,
+  maxHealth,
+  paused = false,
+}: {
+  state: SanityState;
+  positionKey: string;
+  now: number;
+  maxHealth: number;
+  paused?: boolean;
+}): SanityUpdate {
+  if (paused) return { state, damage: 0 };
+
+  if (positionKey !== state.lastPositionKey) {
+    return {
+      state: createSanityState(now, positionKey),
+      damage: 0,
+    };
+  }
+
+  const idleDurationMs = Math.max(0, now - state.lastMeaningfulMoveAt);
+  const stage = sanityStageForIdle(idleDurationMs);
+  let damage = 0;
+  let nextDamageAt = state.nextDamageAt;
+
+  if (stage === "damaging" && now >= nextDamageAt) {
+    damage = Math.max(1, Math.round(maxHealth * SURVIVAL_RULES.sanity.damageFraction));
+    nextDamageAt = now + SURVIVAL_RULES.sanity.damageIntervalMs;
+  }
+
   return {
-    value: 100,
-    lastMeaningfulActionAt: now,
-    lastAppliedAt: {},
+    state: { ...state, idleDurationMs, stage, nextDamageAt },
+    damage,
+  };
+}
+
+export function shiftSanityTimeline(state: SanityState, deltaMs: number): SanityState {
+  return {
+    ...state,
+    lastMeaningfulMoveAt: state.lastMeaningfulMoveAt + deltaMs,
+    nextDamageAt: state.nextDamageAt + deltaMs,
   };
 }
 
 export function getSanityBand(value: number): SanityBand {
-  if (value >= 70) return "stable";
-  if (value >= 40) return "tense";
-  if (value >= 20) return "distorted";
-  return "crisis";
+  return sanityStageForIdle(Math.max(0, 100 - value) * 200);
 }
 
-export function getSanityEffects(value: number) {
-  const band = getSanityBand(value);
-
-  if (band === "stable") {
-    return { radarJitterMultiplier: 1, falseSignalChance: 0, perceptionPenaltyTiles: 0 };
-  }
-  if (band === "tense") {
-    return { radarJitterMultiplier: 1.15, falseSignalChance: 0.04, perceptionPenaltyTiles: 0 };
-  }
-  if (band === "distorted") {
-    return { radarJitterMultiplier: 1.45, falseSignalChance: 0.12, perceptionPenaltyTiles: 1 };
-  }
-  return { radarJitterMultiplier: 1.8, falseSignalChance: 0.24, perceptionPenaltyTiles: 2 };
-}
-
-function eventDelta(state: SanityState, event: SanityEvent) {
-  switch (event.type) {
-    case "move":
-      return state.value < 70 ? 2 : 0;
-    case "attack":
-      return 2;
-    case "defend":
-      return 1;
-    case "ability":
-      return 3;
-    case "safe-zone":
-      return 6;
-    case "took-damage":
-      return -Math.min(18, Math.max(6, Math.round(event.amount * 0.45)));
-    case "hostile-nearby":
-      return event.distanceTiles <= 1 ? -10 : event.distanceTiles <= 3 ? -7 : -4;
-    case "prolonged-idle":
-      return event.now - state.lastMeaningfulActionAt >= 12_000 ? -6 : 0;
-  }
-}
-
-export function reduceSanity(state: SanityState, event: SanityEvent): SanityState {
-  const cooldown = EVENT_COOLDOWNS[event.type] ?? 0;
-  const lastAppliedAt = state.lastAppliedAt[event.type] ?? Number.NEGATIVE_INFINITY;
-
-  if (event.now - lastAppliedAt < cooldown) {
-    return state;
-  }
-
-  const meaningful = ["move", "attack", "defend", "ability"].includes(event.type);
-  const delta = eventDelta(state, event);
-
-  if (delta === 0 && !meaningful) {
-    return state;
-  }
-
-  return {
-    value: clampSanity(state.value + delta),
-    lastMeaningfulActionAt: meaningful ? event.now : state.lastMeaningfulActionAt,
-    lastAppliedAt: delta === 0
-      ? state.lastAppliedAt
-      : { ...state.lastAppliedAt, [event.type]: event.now },
-  };
+export function getSanityEffects(stageOrValue: SanityStage | number) {
+  const stage = typeof stageOrValue === "number" ? getSanityBand(stageOrValue) : stageOrValue;
+  if (stage === "stable") return { darkness: 0, vignette: 0, pulse: 0 };
+  if (stage === "warning") return { darkness: 0.12, vignette: 0.22, pulse: 0.12 };
+  if (stage === "pressure") return { darkness: 0.22, vignette: 0.4, pulse: 0.28 };
+  return { darkness: 0.32, vignette: 0.62, pulse: 0.48 };
 }

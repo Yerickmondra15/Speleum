@@ -19,7 +19,7 @@
 ## Producto y balance
 
 1. Telemetría anonimizada de duración, selección y resultados antes de ajustar modificadores.
-2. Habilidades activas solo después de diseñar contrato autoritativo y pruebas para cada una.
+2. Ampliar las cinco habilidades activas actuales únicamente después de medir su balance y mantener validación autoritativa.
 3. Separar ranking por temporada y conservar histórico.
 4. Mejorar reintento visible de persistencia de comprobantes finales.
 

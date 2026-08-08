@@ -7,11 +7,11 @@
 3. Reconexión con ACK, takeover autenticado y recuperación de sesiones obsoletas.
 4. Generación procedural determinista, variada y 100% conectada.
 5. Pruebas de paridad y HUD de escritorio compacto con detalles colapsables.
-6. Motores puros y probados para habilidades y cordura, todavía sin activación en runtime.
+6. Motores puros de habilidades y sanidad integrados en runtime local y multijugador autoritativo.
 
-## Siguiente incremento: activar habilidades
+## Incremento completado: habilidades activas
 
-Crear un contrato pequeño, compartido y data-driven:
+Se implementó un contrato pequeño, compartido y data-driven:
 
 ```ts
 type AbilityDefinition = {
@@ -23,16 +23,11 @@ type AbilityDefinition = {
 };
 ```
 
-El cliente envía una intención; offline o el servidor ejecutan el mismo validador/resolutor. Primero se implementará una familia de efectos reutilizables —pulso, mitigación breve, desplazamiento corto o señuelo de ruido— antes de cinco sistemas especiales independientes.
+El cliente envía una intención; offline o el servidor ejecutan el mismo validador/resolutor. Están activas regeneración, impulso silencioso, ecolocalización, caparazón y trampa de seda.
 
-## Siguiente incremento: activar cordura
+## Incremento completado: sanidad anti-camping
 
-La cordura será un reducer por eventos, no un contador que decrece cada segundo.
-
-- Factores: inactividad prolongada, proximidad hostil confirmada, oscuridad/eventos y daño.
-- Recuperación: movimiento con propósito, refugio y completar una acción relevante.
-- Umbrales iniciales: estable (70–100), tensión (40–69), distorsión (20–39), crisis (0–19).
-- Consecuencias iniciales: señales dudosas y jitter de radar; nunca información falsa enviada por el servidor como si fuera estado real.
+La sanidad depende de la última celda realmente ocupada: feedback desde 10 s y daño desde 20 s. Ataque o defensa no reinician el reloj. Pausa local y desconexión multijugador suspenden el castigo.
 
 ## Después
 

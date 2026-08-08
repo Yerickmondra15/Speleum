@@ -19,7 +19,7 @@ export const GAMEPLAY_RULES = {
     parryTiles: 3,
     hearingTiles: 12,
     defaultDetectionTiles: 5,
-    radarTiles: 12,
+    radarTiles: 18,
   },
   timing: {
     moveBaseCooldownMs: 1_000,
@@ -31,9 +31,10 @@ export const GAMEPLAY_RULES = {
     attackCooldownMs: 950,
     parryWindowMs: 850,
     parryCooldownMs: 4_800,
-    stunDurationMs: 1_800,
-    enemyMoveMinCooldownMs: 240,
-    enemyMoveMaxCooldownMs: 1_600,
+    stunDurationMs: 2_400,
+    missedParryStunMs: 1_400,
+    enemyMoveMinCooldownMs: 900,
+    enemyMoveMaxCooldownMs: 1_400,
   },
   combat: {
     playerAttackDamage: 30,
@@ -43,6 +44,27 @@ export const GAMEPLAY_RULES = {
     playerRadius: 24,
     enemyRadius: 26,
     defaultPlayerMaxHealth: 100,
+  },
+} as const;
+
+export const SURVIVAL_RULES = {
+  shelter: {
+    activationMs: 2_800,
+    healFraction: 0.22,
+    usesPerShelter: 1,
+  },
+  sanity: {
+    warningAfterMs: 10_000,
+    damageAfterMs: 20_000,
+    damageIntervalMs: 2_000,
+    damageFraction: 0.05,
+  },
+  terrain: {
+    waterMoveCooldownMultiplier: 1.25,
+    waterNoiseMultiplier: 1.3,
+  },
+  multiplayer: {
+    playerKillHealFraction: 0.2,
   },
 } as const;
 
@@ -78,12 +100,55 @@ export const ATTACK_COOLDOWN = GAMEPLAY_RULES.timing.attackCooldownMs;
 export const PARRY_WINDOW_MS = GAMEPLAY_RULES.timing.parryWindowMs;
 export const PARRY_COOLDOWN_MS = GAMEPLAY_RULES.timing.parryCooldownMs;
 export const STUN_DURATION_MS = GAMEPLAY_RULES.timing.stunDurationMs;
+export const MISSED_PARRY_STUN_MS = GAMEPLAY_RULES.timing.missedParryStunMs;
 
 export const ATTACK_RADIUS = TILE_SIZE * PLAYER_ATTACK_RANGE_TILES;
 export const PLAYER_ATTACK_DAMAGE = GAMEPLAY_RULES.combat.playerAttackDamage;
 export const CAVE_ATTACK_DAMAGE = GAMEPLAY_RULES.combat.caveAttackDamage;
 
-export function calculateEnemyMoveCooldown(speedWorldUnitsPerSecond: number) {
+export type EnemyPacingBehavior =
+  | "stalker"
+  | "territorial"
+  | "wanderer"
+  | "ambusher"
+  | "aggressive";
+
+function stableUnitInterval(value: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) / 4294967295;
+}
+
+export function calculateEnemyMoveCooldown(
+  speedWorldUnitsPerSecond: number,
+  behavior?: EnemyPacingBehavior,
+  enemyId = "enemy",
+  isChasing = false,
+) {
+  if (behavior) {
+    const range: readonly [number, number] =
+      isChasing
+        ? behavior === "aggressive"
+          ? [900, 950]
+          : behavior === "stalker"
+            ? [920, 980]
+            : behavior === "ambusher"
+              ? [960, 1_020]
+              : [940, 1_000]
+        : behavior === "aggressive"
+          ? [1_000, 1_100]
+          : behavior === "stalker"
+            ? [1_050, 1_180]
+            : behavior === "ambusher"
+              ? [1_250, 1_400]
+              : [1_120, 1_300];
+    const jitter = stableUnitInterval(`${enemyId}:${isChasing ? "chase" : "pace"}`);
+    return Math.round(range[0] + (range[1] - range[0]) * jitter);
+  }
+
   if (!Number.isFinite(speedWorldUnitsPerSecond) || speedWorldUnitsPerSecond <= 0) {
     return GAMEPLAY_RULES.timing.enemyMoveMaxCooldownMs;
   }

@@ -5,8 +5,10 @@ import {
   calculateMoveCooldown,
   canTakeTurn,
   isAttackReachableByTiles,
+  hitHazard,
   planMovementPath,
   resolveCombatHit,
+  resolveMissedParry,
 } from "@/app/play/gameLogic";
 import {
   buildPathToTile,
@@ -16,7 +18,7 @@ import {
   worldToTile,
   type TileCell,
 } from "@/app/play/tileMap";
-import { TILE_SIZE, TILE_VISION_RADIUS } from "@/app/play/gameConfig";
+import { STUN_DURATION_MS, TILE_SIZE, TILE_VISION_RADIUS } from "@/app/play/gameConfig";
 
 function lookupFromGrid(rows: string[]) {
   const tiles: TileCell[] = rows.flatMap((row, rowIndex) =>
@@ -97,5 +99,41 @@ describe("mecanicas tacticas", () => {
     expect(calculateMoveCooldown(1)).toBeGreaterThanOrEqual(1_000);
     expect(calculateMoveCooldown(3, 0.5)).toBeLessThan(calculateMoveCooldown(3, 1));
     expect(calculateMoveCooldown(100)).toBe(7_000);
+  });
+
+  it("el stun de parry dura 2.4 s y un bloqueo fallido aturde al defensor", () => {
+    const successful = resolveCombatHit({
+      targetHealth: 100,
+      damage: 30,
+      now: 1_000,
+      targetParryUntil: 1_500,
+    });
+    expect(successful.attackerStunnedUntil).toBe(1_000 + STUN_DURATION_MS);
+    expect(successful.nextParryUntil).toBe(0);
+
+    expect(resolveMissedParry({ parryUntil: 1_500, now: 1_499 })).toMatchObject({
+      missed: false,
+      nextStunnedUntil: 0,
+    });
+    expect(resolveMissedParry({ parryUntil: 1_500, now: 1_500 })).toMatchObject({
+      missed: true,
+      nextParryUntil: 0,
+      nextStunnedUntil: 2_900,
+    });
+  });
+
+  it("H sigue siendo letal y W solo ralentiza el movimiento", () => {
+    const hazard = { id: "H", label: "letal", x: 80, y: 0, width: 80, height: 80 };
+    expect(hitHazard(tileToWorld({ col: 1, row: 0 }), [hazard])).toBe(true);
+
+    const floorLookup = lookupFromGrid(["..."]);
+    const waterLookup = createTileLookup([
+      { col: 0, row: 0, x: 0, y: 0, type: "floor", walkable: true, zoneId: "test" },
+      { col: 1, row: 0, x: 80, y: 0, type: "water", walkable: true, zoneId: "test" },
+      { col: 2, row: 0, x: 160, y: 0, type: "floor", walkable: true, zoneId: "test" },
+    ]);
+    const floorMove = planMovementPath(tileToWorld({ col: 0, row: 0 }), tileToWorld({ col: 2, row: 0 }), 3, floorLookup)!;
+    const waterMove = planMovementPath(tileToWorld({ col: 0, row: 0 }), tileToWorld({ col: 2, row: 0 }), 3, waterLookup)!;
+    expect(waterMove.cooldownMs).toBeGreaterThan(floorMove.cooldownMs);
   });
 });

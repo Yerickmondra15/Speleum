@@ -8,6 +8,8 @@ import type {
   ResumeRoomFailureReason,
 } from "../../lib/multiplayer/events";
 import type { ServerContext, ServerPlayerState, ServerRoomState, GameSocket } from "../types";
+import { createAbilityState } from "../../lib/gameplay/abilities";
+import { createSanityState } from "../../lib/gameplay/sanity";
 import {
   createInitialCombatState,
   createLobbyMessage,
@@ -40,7 +42,13 @@ function createPlayer({
   name?: string;
   characterId: string;
 }): ServerPlayerState {
-  const spawns = pickSeparatedSpawns(room.cave, room.tileLookup, room.players.size + 1);
+  const spawns = pickSeparatedSpawns(
+    room.cave,
+    room.tileLookup,
+    room.players.size + 1,
+    undefined,
+    `${room.cave.seed}:lobby:${room.players.size}`,
+  );
   return {
     id: randomUUID(),
     userId: socket.data.userId,
@@ -62,9 +70,14 @@ function createPlayer({
     lastParryAt: 0,
     moveCooldownUntil: 0,
     movementPath: [],
+    movementNoiseMultiplier: 1,
     parryUntil: 0,
     stunnedUntil: 0,
     resultReceipt: null,
+    abilityState: createAbilityState(),
+    lastAbilityTickAt: Date.now(),
+    sanityState: createSanityState(Date.now(), "lobby"),
+    shelterState: { shelterKey: null, enteredAt: null, progress: 0 },
   };
 }
 
@@ -103,6 +116,8 @@ export function registerRoomHandlers(socket: GameSocket, context: ServerContext)
       players: new Map(),
       signals: [],
       noises: [],
+      traps: [],
+      exhaustedShelters: new Set(),
       winnerId: null,
       message: `Esperando minimo 2 jugadores.`,
       results: [],

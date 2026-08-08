@@ -6,6 +6,8 @@ import type {
 } from "./gameConfig";
 import type { EnemyState } from "./gameLogic";
 import type { CaveLayout } from "./proceduralCave";
+import type { SanityStage } from "@/lib/gameplay/sanity";
+import type { SilkTrap } from "@/lib/gameplay/abilities";
 
 export type SignalType = "move" | "attack" | "defend" | "danger";
 
@@ -58,6 +60,11 @@ export type PlayerCombatState = {
   parryCooldownRemaining: number;
   parryWindowRemaining: number;
   stunRemaining: number;
+  abilityCooldownRemaining: number;
+  abilityActiveRemaining: number;
+  sanityStage: SanityStage;
+  idleDurationMs: number;
+  shelterProgress: number;
   kills: number;
   damageDealt: number;
   eliminatedAt: number | null;
@@ -99,6 +106,8 @@ export type MultiplayerStatePayload = {
   enemies: EnemyState[];
   signals: RadarSignal[];
   noises: NoiseEvent[];
+  traps: SilkTrap[];
+  exhaustedShelters: string[];
   winnerId: string | null;
   playerCount: number;
   aliveCount: number;

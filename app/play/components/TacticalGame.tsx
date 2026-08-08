@@ -2,7 +2,7 @@
 
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { ArrowLeft } from "lucide-react";
-import type { CharacterOption, GameStatus, PlayerPosition } from "../gameConfig";
+import type { ActionKind, CharacterOption, GameStatus, PlayerPosition } from "../gameConfig";
 import {
   ATTACK_COOLDOWN,
   ENEMY_CLOSE_DANGER_TILES,
@@ -16,16 +16,19 @@ import {
   SCORE_PER_KILL_FALLBACK,
   SCORE_PER_LOCAL_VICTORY,
   TILE_SIZE,
+  VISION_RADIUS,
 } from "../gameConfig";
 import {
   isAttackReachableByTiles,
   isStunned,
   planMovementPath,
+  createLocalEnemyTargets,
   createEnemyState,
   distanceBetween,
   getZoneForPosition,
   hitHazard,
   resolveCombatHit,
+  resolveMissedParry,
   selectNearestReachableTarget,
   transitionEnemyToDead,
   updateEnemyState,
@@ -56,6 +59,33 @@ import {
   getCreatureGameplayModifiers,
 } from "@/lib/creature-gameplay";
 import { createGameplayEventId } from "@/lib/gameplay/event-ids";
+import type { CreatureId } from "@/lib/creatures";
+import {
+  activateCreatureAbility,
+  cancelRegenerationOnDamage,
+  consumeAbilityEffects,
+  createAbilityState,
+  creatureAbilities,
+  getAbilityModifiers,
+  pruneAbilityState,
+  type AbilityState,
+  type SilkTrap,
+} from "@/lib/gameplay/abilities";
+import {
+  createSanityState,
+  shiftSanityTimeline,
+  updateSanityForPosition,
+  type SanityState,
+} from "@/lib/gameplay/sanity";
+import {
+  clampHealing,
+  noiseTerrainMultiplier,
+  percentageHealing,
+  terrainNameAt,
+  updateShelterRecovery,
+  type ShelterRecoveryState,
+} from "@/lib/gameplay/survival";
+import { SURVIVAL_RULES } from "@/lib/gameplay/rules";
 
 type TacticalGameProps = {
   selectedCharacter: CharacterOption;
@@ -124,7 +154,7 @@ export function TacticalGame({
   const [matchStartedAt, setMatchStartedAt] = useState(() => new Date().toISOString());
   const [player, setPlayer] = useState<PlayerPosition>(() => caveSession.layout.startPosition);
   const [enemies, setEnemies] = useState<EnemyState[]>(() => initialEnemies(caveSession.layout));
-  const [activeAction, setActiveAction] = useState<"move" | "attack" | "defend">("move");
+  const [activeAction, setActiveAction] = useState<ActionKind>("move");
   const [gameStatus, setGameStatus] = useState<GameStatus>("playing");
   const [isPaused, setIsPaused] = useState(false);
   const [isUiHidden, setIsUiHidden] = useState(false);
@@ -149,6 +179,18 @@ export function TacticalGame({
   const [pathPreview, setPathPreview] = useState<PlayerPosition[]>([]);
   const [movementPath, setMovementPath] = useState<PlayerPosition[]>([]);
   const [isTraversing, setIsTraversing] = useState(false);
+  const [abilityState, setAbilityState] = useState<AbilityState>(() => createAbilityState());
+  const [traps, setTraps] = useState<SilkTrap[]>([]);
+  const [sanityState, setSanityState] = useState<SanityState>(() => {
+    const tile = worldToTile(caveSession.layout.startPosition);
+    return createSanityState(Date.now(), `${tile.col},${tile.row}`);
+  });
+  const [shelterState, setShelterState] = useState<ShelterRecoveryState>({
+    shelterKey: null,
+    enteredAt: null,
+    progress: 0,
+  });
+  const [exhaustedShelters, setExhaustedShelters] = useState<Set<string>>(() => new Set());
 
   const healthRef = useRef(health);
   const playerRef = useRef(player);
@@ -163,6 +205,12 @@ export function TacticalGame({
   const lastZoneIdRef = useRef(getZoneForPosition(caveSession.layout.startPosition, caveSession.layout.zones).id);
   const combatFlashTimeoutRef = useRef<number | null>(null);
   const pausedAtRef = useRef<number | null>(null);
+  const abilityStateRef = useRef(abilityState);
+  const sanityStateRef = useRef(sanityState);
+  const shelterStateRef = useRef(shelterState);
+  const exhaustedSheltersRef = useRef(exhaustedShelters);
+  const lastAbilityTickAtRef = useRef(Date.now());
+  const moveNoiseMultiplierRef = useRef(1);
 
   useEffect(() => {
     playerRef.current = player;
@@ -201,6 +249,10 @@ export function TacticalGame({
   }, [stunnedUntil]);
 
   useEffect(() => {
+    abilityStateRef.current = abilityState;
+  }, [abilityState]);
+
+  useEffect(() => {
     if ((gameStatus !== "won" && gameStatus !== "lost") || resultSavedRef.current) {
       return;
     }
@@ -232,6 +284,101 @@ export function TacticalGame({
 
       const tickNow = Date.now();
       setNow(tickNow);
+      const missedParry = resolveMissedParry({
+        parryUntil: parryUntilRef.current,
+        stunnedUntil: stunnedUntilRef.current,
+        now: tickNow,
+      });
+      if (missedParry.missed) {
+        parryUntilRef.current = missedParry.nextParryUntil;
+        stunnedUntilRef.current = missedParry.nextStunnedUntil;
+        setParryUntil(missedParry.nextParryUntil);
+        setStunnedUntil(missedParry.nextStunnedUntil);
+        setMessage("Bloqueaste demasiado pronto: la apertura te deja aturdido.");
+        showCombatFlash("Parry fallido · stun");
+      }
+      const regeneration = abilityStateRef.current.activeEffects.find(
+        (effect) =>
+          effect.kind === "health-regeneration" &&
+          effect.expiresAt > lastAbilityTickAtRef.current,
+      );
+      if (regeneration) {
+        const overlapEnd = Math.min(tickNow, regeneration.expiresAt);
+        const elapsed = Math.max(
+          0,
+          overlapEnd - Math.max(lastAbilityTickAtRef.current, regeneration.startedAt),
+        );
+        const duration = Math.max(1, regeneration.expiresAt - regeneration.startedAt);
+        const healed = clampHealing(
+          healthRef.current,
+          creatureModifiers.maxHealth,
+          creatureModifiers.maxHealth * regeneration.value * (elapsed / duration),
+        );
+        healthRef.current = healed;
+        setHealth(healed);
+      }
+      lastAbilityTickAtRef.current = tickNow;
+      const prunedAbility = pruneAbilityState(abilityStateRef.current, tickNow);
+      abilityStateRef.current = prunedAbility;
+      setAbilityState(prunedAbility);
+
+      const tile = worldToTile(playerRef.current);
+      const sanity = updateSanityForPosition({
+        state: sanityStateRef.current,
+        positionKey: `${tile.col},${tile.row}`,
+        now: tickNow,
+        maxHealth: creatureModifiers.maxHealth,
+      });
+      sanityStateRef.current = sanity.state;
+      setSanityState(sanity.state);
+      if (sanity.damage > 0) {
+        const nextHealth = Math.max(0, healthRef.current - sanity.damage);
+        healthRef.current = nextHealth;
+        setHealth(nextHealth);
+        setMessage("La oscuridad te alcanza. Muévete al menos una celda.");
+        showCombatFlash(`-${sanity.damage} HP · encierro`);
+        if (nextHealth <= 0) {
+          endAsLoss("Permaneciste inmóvil demasiado tiempo y la cueva te consumió.");
+          return;
+        }
+      }
+
+      if (healthRef.current < creatureModifiers.maxHealth) {
+        const recovery = updateShelterRecovery({
+          state: shelterStateRef.current,
+          position: playerRef.current,
+          lookup: caveSession.lookup,
+          now: tickNow,
+          exhaustedShelters: exhaustedSheltersRef.current,
+        });
+        shelterStateRef.current = recovery.state;
+        setShelterState(recovery.state);
+        if (recovery.ready && recovery.state.shelterKey) {
+          const nextHealth = clampHealing(
+            healthRef.current,
+            creatureModifiers.maxHealth,
+            percentageHealing(
+              creatureModifiers.maxHealth,
+              SURVIVAL_RULES.shelter.healFraction,
+            ),
+          );
+          healthRef.current = nextHealth;
+          setHealth(nextHealth);
+          const nextExhausted = new Set(exhaustedSheltersRef.current);
+          nextExhausted.add(recovery.state.shelterKey);
+          exhaustedSheltersRef.current = nextExhausted;
+          setExhaustedShelters(nextExhausted);
+          shelterStateRef.current = { ...recovery.state, enteredAt: null, progress: 0 };
+          setShelterState(shelterStateRef.current);
+          setMessage("El refugio cede su última reserva y queda agotado.");
+          showCombatFlash("Refugio +22% HP");
+        }
+      } else if (shelterStateRef.current.progress > 0) {
+        shelterStateRef.current = { shelterKey: null, enteredAt: null, progress: 0 };
+        setShelterState(shelterStateRef.current);
+      }
+
+      setTraps((current) => current.filter((trap) => trap.expiresAt > tickNow));
       setSignals((current) => pruneExpiredRadarSignals(current, tickNow));
       setNoises((current) => {
         const activeNoises = current.filter((noise) => tickNow - noise.createdAt < 3200);
@@ -241,7 +388,7 @@ export function TacticalGame({
     }, 100);
 
     return () => window.clearInterval(interval);
-  }, []);
+  }, [caveSession.lookup, creatureModifiers.maxHealth]);
 
   const aliveEnemies = useMemo(
     () => enemies.filter((enemy) => enemy.alive && enemy.state !== "dead"),
@@ -256,9 +403,17 @@ export function TacticalGame({
   const moveCooldownRemaining = Math.max(0, moveCooldownEndsAt - now);
   const attackCooldownRemaining = Math.max(0, attackCooldownEndsAt - now);
   const parryCooldownRemaining = Math.max(0, parryCooldownEndsAt - now);
+  const abilityModifiers = getAbilityModifiers(abilityState, now);
+  const abilityCooldownRemaining = Math.max(0, abilityState.cooldownUntil - now);
+  const effectiveRadarRange =
+    creatureModifiers.radarRangeTiles + abilityModifiers.radarRangeBonusTiles;
   const reachableTiles = useMemo(
-    () => findReachableTiles(worldToTile(player), creatureModifiers.moveRangeTiles, caveSession.lookup),
-    [caveSession.lookup, creatureModifiers.moveRangeTiles, player],
+    () => findReachableTiles(
+      worldToTile(player),
+      creatureModifiers.moveRangeTiles + abilityModifiers.moveRangeBonusTiles,
+      caveSession.lookup,
+    ),
+    [abilityModifiers.moveRangeBonusTiles, caveSession.lookup, creatureModifiers.moveRangeTiles, player],
   );
   const attackableTiles = useMemo(
     () => findReachableTiles(worldToTile(player), PLAYER_ATTACK_RANGE_TILES, caveSession.lookup),
@@ -355,6 +510,7 @@ export function TacticalGame({
     let nextPlayerHealth = healthRef.current;
     let hostileCount = 0;
     let lastEnemyMessage: string | null = null;
+    let activeTraps = traps.filter((trap) => trap.expiresAt > turnNow);
 
     const updatedEnemies: EnemyState[] = enemiesRef.current.map((enemy): EnemyState => {
       const config = caveSession.layout.enemyConfigs.find((entry) => entry.id === enemy.id);
@@ -363,9 +519,9 @@ export function TacticalGame({
         return enemy;
       }
 
-      const nextEnemy = updateEnemyState(
+      let nextEnemy = updateEnemyState(
         enemy,
-        [{ id: "player", position: playerRef.current }],
+        createLocalEnemyTargets(playerRef.current),
         config,
         ENEMY_MOVE_INTERVAL / 1000,
         gameStatusRef.current,
@@ -379,6 +535,18 @@ export function TacticalGame({
       }
 
       const enemyMoved = distanceBetween(enemy, nextEnemy) >= TILE_SIZE * 0.45;
+      if (enemyMoved) {
+        const enemyTile = worldToTile(nextEnemy);
+        const trap = activeTraps.find((entry) => {
+          const trapTile = worldToTile(entry.position);
+          return trapTile.col === enemyTile.col && trapTile.row === enemyTile.row;
+        });
+        if (trap) {
+          nextEnemy = { ...nextEnemy, stunnedUntil: turnNow + trap.stunMs, state: "stunned" };
+          activeTraps = activeTraps.filter((entry) => entry.id !== trap.id);
+          lastEnemyMessage = `${nextEnemy.name} queda inmovilizada por la seda.`;
+        }
+      }
       const stateChanged = enemy.state !== nextEnemy.state;
 
       if (
@@ -403,7 +571,13 @@ export function TacticalGame({
 
         const resolution = resolveCombatHit({
           targetHealth: nextPlayerHealth,
-          damage: applyCreatureIncomingDamage(nextEnemy.damage, selectedCharacter.id),
+          damage: Math.max(
+            0,
+            Math.round(
+              applyCreatureIncomingDamage(nextEnemy.damage, selectedCharacter.id) *
+                getAbilityModifiers(abilityStateRef.current, turnNow).incomingDamageMultiplier,
+            ),
+          ),
           now: turnNow,
           targetParryUntil: parryUntilRef.current,
         });
@@ -448,11 +622,18 @@ export function TacticalGame({
 
       return nextEnemy;
     });
+    setTraps(activeTraps);
 
     if (nextPlayerHealth !== healthRef.current) {
       const damageTaken = Math.max(0, healthRef.current - nextPlayerHealth);
       healthRef.current = nextPlayerHealth;
       setHealth(nextPlayerHealth);
+      abilityStateRef.current = cancelRegenerationOnDamage(
+        abilityStateRef.current,
+        damageTaken,
+        creatureModifiers.maxHealth,
+      );
+      setAbilityState(abilityStateRef.current);
       showCombatFlash(`-${damageTaken} HP`);
       if (nextPlayerHealth <= 0) {
         enemiesRef.current = updatedEnemies;
@@ -516,7 +697,17 @@ export function TacticalGame({
         setPlayer(nextStep);
         addSignal("move", nextStep, "player");
         const noise = applyCreatureNoise(6, 0.45, selectedCharacter.id);
-        addNoise("move", nextStep, noise.radiusTiles, noise.intensity, "player");
+        const terrainNoise = noiseTerrainMultiplier(nextStep, caveSession.lookup);
+        addNoise(
+          "move",
+          nextStep,
+          Math.max(
+            1,
+            Math.round(noise.radiusTiles * terrainNoise * moveNoiseMultiplierRef.current),
+          ),
+          noise.intensity * terrainNoise * moveNoiseMultiplierRef.current,
+          "player",
+        );
 
         if (hitHazard(nextStep, caveSession.layout.hazardAreas)) {
           window.clearInterval(interval);
@@ -540,7 +731,7 @@ export function TacticalGame({
     }, MOVEMENT_STEP_INTERVAL_MS);
 
     return () => window.clearInterval(interval);
-  }, [caveSession.layout.hazardAreas, gameStatus, movementPath.length, selectedCharacter.id]);
+  }, [caveSession.layout.hazardAreas, caveSession.lookup, gameStatus, movementPath.length, selectedCharacter.id]);
 
   function shiftGameplayTimeline(deltaMs: number) {
     if (deltaMs <= 0) {
@@ -596,6 +787,36 @@ export function TacticalGame({
       enemiesRef.current = shiftedEnemies;
       return shiftedEnemies;
     });
+    const shiftedAbility: AbilityState = {
+      cooldownUntil:
+        abilityStateRef.current.cooldownUntil > 0
+          ? abilityStateRef.current.cooldownUntil + deltaMs
+          : 0,
+      activeEffects: abilityStateRef.current.activeEffects.map((effect) => ({
+        ...effect,
+        startedAt: effect.startedAt + deltaMs,
+        expiresAt: effect.expiresAt + deltaMs,
+      })),
+    };
+    abilityStateRef.current = shiftedAbility;
+    setAbilityState(shiftedAbility);
+    sanityStateRef.current = shiftSanityTimeline(sanityStateRef.current, deltaMs);
+    setSanityState(sanityStateRef.current);
+    if (shelterStateRef.current.enteredAt !== null) {
+      shelterStateRef.current = {
+        ...shelterStateRef.current,
+        enteredAt: shelterStateRef.current.enteredAt + deltaMs,
+      };
+      setShelterState(shelterStateRef.current);
+    }
+    setTraps((current) =>
+      current.map((trap) => ({
+        ...trap,
+        createdAt: trap.createdAt + deltaMs,
+        expiresAt: trap.expiresAt + deltaMs,
+      })),
+    );
+    lastAbilityTickAtRef.current += deltaMs;
   }
 
   function handleTogglePause() {
@@ -638,10 +859,17 @@ export function TacticalGame({
       return;
     }
 
+    const actionNow = Date.now();
+    const currentAbilityModifiers = getAbilityModifiers(abilityStateRef.current, actionNow);
+    if (currentAbilityModifiers.movementLocked) {
+      setMessage("No puedes moverte mientras el caparazón está cerrado.");
+      return;
+    }
+
     const movePlan = planMovementPath(
       playerRef.current,
       target,
-      creatureModifiers.moveRangeTiles,
+      creatureModifiers.moveRangeTiles + currentAbilityModifiers.moveRangeBonusTiles,
       caveSession.lookup,
       selectedCharacter.moveCooldownMultiplier,
     );
@@ -653,6 +881,13 @@ export function TacticalGame({
     }
 
     setIsTraversing(true);
+    moveNoiseMultiplierRef.current = currentAbilityModifiers.noiseMultiplier;
+    abilityStateRef.current = consumeAbilityEffects(
+      abilityStateRef.current,
+      "move",
+      actionNow,
+    );
+    setAbilityState(abilityStateRef.current);
     setMovementPath(movePlan.worldPath);
     setPathPreview(movePlan.worldPath);
     const nextMoveCooldownEndsAt = Date.now() + movePlan.cooldownMs;
@@ -785,8 +1020,50 @@ export function TacticalGame({
     addSignal("defend", playerRef.current, "player");
     const defendNoise = applyCreatureNoise(6, 0.65, selectedCharacter.id);
     addNoise("defend", playerRef.current, defendNoise.radiusTiles, defendNoise.intensity, "player");
-    setMessage("Abres una ventana corta de parry.");
+    setMessage("Parry activo: si no interceptas un golpe, quedarás aturdido.");
     showCombatFlash("Parry activo");
+  }
+
+  function handleAbility() {
+    if (gameStatusRef.current !== "playing") return;
+    const actionNow = Date.now();
+    const result = activateCreatureAbility({
+      creatureId: selectedCharacter.id as CreatureId,
+      state: abilityStateRef.current,
+      now: actionNow,
+      alive: healthRef.current > 0,
+      stunned: isStunned(stunnedUntilRef.current, actionNow),
+      actorPosition: playerRef.current,
+      targetPosition: playerRef.current,
+    });
+    if (!result.ok) {
+      setMessage(
+        result.reason === "cooldown"
+          ? "Tu habilidad especial todavía se recupera."
+          : "No puedes activar la habilidad en este momento.",
+      );
+      return;
+    }
+
+    abilityStateRef.current = result.state;
+    lastAbilityTickAtRef.current = actionNow;
+    setAbilityState(result.state);
+    setActiveAction("ability");
+    for (const event of result.events) {
+      setTraps((current) => [
+        ...current,
+        {
+          id: createGameplayEventId("trap", "player", actionNow),
+          ownerId: "player",
+          position: event.position,
+          createdAt: actionNow,
+          expiresAt: actionNow + event.durationMs,
+          stunMs: event.stunMs,
+        },
+      ]);
+    }
+    setMessage(`${result.definition.name}: ${result.definition.description}`);
+    showCombatFlash(result.definition.name);
   }
 
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
@@ -814,6 +1091,9 @@ export function TacticalGame({
     } else if (key === "shift" || key === "q") {
       event.preventDefault();
       handleDefend();
+    } else if (key === "r" || key === "f") {
+      event.preventDefault();
+      handleAbility();
     }
   });
 
@@ -864,6 +1144,20 @@ export function TacticalGame({
     setPathPreview([]);
     setMovementPath([]);
     setIsTraversing(false);
+    abilityStateRef.current = createAbilityState();
+    setAbilityState(abilityStateRef.current);
+    lastAbilityTickAtRef.current = restartNow;
+    setTraps([]);
+    const restartTile = worldToTile(nextSession.layout.startPosition);
+    sanityStateRef.current = createSanityState(
+      restartNow,
+      `${restartTile.col},${restartTile.row}`,
+    );
+    setSanityState(sanityStateRef.current);
+    shelterStateRef.current = { shelterKey: null, enteredAt: null, progress: 0 };
+    setShelterState(shelterStateRef.current);
+    exhaustedSheltersRef.current = new Set();
+    setExhaustedShelters(exhaustedSheltersRef.current);
     lastZoneIdRef.current = getZoneForPosition(
       nextSession.layout.startPosition,
       nextSession.layout.zones,
@@ -884,7 +1178,7 @@ export function TacticalGame({
     : null;
   const detectedEnemies = aliveEnemies.filter(
     (enemy) =>
-      tileDistance(worldToTile(player), worldToTile(enemy)) <= creatureModifiers.radarRangeTiles,
+      tileDistance(worldToTile(player), worldToTile(enemy)) <= effectiveRadarRange,
   ).length;
   const activeHostiles = aliveEnemies.filter(
     (enemy) =>
@@ -893,6 +1187,13 @@ export function TacticalGame({
       enemy.state === "attacking",
   ).length;
   const nearbyDangerLabel = dangerLabelFromDistance(nearestThreatTiles, activeHostiles);
+  const currentPlayerTile = worldToTile(player);
+  const currentShelterKey = `${currentPlayerTile.col},${currentPlayerTile.row}`;
+  const baseTerrainName = terrainNameAt(player, caveSession.lookup);
+  const currentTerrainName =
+    baseTerrainName === "Refugio" && exhaustedShelters.has(currentShelterKey)
+      ? "Refugio agotado"
+      : baseTerrainName;
   const threatSummary =
     aliveEnemies.length === 0
       ? "ninguna amenaza viva"
@@ -932,90 +1233,117 @@ export function TacticalGame({
         </div>
       </header>
 
-      <GameMap
-        player={player}
-        playerCharacterId={selectedCharacter.id}
-        enemy={closestThreat}
-        enemies={enemies}
-        signals={signals}
-        activeAction={activeAction}
-        isDefending={isParrying}
-        currentZone={currentZone}
-        gameStatus={gameStatus}
-        tiles={caveSession.tiles}
-        reachableTiles={reachableTiles}
-        attackableTiles={attackableTiles}
-        selectedPath={pathPreview}
-        isMoveReady={!isTraversing && moveCooldownRemaining <= 0}
-        onChooseDestination={handleMoveIntent}
-      />
+      <div
+        className={
+          isUiHidden
+            ? "h-full min-h-0 min-w-0"
+            : "grid h-full min-h-0 min-w-0 gap-2 p-2 pt-[calc(env(safe-area-inset-top)+3.8rem)] pb-[calc(env(safe-area-inset-bottom)+.5rem)] md:grid-cols-[minmax(15rem,18rem)_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)_auto]"
+        }
+      >
+        {!isUiHidden && (
+          <aside className="absolute left-2 top-[calc(env(safe-area-inset-top)+3.8rem)] z-60 max-h-[42dvh] w-[min(17rem,calc(100vw-1rem))] overflow-auto md:static md:row-span-2 md:max-h-none md:w-auto md:min-h-0">
+            <div className="grid gap-2">
+              <GameHud
+                selectedCharacter={selectedCharacter}
+                zone={currentZone}
+                objective="Sobrevive, elimina las amenazas y administra la información incompleta."
+                message={message}
+                zoneMessage={zoneMessage}
+                health={health}
+                maxHealth={creatureModifiers.maxHealth}
+                aliveCount={aliveEnemies.length + (gameStatus === "lost" ? 0 : 1)}
+                enemyStateLabel={threatSummary}
+                isPaused={isPaused}
+                score={score}
+                kills={kills}
+                parryActive={isParrying}
+                isStunned={isPlayerStunned}
+                moveCooldownRemaining={moveCooldownRemaining}
+                attackCooldownRemaining={attackCooldownRemaining}
+                parryCooldownRemaining={parryCooldownRemaining}
+                nearestThreatTiles={nearestThreatTiles}
+                nearbyDangerLabel={nearbyDangerLabel}
+                detectedEnemies={detectedEnemies}
+                terrainName={currentTerrainName}
+                sanityStage={sanityState.stage}
+                idleDurationMs={sanityState.idleDurationMs}
+                shelterProgress={shelterState.progress}
+                abilityName={creatureAbilities[selectedCharacter.id].name}
+                abilityCooldownRemaining={abilityCooldownRemaining}
+              />
+              <div className="hidden min-h-0 md:block">
+                <RadarPanel
+                  player={player}
+                  signals={signals}
+                  ownerId="player"
+                  rangeTiles={effectiveRadarRange}
+                  precisionMultiplier={abilityModifiers.radarPrecisionMultiplier}
+                />
+              </div>
+              <div className="w-28 md:hidden">
+                <RadarPanel
+                  player={player}
+                  signals={signals}
+                  ownerId="player"
+                  rangeTiles={effectiveRadarRange}
+                  precisionMultiplier={abilityModifiers.radarPrecisionMultiplier}
+                />
+              </div>
+            </div>
+          </aside>
+        )}
 
-      {!isUiHidden && (
-        <GameHud
-          selectedCharacter={selectedCharacter}
-          zone={currentZone}
-          objective="Marca una celda dentro de tu pulso visible, gestiona el riesgo y conviertete en la ultima criatura viva."
-          message={message}
-          zoneMessage={zoneMessage}
-          health={health}
-          maxHealth={creatureModifiers.maxHealth}
-          aliveCount={aliveEnemies.length + (gameStatus === "lost" ? 0 : 1)}
-          enemyStateLabel={threatSummary}
-          isPaused={isPaused}
-          score={score}
-          kills={kills}
-          parryActive={isParrying}
-          isStunned={isPlayerStunned}
-          moveCooldownRemaining={moveCooldownRemaining}
-          attackCooldownRemaining={attackCooldownRemaining}
-          parryCooldownRemaining={parryCooldownRemaining}
-          parryWindowRemaining={Math.max(0, parryUntil - now)}
-          stunRemaining={Math.max(0, stunnedUntil - now)}
-          nearestThreatTiles={nearestThreatTiles}
-          nearbyDangerLabel={nearbyDangerLabel}
-          detectedEnemies={detectedEnemies}
-          attackRangeLabel={`${PLAYER_ATTACK_RANGE_TILES} casillas`}
-        />
-      )}
-
-      {!isUiHidden && (
-        <div
-          className="absolute bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] right-2 z-70 w-28 max-w-[calc(100vw-1rem)] sm:right-4 sm:top-24 sm:bottom-auto sm:w-52 sm:max-w-[calc(100vw-2rem)]"
-          style={{ bottom: "calc(env(safe-area-inset-bottom) + 5.5rem)" }}
-        >
-          <RadarPanel
+        <main className="min-h-0 min-w-0 overflow-hidden rounded-[1.15rem] border border-white/5 md:col-start-2">
+          <GameMap
             player={player}
+            playerCharacterId={selectedCharacter.id}
+            enemy={closestThreat}
+            enemies={enemies}
             signals={signals}
-            moveCooldownRemaining={moveCooldownRemaining}
-            rangeTiles={creatureModifiers.radarRangeTiles}
+            activeAction={activeAction}
+            isDefending={isParrying}
+            currentZone={currentZone}
+            gameStatus={gameStatus}
+            visionRadius={
+              VISION_RADIUS + abilityModifiers.visionRangeBonusTiles * TILE_SIZE
+            }
+            tiles={caveSession.tiles}
+            traps={traps}
+            sanityStage={sanityState.stage}
+            exhaustedShelters={[...exhaustedShelters]}
+            reachableTiles={reachableTiles}
+            attackableTiles={attackableTiles}
+            selectedPath={pathPreview}
+            isMoveReady={!isTraversing && moveCooldownRemaining <= 0}
+            onChooseDestination={handleMoveIntent}
           />
-        </div>
-      )}
+        </main>
+
+        {!isUiHidden && (
+          <div className="min-w-0 md:col-start-2 md:row-start-2">
+            <ActionControls
+              activeAction={activeAction}
+              cooldownRemaining={attackCooldownRemaining}
+              moveCooldownRemaining={moveCooldownRemaining}
+              parryCooldownRemaining={parryCooldownRemaining}
+              isRecovering={attackCooldownRemaining > 0 || isPaused}
+              isParrying={isParrying}
+              onMove={() => setActiveAction("move")}
+              onAttack={handleAttack}
+              onDefend={handleDefend}
+              abilityName={creatureAbilities[selectedCharacter.id].name}
+              abilityCooldownRemaining={abilityCooldownRemaining}
+              abilityDisabled={isPlayerStunned}
+              onAbility={handleAbility}
+            />
+          </div>
+        )}
+      </div>
 
       {!isUiHidden && combatFlash && (
         <div className="pointer-events-none absolute left-1/2 top-[calc(env(safe-area-inset-top)+12rem)] z-85 w-max max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-full border border-rose-200/15 bg-black/70 px-3 py-1.5 text-center text-[0.68rem] tracking-[0.1em] text-rose-100 shadow-[0_0_28px_rgba(251,113,133,0.18)] sm:top-24 sm:px-5 sm:py-2 sm:text-sm sm:tracking-[0.18em]">
           {combatFlash}
         </div>
-      )}
-
-      {!isUiHidden && (
-        <ActionControls
-          activeAction={activeAction}
-          cooldownRemaining={attackCooldownRemaining}
-          moveCooldownRemaining={moveCooldownRemaining}
-          parryCooldownRemaining={parryCooldownRemaining}
-          isRecovering={attackCooldownRemaining > 0 || isPaused}
-          isParrying={isParrying}
-          onMove={() =>
-            setMessage(
-              moveCooldownRemaining > 0
-                ? "Tu pulso de desplazamiento aun se recupera."
-                : "Selecciona una celda dentro de tu rango visible para desplazarte.",
-            )
-          }
-          onAttack={handleAttack}
-          onDefend={handleDefend}
-        />
       )}
 
       {isPaused && (

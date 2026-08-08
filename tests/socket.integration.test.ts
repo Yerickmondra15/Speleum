@@ -6,7 +6,12 @@ import { findReachableTiles, tileToWorld, worldToTile } from "@/app/play/tileMap
 import type { ResumeRoomResult } from "@/lib/multiplayer/events";
 import { createSocketTicket } from "@/lib/multiplayer/tickets";
 import { createSocketGameServer } from "@/server/createSocketServer";
-import { finishRoom, processRoomLifecycle } from "@/server/rooms/roomLifecycle";
+import {
+  eliminatePlayer,
+  evaluateRoom,
+  finishRoom,
+  processRoomLifecycle,
+} from "@/server/rooms/roomLifecycle";
 
 const authSecret = "socket-integration-auth-secret-32-characters";
 const resultSecret = "socket-integration-result-secret-32-chars";
@@ -493,5 +498,56 @@ describe("integracion Socket.IO autoritativa", () => {
       userId: "forged-user",
     });
     expect(await errorPromise).toMatch(/no son validos/i);
+  });
+
+  it("21. valida y resuelve habilidades en el servidor con cooldown autoritativo", async () => {
+    const game = await setupPlayingRoom();
+    const abilityState = waitForEvent<MultiplayerStatePayload>(
+      game.first.client,
+      "game-state",
+      (state) => state.self.combat.abilityCooldownRemaining > 0,
+    );
+    game.first.client.emit("player-ability", {
+      roomCode: game.roomCode,
+      target: game.playing.self.position,
+    });
+    const activated = await abilityState;
+    expect(activated.self.combat.abilityCooldownRemaining).toBeGreaterThan(30_000);
+
+    const errorPromise = waitForEvent<string>(game.first.client, "error-message");
+    game.first.client.emit("player-ability", {
+      roomCode: game.roomCode,
+      target: { x: -100, y: Number.NaN },
+    });
+    expect(await errorPromise).toMatch(/habilidad enviada no es válida/i);
+  });
+
+  it("22. una baja cura 20% sin superar maxHealth y desconectarse pausa la sanidad", async () => {
+    const game = await setupPlayingRoom();
+    const room = server.store.get(game.roomCode)!;
+    const attacker = server.store.findPlayerByUser(room, game.first.userId)!;
+    const victim = server.store.findPlayerByUser(room, game.second.userId)!;
+    attacker.combat.health = attacker.combat.maxHealth - 5;
+    eliminatePlayer(room, victim, "Baja de prueba", attacker, Date.now());
+    expect(attacker.combat.health).toBe(attacker.combat.maxHealth);
+
+    attacker.connected = false;
+    attacker.sanityState.lastMeaningfulMoveAt = 0;
+    const healthBefore = attacker.combat.health;
+    evaluateRoom(room, server.context, 60_000);
+    expect(attacker.combat.health).toBe(healthBefore);
+  });
+
+  it("23. penaliza en servidor un parry que vence sin recibir ataque", async () => {
+    const game = await setupPlayingRoom();
+    const room = server.store.get(game.roomCode)!;
+    const player = server.store.findPlayerByUser(room, game.first.userId)!;
+    const now = Date.now();
+    player.parryUntil = now - 1;
+    player.stunnedUntil = 0;
+    evaluateRoom(room, server.context, now);
+    expect(player.parryUntil).toBe(0);
+    expect(player.stunnedUntil).toBe(now + 1_400);
+    expect(room.message).toMatch(/bloqueó en falso/i);
   });
 });

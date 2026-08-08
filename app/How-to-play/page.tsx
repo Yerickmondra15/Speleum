@@ -63,7 +63,7 @@ export default function ComoJugarPage() {
           {
             icon: Shield,
             title: "Defensa",
-            text: "La defensa reduce dano durante una ventana corta y luego entra en recuperacion antes de poder activarse otra vez.",
+            text: "Un parry bien medido anula el golpe y aturde al atacante durante 2,4 s. Si nadie golpea durante la ventana, quedas aturdido 1,4 s.",
           },
         ]
       : [
@@ -95,7 +95,7 @@ export default function ComoJugarPage() {
           {
             icon: Shield,
             title: "Defense",
-            text: "Defense reduces damage during a short window and then enters recovery before it can be activated again.",
+            text: "A well-timed parry cancels the hit and stuns the attacker for 2.4 s. If no attack arrives, you are stunned for 1.4 s.",
           },
         ];
   const localizedCreatures = creatures.map((creature) => ({
@@ -222,6 +222,9 @@ export default function ComoJugarPage() {
                   </div>
                   <p className="mt-2 text-sm leading-6 text-(--text-secondary)">
                     {creature.copy.descripcionCorta}
+                  </p>
+                  <p className="mt-3 rounded-xl border border-(--border-soft) bg-(--surface-1) px-3 py-2 text-xs leading-5 text-(--text-secondary)">
+                    {creature.copy.habilidad}
                   </p>
                 </div>
               ))}

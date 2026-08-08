@@ -2,6 +2,8 @@ import { getCreatureGameplayModifiers } from "../../lib/creature-gameplay";
 import type { MatchResultEntry, MultiplayerPlayerState } from "../../app/play/types";
 import { isTileVisible, tileDistance, worldToTile } from "../../app/play/tileMap";
 import type { ServerContext, ServerPlayerState, ServerRoomState } from "../types";
+import { getAbilityModifiers } from "../../lib/gameplay/abilities";
+import { TILE_VISION_RADIUS } from "../../app/play/gameConfig";
 
 export function getAlivePlayers(room: ServerRoomState) {
   return [...room.players.values()].filter(
@@ -79,11 +81,16 @@ export function emitState(room: ServerRoomState, context: ServerContext) {
       continue;
     }
 
-    const visibleEnemies = aliveEnemies.filter((enemy) =>
-      isTileVisible(worldToTile(player.position), worldToTile(enemy)),
-    );
     const playerTile = worldToTile(player.position);
-    const radarRangeTiles = getCreatureGameplayModifiers(player.characterId).radarRangeTiles;
+    const abilityModifiers = getAbilityModifiers(player.abilityState, Date.now());
+    const visionRangeTiles =
+      TILE_VISION_RADIUS + abilityModifiers.visionRangeBonusTiles;
+    const visibleEnemies = aliveEnemies.filter((enemy) =>
+      isTileVisible(playerTile, worldToTile(enemy), visionRangeTiles),
+    );
+    const radarRangeTiles =
+      getCreatureGameplayModifiers(player.characterId).radarRangeTiles +
+      abilityModifiers.radarRangeBonusTiles;
 
     context.io.to(player.socketId).emit("game-state", {
       matchId: room.matchId,
@@ -97,7 +104,7 @@ export function emitState(room: ServerRoomState, context: ServerContext) {
         .filter(
           (other) =>
             other.id !== player.id &&
-            isTileVisible(playerTile, worldToTile(other.position)),
+            isTileVisible(playerTile, worldToTile(other.position), visionRangeTiles),
         )
         .map(toPublicPlayer),
       enemy: visibleEnemies[0] ?? null,
@@ -108,6 +115,12 @@ export function emitState(room: ServerRoomState, context: ServerContext) {
       noises: room.noises.filter((noise) =>
         tileDistance(playerTile, worldToTile(noise.position)) <= radarRangeTiles,
       ),
+      traps: room.traps.filter(
+        (trap) =>
+          trap.ownerId === player.id ||
+          isTileVisible(playerTile, worldToTile(trap.position), visionRangeTiles),
+      ),
+      exhaustedShelters: [...room.exhaustedShelters],
       winnerId: room.winnerId,
       playerCount: activePlayers.length,
       connectedCount: connectedPlayers.length,

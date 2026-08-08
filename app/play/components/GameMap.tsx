@@ -22,6 +22,9 @@ import type { EnemyState } from "../gameLogic";
 import type { MultiplayerPlayerState, RadarSignal } from "../types";
 import type { TileCoordinate } from "../gameConfig";
 import { isTileVisible, tileMap, type TileCell, worldToTile } from "../tileMap";
+import type { SilkTrap } from "@/lib/gameplay/abilities";
+import type { SanityStage } from "@/lib/gameplay/sanity";
+import { getSanityEffects } from "@/lib/gameplay/sanity";
 
 type GameMapProps = {
   player: PlayerPosition;
@@ -40,6 +43,9 @@ type GameMapProps = {
   selectedPath?: PlayerPosition[];
   isMoveReady?: boolean;
   tiles?: TileCell[];
+  traps?: SilkTrap[];
+  sanityStage?: SanityStage;
+  exhaustedShelters?: string[];
   onChooseDestination: (position: PlayerPosition) => void;
 };
 
@@ -73,7 +79,19 @@ function tileClass(type: string, visible: boolean) {
   }
 
   if (type === "hazard") {
-    return "border-rose-300/10 bg-[radial-gradient(circle,rgba(120,21,47,0.35),rgba(18,4,10,0.96))]";
+    return "border-red-300/25 bg-[radial-gradient(circle,rgba(170,24,42,0.52),rgba(35,3,8,0.98))]";
+  }
+
+  if (type === "water") {
+    return "border-zinc-300/8 bg-[radial-gradient(ellipse,rgba(38,45,58,0.48),rgba(4,7,12,0.98))]";
+  }
+
+  if (type === "shelter") {
+    return "border-rose-100/12 bg-[radial-gradient(circle,rgba(190,115,140,0.18),rgba(19,10,15,0.96))]";
+  }
+
+  if (type === "nest") {
+    return "border-zinc-400/10 bg-[repeating-radial-gradient(circle,rgba(90,75,84,0.16)_0_3px,rgba(9,7,9,0.98)_4px_10px)]";
   }
 
   if (type === "spawn") {
@@ -119,12 +137,16 @@ export function GameMap({
   selectedPath = [],
   isMoveReady = false,
   tiles = tileMap,
+  traps = [],
+  sanityStage = "stable",
+  exhaustedShelters = [],
   onChooseDestination,
 }: GameMapProps) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const [viewportSize, setViewportSize] = useState({ width: 1200, height: 760 });
   const playerCreature = getCreatureById(playerCharacterId);
   const playerTile = useMemo(() => worldToTile(player), [player]);
+  const visionRadiusTiles = visionRadius / TILE_SIZE;
 
   useEffect(() => {
     const node = viewportRef.current;
@@ -195,7 +217,9 @@ export function GameMap({
 
   const threatEntries = enemies.length > 0 ? enemies : enemy ? [enemy] : [];
   const visibleEnemies = threatEntries.filter(
-    (entry) => entry.alive !== false && isTileVisible(playerTile, worldToTile(entry)),
+    (entry) =>
+      entry.alive !== false &&
+      isTileVisible(playerTile, worldToTile(entry), visionRadiusTiles),
   );
   const selectedPathKeys = new Set(
     selectedPath.map((step) => {
@@ -226,12 +250,18 @@ export function GameMap({
           }}
         >
           {visibleTiles.map((tile) => {
-            const visible = isTileVisible(playerTile, { col: tile.col, row: tile.row });
+            const visible = isTileVisible(
+              playerTile,
+              { col: tile.col, row: tile.row },
+              visionRadiusTiles,
+            );
             const tileKey = `${tile.col},${tile.row}`;
             const reachable = isMoveReady && reachableTiles.has(tileKey) && visible;
             const attackable =
               activeAction === "attack" && attackableTiles.has(tileKey) && visible;
             const inPath = selectedPathKeys.has(tileKey);
+            const shelterExhausted =
+              tile.type === "shelter" && exhaustedShelters.includes(tileKey);
 
             return (
               <div
@@ -251,12 +281,17 @@ export function GameMap({
                 {inPath && (
                   <div className="absolute inset-2 rounded-[0.8rem] border border-rose-200/18 bg-rose-200/3 shadow-[0_0_16px_rgba(251,113,133,0.08)]" />
                 )}
+                {shelterExhausted && (
+                  <div className="absolute inset-2 flex items-center justify-center rounded-full border border-zinc-500/20 bg-black/45 text-lg text-zinc-600">×</div>
+                )}
               </div>
             );
           })}
 
           {signals
-            .filter((signal) => isTileVisible(playerTile, worldToTile(signal)))
+            .filter((signal) =>
+              isTileVisible(playerTile, worldToTile(signal), visionRadiusTiles),
+            )
             .map((signal) => (
               <div
                 key={signal.id}
@@ -326,7 +361,9 @@ export function GameMap({
           ))}
 
           {otherPlayers
-            .filter((otherPlayer) => isTileVisible(playerTile, worldToTile(otherPlayer.position)))
+            .filter((otherPlayer) =>
+              isTileVisible(playerTile, worldToTile(otherPlayer.position), visionRadiusTiles),
+            )
             .map((otherPlayer) => (
               <div
                 key={otherPlayer.id}
@@ -353,6 +390,20 @@ export function GameMap({
                     />
                   </div>
                 </div>
+              </div>
+            ))}
+
+          {traps
+            .filter((trap) =>
+              isTileVisible(playerTile, worldToTile(trap.position), visionRadiusTiles),
+            )
+            .map((trap) => (
+              <div
+                key={trap.id}
+                className="pointer-events-none absolute z-25 -translate-x-1/2 -translate-y-1/2"
+                style={pointStyle(trap.position)}
+              >
+                <div className="h-9 w-9 rounded-full border border-zinc-200/30 bg-[repeating-radial-gradient(circle,rgba(244,244,245,0.28)_0_1px,transparent_2px_5px)] shadow-[0_0_16px_rgba(244,244,245,0.12)]" />
               </div>
             ))}
 
@@ -395,6 +446,18 @@ export function GameMap({
           }}
         />
         <div className="pointer-events-none absolute inset-0 z-50 shadow-[inset_0_0_140px_rgba(0,0,0,0.96)]" />
+        {sanityStage !== "stable" && (() => {
+          const effects = getSanityEffects(sanityStage);
+          return (
+            <div
+              className={`pointer-events-none absolute inset-0 z-55 ${sanityStage === "damaging" ? "animate-pulse" : ""}`}
+              style={{
+                background: `rgba(0,0,0,${effects.darkness})`,
+                boxShadow: `inset 0 0 ${120 + effects.vignette * 180}px rgba(28,0,12,${effects.vignette})`,
+              }}
+            />
+          );
+        })()}
       </div>
     </div>
   );

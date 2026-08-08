@@ -3,9 +3,15 @@ import type { RadarSignal, SignalType } from "./types";
 import { createGameplayEventId } from "@/lib/gameplay/event-ids";
 
 const SIGNAL_BUFFER_LIMIT = 24;
-const MOVE_SIGNAL_MERGE_WINDOW_MS = 180;
+const MOVE_SIGNAL_MERGE_WINDOW_MS = 1_200;
 const DEFEND_SIGNAL_MERGE_WINDOW_MS = 260;
 const POSITION_MERGE_RADIUS = TILE_SIZE * 1.35;
+const SIGNAL_PRIORITY: Record<SignalType, number> = {
+  move: 0,
+  defend: 1,
+  danger: 2,
+  attack: 3,
+};
 
 type CreateRadarSignalInput = {
   type: SignalType;
@@ -29,7 +35,8 @@ function shouldMergeSignal(current: RadarSignal, next: RadarSignal) {
 
   if (next.type === "move") {
     return (
-      next.createdAt - current.createdAt <= MOVE_SIGNAL_MERGE_WINDOW_MS &&
+      next.createdAt - current.createdAt <=
+        Math.max(MOVE_SIGNAL_MERGE_WINDOW_MS, current.duration) &&
       distanceBetweenPoints(current, next) <= POSITION_MERGE_RADIUS
     );
   }
@@ -82,6 +89,7 @@ export function upsertRadarSignal(
       signalIndex === index
         ? {
             ...signal,
+            id: nextSignal.id,
             x: nextSignal.x,
             y: nextSignal.y,
             createdAt: nextSignal.createdAt,
@@ -98,4 +106,23 @@ export function upsertRadarSignal(
 
 export function pruneExpiredRadarSignals(signals: RadarSignal[], now = Date.now()) {
   return signals.filter((signal) => now - signal.createdAt < signal.duration);
+}
+
+export function collapseRadarSignals(signals: RadarSignal[]) {
+  const bySource = new Map<string, RadarSignal>();
+
+  for (const signal of signals) {
+    const sourceKey = signal.ownerId ?? signal.id;
+    const current = bySource.get(sourceKey);
+    if (
+      !current ||
+      SIGNAL_PRIORITY[signal.type] > SIGNAL_PRIORITY[current.type] ||
+      (SIGNAL_PRIORITY[signal.type] === SIGNAL_PRIORITY[current.type] &&
+        signal.createdAt > current.createdAt)
+    ) {
+      bySource.set(sourceKey, signal);
+    }
+  }
+
+  return [...bySource.values()];
 }

@@ -18,6 +18,7 @@ import {
   MOVE_BURST_IDLE_MS,
   MOVE_DISTANCE_COOLDOWN,
   MOVE_MAX_COOLDOWN,
+  MISSED_PARRY_STUN_MS,
   PLAYER_RADIUS,
   PLAYER_SPAWN_MIN_DISTANCE_TILES,
   SPAWN_ENEMY_BUFFER_TILES,
@@ -41,6 +42,7 @@ import {
 import type { NoiseEvent } from "./types";
 import type { CaveLayout } from "./proceduralCave";
 import { calculateEnemyMoveCooldown } from "../../lib/gameplay/rules";
+import { movementTerrainMultiplier } from "../../lib/gameplay/survival";
 
 export type EnemyBehaviorState =
   | "idle"
@@ -57,6 +59,10 @@ export type EnemyTarget = {
   position: PlayerPosition;
   alive?: boolean;
 };
+
+export function createLocalEnemyTargets(player: PlayerPosition): EnemyTarget[] {
+  return [{ id: "player", position: player, alive: true }];
+}
 
 export type EnemyState = {
   id: string;
@@ -98,6 +104,12 @@ export type CombatResolution = {
   wasParried: boolean;
   nextParryUntil: number;
   attackerStunnedUntil: number;
+};
+
+export type MissedParryResolution = {
+  missed: boolean;
+  nextParryUntil: number;
+  nextStunnedUntil: number;
 };
 
 export type PlannedMovement = {
@@ -408,7 +420,7 @@ export function resolveCombatHit({
       nextHealth: targetHealth,
       damageApplied: 0,
       wasParried: true,
-      nextParryUntil: now,
+      nextParryUntil: 0,
       attackerStunnedUntil: Math.max(attackerStunnedUntil, now + stunDurationMs),
     };
   }
@@ -420,6 +432,32 @@ export function resolveCombatHit({
     wasParried: false,
     nextParryUntil: targetParryUntil,
     attackerStunnedUntil,
+  };
+}
+
+export function resolveMissedParry({
+  parryUntil,
+  stunnedUntil = 0,
+  now = Date.now(),
+  penaltyMs = MISSED_PARRY_STUN_MS,
+}: {
+  parryUntil: number;
+  stunnedUntil?: number;
+  now?: number;
+  penaltyMs?: number;
+}): MissedParryResolution {
+  if (parryUntil <= 0 || now < parryUntil) {
+    return {
+      missed: false,
+      nextParryUntil: parryUntil,
+      nextStunnedUntil: stunnedUntil,
+    };
+  }
+
+  return {
+    missed: true,
+    nextParryUntil: 0,
+    nextStunnedUntil: Math.max(stunnedUntil, now + penaltyMs),
   };
 }
 
@@ -456,12 +494,17 @@ export function planMovementPath(
   }
 
   const distanceTiles = path.length - 1;
+  const worldPath = path.slice(1).map(tileToWorld);
+  const terrainMultiplier = lookup ? movementTerrainMultiplier(worldPath, lookup) : 1;
 
   return {
     path,
-    worldPath: path.slice(1).map(tileToWorld),
+    worldPath,
     distanceTiles,
-    cooldownMs: calculateMoveCooldown(distanceTiles, moveCooldownMultiplier),
+    cooldownMs: calculateMoveCooldown(
+      distanceTiles,
+      moveCooldownMultiplier * terrainMultiplier,
+    ),
     targetTile,
   };
 }
@@ -683,6 +726,7 @@ function moveEnemyOnCooldown(
   speedWorldUnitsPerSecond: number,
   now: number,
   lookup?: TileLookup,
+  isChasing = false,
 ): EnemyState {
   if (now < current.nextMoveAt) {
     return current;
@@ -694,7 +738,14 @@ function moveEnemyOnCooldown(
   return {
     ...moved,
     lastMoveAt: didMove ? now : current.lastMoveAt,
-    nextMoveAt: now + calculateEnemyMoveCooldown(speedWorldUnitsPerSecond),
+    nextMoveAt:
+      now +
+      calculateEnemyMoveCooldown(
+        speedWorldUnitsPerSecond,
+        current.behavior,
+        current.id,
+        isChasing,
+      ),
   };
 }
 
@@ -910,7 +961,7 @@ export function updateEnemyState(
     }
 
     return withEnemyState(
-      moveEnemyOnCooldown(current, targetTile, config.chaseSpeed, now, lookup),
+      moveEnemyOnCooldown(current, targetTile, config.chaseSpeed, now, lookup, true),
       "chasing",
       {
         lastKnownPlayerTileKey: toTileKey(targetTile),
@@ -953,6 +1004,7 @@ export function updateEnemyState(
       config.chaseSpeed,
       now,
       lookup,
+      true,
     );
 
     if ((moved.x === current.x && moved.y === current.y) || isEnemyStuck(moved)) {
@@ -1046,6 +1098,7 @@ export function pickSeparatedSpawns(
   lookup: TileLookup,
   count: number,
   minimumDistanceTiles = PLAYER_SPAWN_MIN_DISTANCE_TILES,
+  seed = `${layout.seed}:spawns`,
 ) {
   const preferredTiles = [
     layout.startPosition,
@@ -1065,33 +1118,42 @@ export function pickSeparatedSpawns(
     }
   }
 
+  let hash = 2166136261;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash ^= seed.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  let randomState = hash >>> 0;
+  const random = () => {
+    randomState += 0x6d2b79f5;
+    let value = randomState;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+  for (let index = candidates.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(random() * (index + 1));
+    [candidates[index], candidates[swapIndex]] = [candidates[swapIndex]!, candidates[index]!];
+  }
+
   const selected: TileCoordinate[] = [];
 
   while (selected.length < count && candidates.length > 0) {
     const next =
       selected.length === 0
-        ? candidates
-            .slice()
-            .sort((left, right) => {
-              const leftScore = layout.enemyConfigs.reduce(
-                (score, enemy) => score + tileDistance(left, worldToTile(enemy.start)),
-                0,
-              );
-              const rightScore = layout.enemyConfigs.reduce(
-                (score, enemy) => score + tileDistance(right, worldToTile(enemy.start)),
-                0,
-              );
-              return rightScore - leftScore;
-            })[0]
+        ? candidates[Math.floor(random() * candidates.length)]
         : candidates
             .filter((candidate) =>
               selected.every((taken) => tileDistance(candidate, taken) >= minimumDistanceTiles),
             )
-            .sort((left, right) => {
+            .map((candidate) => ({ candidate, tie: random() }))
+            .sort((leftEntry, rightEntry) => {
+              const left = leftEntry.candidate;
+              const right = rightEntry.candidate;
               const leftGap = Math.min(...selected.map((taken) => tileDistance(left, taken)));
               const rightGap = Math.min(...selected.map((taken) => tileDistance(right, taken)));
-              return rightGap - leftGap;
-            })[0] ?? candidates[0];
+              return rightGap - leftGap || leftEntry.tie - rightEntry.tie;
+            })[0]?.candidate;
 
     if (!next) {
       break;

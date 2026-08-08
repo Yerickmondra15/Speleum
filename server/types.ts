@@ -15,6 +15,9 @@ import type { TileLookup } from "../app/play/tileMap";
 import type { ServerTimings } from "./config";
 import type { RoomStore } from "./rooms/roomStore";
 import type { ResumeRoomAck } from "../lib/multiplayer/events";
+import type { AbilityState, SilkTrap } from "../lib/gameplay/abilities";
+import type { SanityState } from "../lib/gameplay/sanity";
+import type { ShelterRecoveryState } from "../lib/gameplay/survival";
 
 export type SocketData = {
   userId: string;
@@ -30,6 +33,7 @@ export type ClientToServerEvents = {
   "player-move": (payload: unknown) => void;
   "player-attack": (payload: unknown) => void;
   "player-defend": (payload: unknown) => void;
+  "player-ability": (payload: unknown) => void;
   "leave-room": (payload: unknown) => void;
 };
 
@@ -72,9 +76,14 @@ export type ServerPlayerState = MultiplayerPlayerState & {
   lastParryAt: number;
   moveCooldownUntil: number;
   movementPath: PlayerPosition[];
+  movementNoiseMultiplier: number;
   parryUntil: number;
   stunnedUntil: number;
   resultReceipt: string | null;
+  abilityState: AbilityState;
+  lastAbilityTickAt: number;
+  sanityState: SanityState;
+  shelterState: ShelterRecoveryState;
 };
 
 export type RoomCleanupStatus = "active" | "scheduled" | "deleting";
@@ -97,6 +106,8 @@ export type ServerRoomState = {
   players: Map<string, ServerPlayerState>;
   signals: RadarSignal[];
   noises: NoiseEvent[];
+  traps: SilkTrap[];
+  exhaustedShelters: Set<string>;
   winnerId: string | null;
   message: string | null;
   results: MatchResultEntry[];

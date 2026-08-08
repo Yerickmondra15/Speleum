@@ -6,6 +6,8 @@ Rama: `agent/gameplay-overhaul`
 
 Base: merge del PR #6 (`bb8b188`)
 
+> Nota histórica: este informe describe el cierre de la sesión original. Habilidades, sanidad, refugios, radar extendido y autoridad de `player-ability` fueron integrados posteriormente; la referencia vigente está en `DISENO_JUEGO_SPELEUM.md` y `GAME_RULES.md`.
+
 ## Lo que quedó terminado
 
 - Fuente canónica para dimensiones, rangos, daño y timings en `lib/gameplay/rules.ts`.
