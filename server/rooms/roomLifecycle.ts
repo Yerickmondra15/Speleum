@@ -45,14 +45,16 @@ import {
 } from "../../lib/gameplay/survival";
 import { SURVIVAL_RULES } from "../../lib/gameplay/rules";
 import { worldToTile } from "../../app/play/tileMap";
-import { calculateCompetitiveScore } from "../game/scoring";
+import {
+  buildOfficialResultBatch,
+  scheduleOfficialResultPersistence,
+} from "../results/officialResultPersistence";
 import type { ServerContext, ServerPlayerState, ServerRoomState } from "../types";
 import {
   buildResults,
   cleanupTransientEvents,
   emitState,
   getAlivePlayers,
-  getConnectedPlayers,
   getReadyConnectedPlayers,
 } from "./roomSerialization";
 
@@ -90,18 +92,22 @@ export function markRoomActivity(room: ServerRoomState, context: ServerContext, 
 }
 
 export function createLobbyMessage(room: ServerRoomState) {
-  const connectedPlayers = getConnectedPlayers(room);
+  const lobbyPlayers = [...room.players.values()].filter((player) => player.status !== "left");
   const readyPlayers = getReadyConnectedPlayers(room);
 
   if (room.status === "starting") {
     return "Iniciando partida...";
   }
 
-  if (connectedPlayers.length < MIN_ROOM_PLAYERS) {
+  if (lobbyPlayers.some((player) => !player.connected)) {
+    return "Esperando la reconexion de los jugadores admitidos.";
+  }
+
+  if (lobbyPlayers.length < MIN_ROOM_PLAYERS) {
     return `Esperando minimo ${MIN_ROOM_PLAYERS} jugadores.`;
   }
 
-  if (readyPlayers.length < connectedPlayers.length) {
+  if (readyPlayers.length < lobbyPlayers.length) {
     return "Esperando confirmacion de todos.";
   }
 
@@ -113,11 +119,13 @@ export function syncLobbyState(room: ServerRoomState, context: ServerContext, no
     return false;
   }
 
-  const connectedPlayers = getConnectedPlayers(room);
-  const readyPlayers = connectedPlayers.filter((player) => player.isReady);
+  const lobbyPlayers = [...room.players.values()].filter((player) => player.status !== "left");
+  const connectedPlayers = lobbyPlayers.filter((player) => player.connected);
+  const readyPlayers = lobbyPlayers.filter((player) => player.connected && player.isReady);
+  const hasDisconnectedPlayer = connectedPlayers.length !== lobbyPlayers.length;
   let changed = false;
 
-  if (connectedPlayers.length < MIN_ROOM_PLAYERS) {
+  if (lobbyPlayers.length < MIN_ROOM_PLAYERS || hasDisconnectedPlayer) {
     if (room.status !== "waiting") {
       room.status = "waiting";
       changed = true;
@@ -167,20 +175,30 @@ export function syncLobbyState(room: ServerRoomState, context: ServerContext, no
 }
 
 export function startRoom(room: ServerRoomState, context: ServerContext, now = Date.now()) {
+  const entries = [...room.players.values()]
+    .filter((player) => player.status !== "left")
+    .sort((left, right) => {
+      const leftKey = `${room.matchId}:${left.id}`;
+      const rightKey = `${room.matchId}:${right.id}`;
+      return leftKey.localeCompare(rightKey);
+    });
+
+  if (
+    entries.length < MIN_ROOM_PLAYERS ||
+    entries.some((player) => !player.connected || !player.isReady)
+  ) {
+    syncLobbyState(room, context, now);
+    return false;
+  }
+
   room.status = "playing";
   room.readyDeadline = null;
   room.startedAt = now;
   room.startAt = null;
   room.finishedAt = null;
   room.winnerId = null;
+  room.nextEliminationOrder = 0;
   room.message = "La cueva se cierra. Sobrevive la ultima criatura.";
-  const entries = [...room.players.values()]
-    .filter((player) => player.connected)
-    .sort((left, right) => {
-      const leftKey = `${room.matchId}:${left.id}`;
-      const rightKey = `${room.matchId}:${right.id}`;
-      return leftKey.localeCompare(rightKey);
-    });
   const spawns = pickSeparatedSpawns(
     room.cave,
     room.tileLookup,
@@ -191,6 +209,7 @@ export function startRoom(room: ServerRoomState, context: ServerContext, now = D
 
   entries.forEach((player, index) => {
     player.status = "playing";
+    player.eliminationOrder = null;
     player.position = spawns[index] ?? room.cave.startPosition;
     player.combat = createInitialCombatState(player.characterId);
     player.lastAction = "move";
@@ -216,6 +235,7 @@ export function startRoom(room: ServerRoomState, context: ServerContext, now = D
   room.exhaustedShelters.clear();
   room.enemies = room.cave.enemyConfigs.map((config) => createEnemyState(config, now));
   markRoomActivity(room, context, now);
+  return true;
 }
 
 export function addSignal(
@@ -273,6 +293,7 @@ export function eliminatePlayer(
   }
 
   player.status = "lost";
+  player.eliminationOrder = ++room.nextEliminationOrder;
   player.combat.health = 0;
   player.combat.eliminatedAt = now;
   player.combat.isParrying = false;
@@ -313,43 +334,52 @@ export function finishRoom(
   room.winnerId = winnerId;
   room.message = message;
 
-  for (const player of room.players.values()) {
-    if (winnerId && player.id === winnerId) {
-      player.status = "won";
-    } else if (player.status === "playing") {
-      player.status = "lost";
-      player.combat.eliminatedAt = now;
-    }
+  const winner = winnerId ? room.players.get(winnerId) ?? null : null;
+  if (winner) {
+    winner.status = "won";
+    winner.eliminationOrder = null;
+    winner.combat.eliminatedAt = null;
+  }
+
+  const remainingPlayers = [...room.players.values()]
+    .filter((player) => player.id !== winnerId && player.status === "playing")
+    .sort((left, right) => left.id.localeCompare(right.id));
+  for (const player of remainingPlayers) {
+    player.status = "lost";
+    player.eliminationOrder = ++room.nextEliminationOrder;
+    player.combat.health = 0;
+    player.combat.eliminatedAt = now;
   }
 
   room.results = buildResults(room);
-  const winnerUserId = winnerId ? room.players.get(winnerId)?.userId ?? null : null;
-  const startedAt = new Date(room.startedAt ?? room.createdAt).toISOString();
-  const endedAt = new Date(now).toISOString();
+  const officialResults = buildOfficialResultBatch(room);
+  const playersByUserId = new Map(
+    [...room.players.values()].map((player) => [player.userId, player]),
+  );
 
-  for (const player of room.players.values()) {
-    const placement = room.results.find((entry) => entry.playerId === player.id)?.placement ?? 6;
-    const won = player.id === winnerId;
+  for (const { userId, result } of officialResults) {
+    const player = playersByUserId.get(userId);
+    if (!player) {
+      continue;
+    }
     player.resultReceipt = createResultReceipt(
       {
-        matchId: room.matchId,
-        userId: player.userId,
-        winnerUserId,
-        creature: player.characterId,
-        result: won ? "win" : "loss",
-        scoreEarned: calculateCompetitiveScore({
-          won,
-          kills: player.combat.kills,
-          placement,
-        }),
-        startedAt,
-        endedAt,
+        matchId: result.matchId,
+        userId,
+        winnerUserId: result.winnerId,
+        participantCount: result.participantCount ?? undefined,
+        creature: result.creature,
+        result: result.result,
+        scoreEarned: result.scoreEarned,
+        startedAt: result.startedAt.toISOString(),
+        endedAt: result.endedAt.toISOString(),
       },
       context.resultSecret,
       now,
     );
   }
 
+  scheduleOfficialResultPersistence(room, context, officialResults);
   markRoomActivity(room, context, now);
   context.io.to(room.code).emit("game-over", { winnerId, message, results: room.results });
   emitState(room, context);
@@ -675,7 +705,7 @@ export function processRoomLifecycle(context: ServerContext, now = Date.now()) {
           null,
           now,
         ) || changed;
-      } else if (room.status !== "finished") {
+      } else if (room.startedAt === null && room.status !== "finished") {
         room.players.delete(player.id);
         changed = true;
       }

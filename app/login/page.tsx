@@ -709,7 +709,7 @@ export default function LoginPage() {
           pendingAuth.email,
           formData.code.trim(),
         );
-        setSuccess("Correo verificado. Bienvenido a Speleum.");
+        setSuccess(messages.login.successEmailVerified);
         
       } else {
         await verifyLoginCode(
@@ -803,7 +803,7 @@ export default function LoginPage() {
   if (status === "signed-in") {
     return (
       <main className="theme-app flex min-h-screen items-center justify-center theme-text-muted">
-        Cargando...
+        {messages.login.loading}
         
       </main>
     );

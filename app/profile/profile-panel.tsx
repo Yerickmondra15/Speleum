@@ -8,31 +8,11 @@ import { ArrowLeft, LogOut, Play, UserRound } from "lucide-react";
 import { getCreatureById } from "@/lib/creatures";
 import { LanguageSwitcher } from "@/app/components/LanguageSwitcher";
 import { ThemeSwitcher } from "@/app/components/ThemeSwitcher";
+import { AudioSettings } from "@/app/components/AudioSettings";
 import { getLocalizedCreature } from "@/lib/i18n/content";
 import { useLanguage } from "@/lib/i18n/LanguageProvider";
+import { fetchProfile, type ProfileData } from "@/lib/profile-contract";
 import { useAuth } from "../auth/AuthProvider";
-
-type ProfileData = {
-  username: string;
-  email: string;
-  activeCreature: string;
-  matchesPlayed: number;
-  wins: number;
-  losses: number;
-  winRate: number;
-  score: number;
-  lastMatchAt: string | null;
-  history: Array<{
-    id: string;
-    mode: string;
-    verificationLevel: string;
-    creature: string;
-    result: string;
-    scoreEarned: number;
-    date: string;
-    durationMs: number | null;
-  }>;
-};
 
 type ProfileFieldRowProps = {
   label: string;
@@ -59,6 +39,7 @@ export function ProfilePanel() {
   const { locale, messages } = useLanguage();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const activeCreature = getCreatureById(
     profile?.activeCreature ?? user?.activeCreature ?? "cave-axolotl",
   );
@@ -74,26 +55,37 @@ export function ProfilePanel() {
       return;
     }
 
-    async function loadProfile() {
-      try {
-        const response = await fetch("/api/profile", {
-          cache: "no-store",
-        });
+    const controller = new AbortController();
 
-        if (response.status === 401) {
+    async function loadProfile() {
+      setIsLoading(true);
+      setErrorMessage(null);
+      try {
+        const data = await fetchProfile({ signal: controller.signal });
+        setProfile(data);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        if (
+          error &&
+          typeof error === "object" &&
+          "status" in error &&
+          error.status === 401
+        ) {
           router.replace("/login");
           return;
         }
-
-        const data = (await response.json()) as ProfileData;
-        setProfile(data);
+        setProfile(null);
+        setErrorMessage(
+          error instanceof Error ? error.message : messages.profile.error,
+        );
       } finally {
-        setIsLoading(false);
+        if (!controller.signal.aborted) setIsLoading(false);
       }
     }
 
     void loadProfile();
-  }, [router, status]);
+    return () => controller.abort();
+  }, [messages.profile.error, router, status]);
 
   const handleLogout = async () => {
     await logout();
@@ -101,10 +93,23 @@ export function ProfilePanel() {
     router.refresh();
   };
 
-  if (status === "loading" || isLoading || !profile) {
+  if (status === "loading" || isLoading) {
     return (
       <main className="theme-page flex min-h-screen items-center justify-center text-(--text-muted)">
         {messages.profile.loading}
+      </main>
+    );
+  }
+
+  if (errorMessage || !profile) {
+    return (
+      <main className="theme-page flex min-h-screen flex-col items-center justify-center gap-4 px-4 text-center">
+        <p role="alert" className="text-red-300">
+          {messages.profile.error} {errorMessage}
+        </p>
+        <Link href="/" className="theme-button-secondary rounded-full px-5 py-3 text-sm">
+          {messages.common.home}
+        </Link>
       </main>
     );
   }
@@ -204,6 +209,10 @@ export function ProfilePanel() {
               value={profile.score}
             />
             <ProfileFieldRow
+              label={messages.profile.bestScore}
+              value={profile.bestScore}
+            />
+            <ProfileFieldRow
               label={messages.profile.lastMatch}
               value={
                 profile.lastMatchAt
@@ -242,7 +251,7 @@ export function ProfilePanel() {
                       </div>
                       <p className="mt-2 text-(--text-secondary)">
                         {creature.nombre} · {entry.scoreEarned} pts ·{" "}
-                        {entry.verificationLevel === "server_verified"
+                        {entry.competitive
                           ? messages.profile.verified
                           : messages.profile.localUnverified}
                       </p>
@@ -283,6 +292,18 @@ export function ProfilePanel() {
                 </p>
                 <div className="mt-4">
                   <ThemeSwitcher />
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs tracking-[0.2em] text-(--text-muted)">
+                  {messages.audio.title}
+                </p>
+                <p className="mt-2 text-sm text-(--text-secondary)">
+                  {messages.audio.description}
+                </p>
+                <div className="mt-4">
+                  <AudioSettings />
                 </div>
               </div>
             </div>

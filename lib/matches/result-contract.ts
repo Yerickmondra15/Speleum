@@ -37,6 +37,7 @@ export type VerifiedMatchResult = {
   mode: "local" | "multiplayer";
   status: "finished";
   winnerId: string | null;
+  participantCount: number | null;
   startedAt: Date;
   endedAt: Date;
   creature: z.infer<typeof creatureIdSchema>;
@@ -45,6 +46,10 @@ export type VerifiedMatchResult = {
   verificationLevel: "local_unverified" | "server_verified";
   competitive: boolean;
 };
+
+export function createLocalMatchId(userId: string, clientMatchId: string) {
+  return `local:${userId}:${clientMatchId}`;
+}
 
 export class MatchResultPolicyError extends Error {
   constructor(
@@ -89,10 +94,13 @@ export function verifyMatchResultRequest({
     validateDates(startedAt, endedAt, nowMs);
 
     return {
-      matchId: request.matchId,
+      // Local IDs are client-generated. Namespace them on the trusted side so
+      // they can never preempt a public authoritative multiplayer match UUID.
+      matchId: createLocalMatchId(currentUserId, request.matchId),
       mode: "local",
       status: "finished",
       winnerId: null,
+      participantCount: 1,
       startedAt,
       endedAt,
       creature: request.creature,
@@ -134,6 +142,7 @@ export function verifyMatchResultRequest({
     mode: "multiplayer",
     status: "finished",
     winnerId: receipt.winnerUserId,
+    participantCount: receipt.participantCount ?? null,
     startedAt,
     endedAt,
     creature: creature.data,

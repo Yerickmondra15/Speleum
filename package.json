@@ -10,6 +10,8 @@
     "dev:all": "concurrently \"npm run dev\" \"npm run server\"",
     "build": "prisma generate && next build",
     "db:migrate:deploy": "prisma migrate deploy",
+    "stats:rebuild": "tsx scripts/rebuild-competitive-stats.ts",
+    "stats:rebuild:apply": "tsx scripts/rebuild-competitive-stats.ts --apply",
     "postinstall": "prisma generate",
     "start": "next start",
     "lint": "eslint",

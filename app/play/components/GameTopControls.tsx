@@ -1,6 +1,8 @@
 "use client";
 
 import { useLanguage } from "@/lib/i18n/LanguageProvider";
+import { Volume2, VolumeX } from "lucide-react";
+import { useAudio } from "@/lib/audio/AudioProvider";
 
 type GameTopControlsProps = {
   isUiHidden: boolean;
@@ -24,9 +26,28 @@ export function GameTopControls({
   onToggleUi,
 }: GameTopControlsProps) {
   const { messages } = useLanguage();
+  const { preferences, updatePreferences, unlock, playSfx } = useAudio();
 
   return (
     <div className="pointer-events-auto flex items-center justify-end gap-1.5 sm:gap-2">
+      <button
+        type="button"
+        onClick={() => {
+          unlock();
+          updatePreferences({ muted: !preferences.muted });
+          if (preferences.muted) playSfx("ui");
+        }}
+        aria-label={preferences.muted ? messages.audio.unmute : messages.audio.mute}
+        aria-pressed={preferences.muted}
+        className={controlButtonClass(true)}
+      >
+        {preferences.muted ? (
+          <VolumeX className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+        ) : (
+          <Volume2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+        )}
+        <span className="sr-only">{preferences.muted ? messages.audio.muted : messages.audio.soundOn}</span>
+      </button>
       {!isUiHidden && showPause && onTogglePause && (
         <button
           type="button"

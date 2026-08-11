@@ -1,51 +1,125 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { ArrowLeft, Trophy } from "lucide-react";
-import { getCreatureById } from "@/lib/creatures";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { ArrowLeft, Search, SlidersHorizontal, Trophy, X } from "lucide-react";
+import { creatures, getCreatureById } from "@/lib/creatures";
 import { getLocalizedCreature } from "@/lib/i18n/content";
 import { useLanguage } from "@/lib/i18n/LanguageProvider";
+import { fetchRankingPage, type RankingEntry } from "@/lib/ranking-contract";
+import {
+  rankingFiltersSchema,
+  type RankingFilters,
+} from "@/lib/ranking-query";
 
-type RankingEntry = {
-  rank: number;
-  userId: string;
-  username: string;
-  activeCreature: string;
-  matchesPlayed: number;
-  wins: number;
-  losses: number;
-  score: number;
-  winRate: number;
-  lastMatchAt: string | null;
+type ActiveFilters = Omit<RankingFilters, "page" | "limit">;
+
+const defaultFilters: ActiveFilters = {
+  q: "",
+  minScore: undefined,
+  maxScore: undefined,
+  minWins: undefined,
+  minMatches: undefined,
+  creature: undefined,
+  sort: "score",
+  direction: "desc",
+};
+
+const defaultDraft = {
+  q: "",
+  minScore: "",
+  maxScore: "",
+  minWins: "",
+  minMatches: "",
+  creature: "",
+  sort: "score",
+  direction: "desc",
 };
 
 export default function RankingView() {
   const { locale, messages } = useLanguage();
   const [entries, setEntries] = useState<RankingEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [filters, setFilters] = useState<ActiveFilters>(defaultFilters);
+  const [draft, setDraft] = useState(defaultDraft);
+  const [filterError, setFilterError] = useState<string | null>(null);
+  const hasActiveFilters = useMemo(
+    () =>
+      Boolean(
+        filters.q ||
+          filters.minScore !== undefined ||
+          filters.maxScore !== undefined ||
+          filters.minWins !== undefined ||
+          filters.minMatches !== undefined ||
+          filters.creature ||
+          filters.sort !== "score" ||
+          filters.direction !== "desc",
+      ),
+    [filters],
+  );
 
   useEffect(() => {
+    const controller = new AbortController();
+
     async function loadRanking() {
+      setIsLoading(true);
+      setErrorMessage(null);
       try {
-        const response = await fetch(`/api/ranking?page=${page}&limit=20`, {
-          cache: "no-store",
+        const data = await fetchRankingPage({
+          page,
+          filters,
+          signal: controller.signal,
         });
-        const data = (await response.json()) as {
-          entries?: RankingEntry[];
-          pagination?: { totalPages?: number };
-        };
-        setEntries(Array.isArray(data.entries) ? data.entries : []);
-        setTotalPages(data.pagination?.totalPages ?? 1);
+        setEntries(data.entries);
+        setTotalPages(data.pagination.totalPages);
+        setTotal(data.pagination.total);
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") return;
+        setEntries([]);
+        setTotalPages(1);
+        setTotal(0);
+        setErrorMessage(
+          error instanceof Error ? error.message : messages.ranking.error,
+        );
       } finally {
-        setIsLoading(false);
+        if (!controller.signal.aborted) setIsLoading(false);
       }
     }
 
     void loadRanking();
-  }, [page]);
+    return () => controller.abort();
+  }, [filters, messages.ranking.error, page]);
+
+  const submitFilters = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const parsed = rankingFiltersSchema.safeParse({
+      page: 1,
+      limit: 20,
+      ...draft,
+    });
+    if (!parsed.success) {
+      setFilterError(messages.ranking.invalidFilters);
+      return;
+    }
+
+    const { page: _page, limit: _limit, ...nextFilters } = parsed.data;
+    void _page;
+    void _limit;
+    setFilterError(null);
+    setPage(1);
+    setFilters(nextFilters);
+  };
+
+  const clearFilters = () => {
+    setDraft(defaultDraft);
+    setFilters(defaultFilters);
+    setFilterError(null);
+    setPage(1);
+  };
 
   return (
     <main className="theme-page min-h-screen overflow-x-hidden px-4 py-8 sm:px-5 sm:py-10">
@@ -69,14 +143,154 @@ export default function RankingView() {
           </Link>
         </div>
 
-        <div className="theme-panel mt-8 rounded-4xl p-4 sm:p-6">
+        <form
+          onSubmit={submitFilters}
+          className="theme-panel mt-8 rounded-4xl p-4 sm:p-6"
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <label className="min-w-0 flex-1 text-sm text-(--text-secondary)">
+              <span className="mb-2 block text-xs tracking-[0.18em] text-(--text-muted)">
+                {messages.ranking.searchLabel}
+              </span>
+              <span className="theme-input flex min-h-12 items-center gap-3 rounded-full px-4">
+                <Search className="h-4 w-4 shrink-0 text-(--text-muted)" />
+                <input
+                  value={draft.q}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, q: event.target.value }))
+                  }
+                  maxLength={40}
+                  className="min-w-0 flex-1 bg-transparent outline-none"
+                  placeholder={messages.ranking.searchPlaceholder}
+                />
+              </span>
+            </label>
+            <button
+              type="submit"
+              className="theme-button-primary inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-semibold"
+            >
+              <Search className="h-4 w-4" />
+              {messages.ranking.applyFilters}
+            </button>
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="theme-button-secondary inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-5 py-3 text-sm"
+            >
+              <X className="h-4 w-4" />
+              {messages.ranking.clearFilters}
+            </button>
+          </div>
+
+          <details className="theme-card mt-4 rounded-[1.4rem] p-4">
+            <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 text-sm font-medium text-(--text-primary)">
+              <SlidersHorizontal className="h-4 w-4" />
+              {messages.ranking.filtersTitle}
+            </summary>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {(
+                [
+                  ["minScore", messages.ranking.minScore],
+                  ["maxScore", messages.ranking.maxScore],
+                  ["minWins", messages.ranking.minWins],
+                  ["minMatches", messages.ranking.minMatches],
+                ] as const
+              ).map(([field, label]) => (
+                <label key={field} className="text-xs text-(--text-muted)">
+                  <span className="mb-2 block">{label}</span>
+                  <input
+                    type="number"
+                    min="0"
+                    inputMode="numeric"
+                    value={draft[field]}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        [field]: event.target.value,
+                      }))
+                    }
+                    className="theme-input min-h-11 w-full rounded-xl px-3 py-2 text-sm"
+                  />
+                </label>
+              ))}
+
+              <label className="text-xs text-(--text-muted)">
+                <span className="mb-2 block">{messages.ranking.activeCreature}</span>
+                <select
+                  value={draft.creature}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, creature: event.target.value }))
+                  }
+                  className="theme-input min-h-11 w-full rounded-xl px-3 py-2 text-sm"
+                >
+                  <option value="">{messages.ranking.allCreatures}</option>
+                  {creatures.map((creature) => (
+                    <option key={creature.id} value={creature.id}>
+                      {getLocalizedCreature(locale, creature.id).nombre}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="text-xs text-(--text-muted)">
+                <span className="mb-2 block">{messages.ranking.sortBy}</span>
+                <select
+                  value={draft.sort}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, sort: event.target.value }))
+                  }
+                  className="theme-input min-h-11 w-full rounded-xl px-3 py-2 text-sm"
+                >
+                  <option value="score">{messages.ranking.sortScore}</option>
+                  <option value="wins">{messages.ranking.sortWins}</option>
+                  <option value="matchesPlayed">{messages.ranking.sortMatches}</option>
+                  <option value="bestScore">{messages.ranking.sortBestScore}</option>
+                </select>
+              </label>
+
+              <label className="text-xs text-(--text-muted)">
+                <span className="mb-2 block">{messages.ranking.direction}</span>
+                <select
+                  value={draft.direction}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, direction: event.target.value }))
+                  }
+                  className="theme-input min-h-11 w-full rounded-xl px-3 py-2 text-sm"
+                >
+                  <option value="desc">{messages.ranking.descending}</option>
+                  <option value="asc">{messages.ranking.ascending}</option>
+                </select>
+              </label>
+            </div>
+          </details>
+
+          {filterError && (
+            <p role="alert" className="theme-error mt-4 rounded-xl px-4 py-3 text-sm">
+              {filterError}
+            </p>
+          )}
+        </form>
+
+        <div className="theme-panel mt-5 rounded-4xl p-4 sm:p-6">
+          {!isLoading && !errorMessage && total > 0 && (
+            <p className="mb-4 text-xs text-(--text-muted)" aria-live="polite">
+              {total} {messages.ranking.resultsFound}
+            </p>
+          )}
           {isLoading ? (
             <div className="theme-card rounded-[1.4rem] p-6 text-(--text-secondary)">
               {messages.ranking.loading}
             </div>
+          ) : errorMessage ? (
+            <div
+              role="alert"
+              className="theme-card rounded-[1.4rem] p-6 text-red-300"
+            >
+              {messages.ranking.error} {errorMessage}
+            </div>
           ) : entries.length === 0 ? (
             <div className="theme-card rounded-[1.4rem] p-6 text-(--text-secondary)">
-              {messages.ranking.empty}
+              {hasActiveFilters ? messages.ranking.filteredEmpty : messages.ranking.empty}
             </div>
           ) : (
             <div className="space-y-4">
@@ -98,6 +312,7 @@ export default function RankingView() {
                       </div>
                       <div className="text-left text-sm text-(--text-secondary) sm:text-right">
                         <p>Score {entry.score}</p>
+                        <p>{messages.ranking.bestScore} {entry.bestScore}</p>
                         <p>{entry.wins} {messages.ranking.wins}</p>
                         <p>{entry.winRate}%</p>
                         <p>{entry.matchesPlayed} {messages.ranking.matches}</p>
@@ -118,8 +333,8 @@ export default function RankingView() {
                           #{entry.rank}
                         </span>
                         <span>{creature.nombre}</span>
-                        <span className="sm:text-center">Wins: {entry.wins}</span>
-                        <span className="sm:text-center">Loss: {entry.losses}</span>
+                        <span className="sm:text-center">{messages.ranking.winsShort}: {entry.wins}</span>
+                        <span className="sm:text-center">{messages.ranking.lossShort}: {entry.losses}</span>
                         <span className="sm:text-center">{messages.ranking.playedShort}: {entry.matchesPlayed}</span>
                       </div>
                     </div>

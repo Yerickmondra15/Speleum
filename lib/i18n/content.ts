@@ -227,6 +227,32 @@ export function getStatLabel(locale: Locale, stat: CreatureStatKey) {
   return statLabels[stat][locale];
 }
 
+const abilityNames: Record<CreatureId, Record<Locale, string>> = {
+  "cave-axolotl": { es: "Regeneración cavernícola", en: "Cavern regeneration" },
+  "cave-shrimp": { es: "Impulso fantasma", en: "Ghost surge" },
+  "blind-fish": { es: "Ecolocalización", en: "Echolocation" },
+  "cave-crab": { es: "Caparazón", en: "Fortified shell" },
+  "cave-spider": { es: "Trampa de seda", en: "Silk trap" },
+};
+
+export function getLocalizedAbilityName(locale: Locale, creatureId: CreatureId) {
+  return abilityNames[creatureId][locale];
+}
+
+const terrainNames: Record<string, Record<Locale, string>> = {
+  "Peligro letal": { es: "Peligro letal", en: "Lethal hazard" },
+  "Agua oscura": { es: "Agua oscura", en: "Dark water" },
+  Refugio: { es: "Refugio", en: "Shelter" },
+  "Refugio agotado": { es: "Refugio agotado", en: "Exhausted shelter" },
+  Nido: { es: "Nido", en: "Nest" },
+  "Punto de aparición": { es: "Punto de aparición", en: "Spawn point" },
+  "Suelo cavernícola": { es: "Suelo cavernícola", en: "Cavern floor" },
+};
+
+export function localizeTerrainName(locale: Locale, terrainName: string) {
+  return terrainNames[terrainName]?.[locale] ?? terrainName;
+}
+
 export function localizeZone(locale: Locale, zone: Zone): Zone {
   if (zone.id in zoneBaseCopy) {
     const copy = zoneBaseCopy[zone.id as ZoneBaseId][locale];
@@ -327,4 +353,127 @@ const authMessageMap: Record<string, Record<Locale, string>> = {
 
 export function translateAuthMessage(locale: Locale, message: string) {
   return authMessageMap[message]?.[locale] ?? message;
+}
+
+const multiplayerEnglishMessages: Record<string, string> = {
+  "Los datos para crear la sala no son validos.": "The room creation data is invalid.",
+  "Ya perteneces a una sala.": "You already belong to a room.",
+  "El codigo, nombre o criatura no son validos.": "The code, name, or creature is invalid.",
+  "La sala no existe.": "The room does not exist.",
+  "La sala ya comenzo o termino.": "The room has already started or ended.",
+  "La sala ya esta completa.": "The room is already full.",
+  "Este usuario ya esta conectado en la sala.": "This user is already connected to the room.",
+  "El codigo de sala para reconectar no es valido.": "The room code for reconnection is invalid.",
+  "El socket ya esta asociado a otra sala.": "This connection is already associated with another room.",
+  "No existe una sesion recuperable para este usuario.": "There is no recoverable session for this user.",
+  "El socket ya esta asociado a otra identidad de la sala.": "This connection is already associated with another room identity.",
+  "La partida termino mientras estabas desconectado.": "The match ended while you were disconnected.",
+  "No perteneces a la sala indicada.": "You do not belong to that room.",
+  "La sala no acepta confirmaciones en este estado.": "The room does not accept ready confirmations in this state.",
+  "El movimiento enviado no es valido.": "The submitted movement is invalid.",
+  "No puedes moverte en el estado actual.": "You cannot move in the current state.",
+  "Tu criatura aun recupera el impulso.": "Your creature is still recovering its movement.",
+  "Tu criatura esta aturdida.": "Your creature is stunned.",
+  "El caparazón cerrado impide desplazarte.": "The closed shell prevents movement.",
+  "No hay una ruta valida hacia esa celda.": "There is no valid route to that cell.",
+  "El ataque enviado no es valido.": "The submitted attack is invalid.",
+  "No puedes atacar en el estado actual.": "You cannot attack in the current state.",
+  "Tu criatura aun esta recuperandose.": "Your creature is still recovering.",
+  "La defensa enviada no es valida.": "The submitted defense is invalid.",
+  "No puedes defenderte en el estado actual.": "You cannot defend in the current state.",
+  "Tu criatura aun no puede hacer parry.": "Your creature cannot parry yet.",
+  "La habilidad enviada no es válida.": "The submitted ability is invalid.",
+  "No puedes usar habilidades en el estado actual.": "You cannot use abilities in the current state.",
+  "La habilidad requiere un tile seguro y caminable.": "The ability requires a safe, walkable tile.",
+  "La sala expiro por inactividad.": "The room expired due to inactivity.",
+  "Iniciando partida...": "Starting match...",
+  "Esperando la reconexion de los jugadores admitidos.": "Waiting for admitted players to reconnect.",
+  "La sala puede iniciar. Esperando la confirmacion final del servidor.": "The room can start. Waiting for final server confirmation.",
+  "La cueva se cierra. Sobrevive la ultima criatura.": "The cave closes in. Only the last creature survives.",
+  "La cueva consumio a todas las criaturas.": "The cave consumed every creature.",
+  "Ninguna criatura sobrevivio al colapso.": "No creature survived the collapse.",
+};
+
+export function translateMultiplayerMessage(locale: Locale, message: string): string {
+  if (locale === "es") return message;
+  const exact = multiplayerEnglishMessages[message];
+  if (exact) return exact;
+
+  const leftLobby = message.match(/^(.+) abandono la sala\. (.+)$/);
+  if (leftLobby) {
+    return `${leftLobby[1]} left the room. ${translateMultiplayerMessage(locale, leftLobby[2])}`;
+  }
+
+  const activatedAbility = message.match(/^(.+) activa (.+)\.$/);
+  if (activatedAbility) {
+    const ability = Object.values(abilityNames).find(
+      (copy) => copy.es === activatedAbility[2],
+    );
+    return `${activatedAbility[1]} activates ${ability?.en ?? activatedAbility[2]}.`;
+  }
+
+  const replacements: Array<[RegExp, string]> = [
+    [/^Esperando minimo (\d+) jugadores\.$/, "Waiting for at least $1 players."],
+    [/^(.+) recupero su sesion\.$/, "$1 restored their session."],
+    [/^(.+) abandono la cueva\.$/, "$1 left the cave."],
+    [/^(.+) abandono la conexion, pero permanece en los resultados de la partida\.$/, "$1 disconnected but remains in the match results."],
+    [/^(.+) abandono la partida\.$/, "$1 left the match."],
+    [/^(.+) ataco, pero no encontro presa\.$/, "$1 attacked but found no prey."],
+    [/^(.+) abre una ventana de parry arriesgada\.$/, "$1 opens a risky parry window."],
+    [/^(.+) golpeo a (.+)\.$/, "$1 hit $2."],
+    [/^(.+) derribo a (.+)\.$/, "$1 took down $2."],
+    [/^(.+) bloqueó en falso y quedó expuesto\.$/, "$1 mistimed the block and was left exposed."],
+    [/^(.+) desvia el golpe y aturde a (.+)\.$/, "$1 deflects the hit and stuns $2."],
+    [/^(.+) quedó atrapad[oa] en seda\.$/, "$1 was caught in silk."],
+    [/^(.+) agotó la energía de un refugio\.$/, "$1 exhausted a shelter."],
+    [/^(.+) escucha a la cueva acercarse: debe moverse\.$/, "$1 hears the cave closing in and must move."],
+    [/^(.+) cedió al encierro de la cueva\.$/, "$1 succumbed to the cave's confinement."],
+    [/^(.+) domina la cadena de la vida\.$/, "$1 dominates the chain of life."],
+    [/^(.+) fue tragado por la cueva\.$/, "$1 was swallowed by the cave."],
+    [/^(.+) resiste como la ultima criatura viva\.$/, "$1 remains as the last creature alive."],
+    [/^(.+) fue cazado por la cueva\.$/, "$1 was hunted down by the cave."],
+    [/^(.+) resistio hasta el final\.$/, "$1 endured until the end."],
+    [/^No se pudo activar la habilidad: (.+)\.$/, "The ability could not be activated: $1."],
+  ];
+  for (const [pattern, replacement] of replacements) {
+    if (pattern.test(message)) return message.replace(pattern, replacement);
+  }
+  return message;
+}
+
+const gameplayEnglishMessages: Record<string, string> = {
+  "Bloqueaste demasiado pronto: la apertura te deja aturdido.": "You blocked too early; the opening leaves you stunned.",
+  "Parry fallido · stun": "Failed parry · stunned",
+  "La oscuridad te alcanza. Muévete al menos una celda.": "The darkness reaches you. Move at least one cell.",
+  "El refugio cede su última reserva y queda agotado.": "The shelter gives up its last reserve and is exhausted.",
+  "Refugio +22% HP": "Shelter +22% HP",
+  "Escuchas ecos agresivos. El radar sugiere peligro, no certezas.": "You hear aggressive echoes. The radar suggests danger, not certainty.",
+  "La cueva te atrapo en una zona letal.": "The cave trapped you in a lethal zone.",
+  "Permaneciste inmóvil demasiado tiempo y la cueva te consumió.": "You stayed still for too long and the cave consumed you.",
+  "Tu vida llego a cero. La cueva cerro el combate a su favor.": "Your health reached zero. The cave ended the fight in its favor.",
+  "Limpiaste la cueva. Ninguna criatura hostil quedo con vida.": "You cleared the cave. No hostile creature remained alive.",
+  "Parry activo": "Parry active",
+  "Silenciaste todos los ecos hostiles de la cueva.": "You silenced every hostile echo in the cave.",
+};
+
+export function translateGameplayMessage(locale: Locale, message: string) {
+  if (locale === "es") return message;
+  const exact = gameplayEnglishMessages[message];
+  if (exact) return exact;
+  const replacements: Array<[RegExp, string]> = [
+    [/^(.+) queda inmovilizada por la seda\.$/, "$1 is immobilized by silk."],
+    [/^Parry perfecto: (.+) queda aturdida\.$/, "Perfect parry: $1 is stunned."],
+    [/^(.+) entra en rango y golpea\.$/, "$1 moves into range and hits."],
+    [/^(.+) confirma tu posicion y te persigue\.$/, "$1 confirms your position and gives chase."],
+    [/^(.+) investiga el ultimo ruido que escucho\.$/, "$1 investigates the last noise it heard."],
+    [/^(.+) se queda inmovil esperando una apertura\.$/, "$1 stays still, waiting for an opening."],
+    [/^(.+) cae y desaparece entre los ecos de roca\.$/, "$1 falls and disappears among the stone echoes."],
+    [/^Impacto confirmado sobre (.+)\.$/, "Hit confirmed on $1."],
+    [/^(.*) · baja$/, "$1 · kill"],
+    [/^(.*) · encierro$/, "$1 · darkness"],
+  ];
+  for (const [pattern, replacement] of replacements) {
+    if (pattern.test(message)) return message.replace(pattern, replacement);
+  }
+  return message;
 }

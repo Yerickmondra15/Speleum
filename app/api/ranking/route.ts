@@ -1,39 +1,37 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
-
 import { prisma } from "@/lib/prisma";
-
-const rankingQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).max(10_000).default(1),
-  limit: z.coerce.number().int().min(1).max(50).default(20),
-});
+import {
+  createRankingOrderBy,
+  createRankingPagination,
+  createRankingWhere,
+  parseRankingSearchParams,
+} from "@/lib/ranking-query";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const parsed = rankingQuerySchema.safeParse({
-    page: url.searchParams.get("page") ?? undefined,
-    limit: url.searchParams.get("limit") ?? undefined,
-  });
+  const parsed = parseRankingSearchParams(url.searchParams);
 
   if (!parsed.success) {
     return NextResponse.json({ error: "La paginacion no es valida." }, { status: 400 });
   }
 
   const { page, limit } = parsed.data;
+  const where = createRankingWhere(parsed.data);
+  const pagination = createRankingPagination(parsed.data);
 
   try {
     const [total, ranking] = await prisma.$transaction([
-      prisma.userStats.count({ where: { matchesPlayed: { gt: 0 } } }),
+      prisma.userStats.count({ where }),
       prisma.userStats.findMany({
-        where: { matchesPlayed: { gt: 0 } },
-        orderBy: [{ score: "desc" }, { wins: "desc" }, { matchesPlayed: "asc" }],
-        skip: (page - 1) * limit,
-        take: limit,
+        where,
+        orderBy: createRankingOrderBy(parsed.data),
+        ...pagination,
         select: {
           matchesPlayed: true,
           wins: true,
           losses: true,
           score: true,
+          bestScore: true,
           lastMatchAt: true,
           user: { select: { id: true, username: true, activeCreature: true } },
         },
@@ -50,6 +48,7 @@ export async function GET(request: Request) {
         wins: entry.wins,
         losses: entry.losses,
         score: entry.score,
+        bestScore: entry.bestScore,
         winRate:
           entry.matchesPlayed > 0
             ? Number(((entry.wins / entry.matchesPlayed) * 100).toFixed(1))

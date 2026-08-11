@@ -18,6 +18,11 @@ import type { ResumeRoomAck } from "../lib/multiplayer/events";
 import type { AbilityState, SilkTrap } from "../lib/gameplay/abilities";
 import type { SanityState } from "../lib/gameplay/sanity";
 import type { ShelterRecoveryState } from "../lib/gameplay/survival";
+import type { CreatureId } from "../lib/creatures";
+import type {
+  OfficialResultPersister,
+  ResultPersistenceState,
+} from "./results/officialResultPersistence";
 
 export type SocketData = {
   userId: string;
@@ -66,7 +71,9 @@ export type GameSocket = Socket<
 
 export type ServerPlayerState = MultiplayerPlayerState & {
   userId: string;
+  characterId: CreatureId;
   socketId: string | null;
+  eliminationOrder: number | null;
   connectedAt: number;
   disconnectedAt: number | null;
   reconnectDeadline: number | null;
@@ -108,6 +115,8 @@ export type ServerRoomState = {
   noises: NoiseEvent[];
   traps: SilkTrap[];
   exhaustedShelters: Set<string>;
+  nextEliminationOrder: number;
+  resultPersistence: ResultPersistenceState;
   winnerId: string | null;
   message: string | null;
   results: MatchResultEntry[];
@@ -118,4 +127,7 @@ export type ServerContext = {
   store: RoomStore;
   timings: ServerTimings;
   resultSecret: string;
+  persistOfficialResults: OfficialResultPersister;
+  resultPersistenceRetryDelaysMs: readonly number[];
+  pendingResultPersistences: Set<Promise<void>>;
 };

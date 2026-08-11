@@ -4,6 +4,8 @@ import { AuthProvider } from './auth/AuthProvider'
 import { LanguageProvider } from '@/lib/i18n/LanguageProvider'
 import { ThemeProvider } from '@/lib/theme/ThemeProvider'
 import { defaultTheme, themeStorageKey } from '@/lib/theme/theme'
+import { defaultLocale, languageStorageKey } from '@/lib/i18n/messages'
+import { AudioProvider } from '@/lib/audio/AudioProvider'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -51,9 +53,21 @@ export default function RootLayout({
             }
           })();`}
         </Script>
+        <Script id="speleum-language-init" strategy="beforeInteractive">
+          {`(() => {
+            try {
+              const stored = window.localStorage.getItem(${JSON.stringify(languageStorageKey)});
+              document.documentElement.lang = stored === "en" || stored === "es" ? stored : ${JSON.stringify(defaultLocale)};
+            } catch {
+              document.documentElement.lang = ${JSON.stringify(defaultLocale)};
+            }
+          })();`}
+        </Script>
         <ThemeProvider>
           <LanguageProvider>
-            <AuthProvider>{children}</AuthProvider>
+            <AudioProvider>
+              <AuthProvider>{children}</AuthProvider>
+            </AudioProvider>
           </LanguageProvider>
         </ThemeProvider>
       </body>

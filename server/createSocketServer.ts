@@ -2,6 +2,7 @@ import { createServer, type Server as HttpServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { Server } from "socket.io";
 
+import { persistMatchResults } from "../lib/matches/result-persistence";
 import { getMultiplayerResultSecret, getSocketAuthSecret } from "../lib/security/secrets";
 import { installSocketAuthentication } from "./auth/socketAuth";
 import {
@@ -15,6 +16,7 @@ import { registerConnectionHandlers } from "./handlers/connectionHandlers";
 import { evaluateRoom, processRoomLifecycle, startRoom, syncLobbyState } from "./rooms/roomLifecycle";
 import { emitState } from "./rooms/roomSerialization";
 import { RoomStore } from "./rooms/roomStore";
+import type { OfficialResultPersister } from "./results/officialResultPersistence";
 import type {
   ClientToServerEvents,
   GameServer,
@@ -29,6 +31,8 @@ type CreateSocketServerOptions = {
   resultSecret?: string;
   timings?: Partial<ServerTimings>;
   allowedOrigins?: Set<string>;
+  persistOfficialResults?: OfficialResultPersister;
+  resultPersistenceRetryDelaysMs?: readonly number[];
 };
 
 export function createSocketGameServer(options: CreateSocketServerOptions = {}) {
@@ -66,6 +70,10 @@ export function createSocketGameServer(options: CreateSocketServerOptions = {}) 
     store,
     timings,
     resultSecret: options.resultSecret ?? getMultiplayerResultSecret(),
+    persistOfficialResults: options.persistOfficialResults ?? persistMatchResults,
+    resultPersistenceRetryDelaysMs:
+      options.resultPersistenceRetryDelaysMs ?? [250, 1_000],
+    pendingResultPersistences: new Set(),
   };
   const replayStore = installSocketAuthentication(
     io,
@@ -129,8 +137,9 @@ export function createSocketGameServer(options: CreateSocketServerOptions = {}) 
     clearInterval(lobbyInterval);
     clearInterval(lifecycleInterval);
     replayStore.clear();
-    store.clear();
     await new Promise<void>((resolve) => io.close(() => resolve()));
+    await Promise.allSettled([...context.pendingResultPersistences]);
+    store.clear();
   }
 
   return { httpServer, io, store, context, listen, close };

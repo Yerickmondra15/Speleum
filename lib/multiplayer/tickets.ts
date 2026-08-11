@@ -30,6 +30,7 @@ const resultReceiptPayloadSchema = z
     matchId: z.string().uuid(),
     userId: z.string().min(1).max(128),
     winnerUserId: z.string().min(1).max(128).nullable(),
+    participantCount: z.number().int().min(2).max(6).optional(),
     creature: z.string().min(1).max(32),
     result: z.enum(["win", "loss"]),
     scoreEarned: z.number().int().min(0).max(1_000),

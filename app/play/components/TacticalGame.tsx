@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import type { ActionKind, CharacterOption, GameStatus, PlayerPosition } from "../gameConfig";
 import {
@@ -40,6 +40,7 @@ import { GameMap } from "./GameMap";
 import { ActionControls } from "./ActionControls";
 import { RadarPanel } from "./RadarPanel";
 import { GameOverlay } from "./GameOverlay";
+import { saveMatchResultRequest } from "@/lib/matches/client-result-persistence";
 import { GameTopControls } from "./GameTopControls";
 import { PauseOverlay } from "./PauseOverlay";
 import {
@@ -65,7 +66,6 @@ import {
   cancelRegenerationOnDamage,
   consumeAbilityEffects,
   createAbilityState,
-  creatureAbilities,
   getAbilityModifiers,
   pruneAbilityState,
   type AbilityState,
@@ -86,6 +86,14 @@ import {
   type ShelterRecoveryState,
 } from "@/lib/gameplay/survival";
 import { SURVIVAL_RULES } from "@/lib/gameplay/rules";
+import { useLanguage } from "@/lib/i18n/LanguageProvider";
+import {
+  getLocalizedAbilityName,
+  localizeZone,
+  translateGameplayMessage,
+} from "@/lib/i18n/content";
+import { useAudio } from "@/lib/audio/AudioProvider";
+import { formatMessage } from "@/lib/i18n/messages";
 
 type TacticalGameProps = {
   selectedCharacter: CharacterOption;
@@ -148,6 +156,9 @@ export function TacticalGame({
   selectedCharacter,
   onExitToMenu,
 }: TacticalGameProps) {
+  const { locale, messages } = useLanguage();
+  const gameCopy = messages.play.game;
+  const { unlock, setAmbientActive, playSfx } = useAudio();
   const creatureModifiers = getCreatureGameplayModifiers(selectedCharacter.id);
   const [caveSession, setCaveSession] = useState<LocalCaveSession>(() => createLocalCaveSession());
   const [matchId, setMatchId] = useState(() => createMatchId());
@@ -165,12 +176,8 @@ export function TacticalGame({
   const [parryCooldownEndsAt, setParryCooldownEndsAt] = useState(0);
   const [stunnedUntil, setStunnedUntil] = useState(0);
   const [now, setNow] = useState(() => Date.now());
-  const [message, setMessage] = useState(
-    "Marca una celda dentro de tu pulso visible y sobrevive a los ecos de la cueva.",
-  );
-  const [zoneMessage, setZoneMessage] = useState<string | null>(
-    "Solo ves 8 bloques alrededor. Todo lo demas es oscuridad.",
-  );
+  const [message, setMessage] = useState<string>(gameCopy.initialMessage);
+  const [zoneMessage, setZoneMessage] = useState<string | null>(gameCopy.initialZone);
   const [score, setScore] = useState(0);
   const [kills, setKills] = useState(0);
   const [combatFlash, setCombatFlash] = useState<string | null>(null);
@@ -211,6 +218,35 @@ export function TacticalGame({
   const exhaustedSheltersRef = useRef(exhaustedShelters);
   const lastAbilityTickAtRef = useRef(Date.now());
   const moveNoiseMultiplierRef = useRef(1);
+
+  const endAsLoss = useCallback((nextMessage: string) => {
+    setMessage(nextMessage);
+    gameStatusRef.current = "lost";
+    setGameStatus("lost");
+    playSfx("defeat");
+  }, [playSfx]);
+
+  const endAsWin = useCallback((nextMessage: string) => {
+    setMessage(nextMessage);
+    gameStatusRef.current = "won";
+    setGameStatus("won");
+    playSfx("victory");
+  }, [playSfx]);
+
+  useEffect(() => {
+    unlock();
+    setAmbientActive(true);
+    playSfx("start");
+    return () => setAmbientActive(false);
+  }, [playSfx, setAmbientActive, unlock]);
+
+  useEffect(() => {
+    const updateCopy = window.setTimeout(() => {
+      setMessage(gameCopy.initialMessage);
+      setZoneMessage(gameCopy.initialZone);
+    }, 0);
+    return () => window.clearTimeout(updateCopy);
+  }, [gameCopy.initialMessage, gameCopy.initialZone]);
 
   useEffect(() => {
     playerRef.current = player;
@@ -259,10 +295,8 @@ export function TacticalGame({
 
     resultSavedRef.current = true;
 
-    void fetch("/api/matches/results", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    void saveMatchResultRequest(
+      {
         matchId,
         mode: "local",
         status: "finished",
@@ -270,11 +304,13 @@ export function TacticalGame({
         endedAt: new Date().toISOString(),
         creature: selectedCharacter.id,
         result: gameStatus === "won" ? "win" : "loss",
-      }),
-    }).catch(() => {
+      },
+      { maxAttempts: 3 },
+    ).catch(() => {
       resultSavedRef.current = false;
+      setMessage(gameCopy.localSaveFailed);
     });
-  }, [gameStatus, matchId, matchStartedAt, selectedCharacter.id]);
+  }, [gameCopy.localSaveFailed, gameStatus, matchId, matchStartedAt, selectedCharacter.id]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -388,7 +424,7 @@ export function TacticalGame({
     }, 100);
 
     return () => window.clearInterval(interval);
-  }, [caveSession.lookup, creatureModifiers.maxHealth]);
+  }, [caveSession.lookup, creatureModifiers.maxHealth, endAsLoss]);
 
   const aliveEnemies = useMemo(
     () => enemies.filter((enemy) => enemy.alive && enemy.state !== "dead"),
@@ -426,8 +462,8 @@ export function TacticalGame({
     }
 
     lastZoneIdRef.current = currentZone.id;
-    setZoneMessage(currentZone.ambient);
-  }, [currentZone]);
+    setZoneMessage(localizeZone(locale, currentZone).ambient);
+  }, [currentZone, locale]);
 
   useEffect(() => {
     const cave = caveSession.layout;
@@ -487,18 +523,6 @@ export function TacticalGame({
     combatFlashTimeoutRef.current = window.setTimeout(() => {
       setCombatFlash(null);
     }, 950);
-  }
-
-  function endAsLoss(nextMessage: string) {
-    setMessage(nextMessage);
-    gameStatusRef.current = "lost";
-    setGameStatus("lost");
-  }
-
-  function endAsWin(nextMessage: string) {
-    setMessage(nextMessage);
-    gameStatusRef.current = "won";
-    setGameStatus("won");
   }
 
   const enemyTurn = useEffectEvent(() => {
@@ -635,6 +659,7 @@ export function TacticalGame({
       );
       setAbilityState(abilityStateRef.current);
       showCombatFlash(`-${damageTaken} HP`);
+      playSfx("damage");
       if (nextPlayerHealth <= 0) {
         enemiesRef.current = updatedEnemies;
         setEnemies(updatedEnemies);
@@ -731,7 +756,7 @@ export function TacticalGame({
     }, MOVEMENT_STEP_INTERVAL_MS);
 
     return () => window.clearInterval(interval);
-  }, [caveSession.layout.hazardAreas, caveSession.lookup, gameStatus, movementPath.length, selectedCharacter.id]);
+  }, [caveSession.layout.hazardAreas, caveSession.lookup, endAsLoss, gameStatus, movementPath.length, selectedCharacter.id]);
 
   function shiftGameplayTimeline(deltaMs: number) {
     if (deltaMs <= 0) {
@@ -850,19 +875,19 @@ export function TacticalGame({
     }
 
     if (isStunned(stunnedUntilRef.current, Date.now())) {
-      setMessage("Estas aturdido y no puedes moverte.");
+      setMessage(gameCopy.stunnedMove);
       return;
     }
 
     if (moveCooldownEndsAtRef.current > Date.now() || isTraversing) {
-      setMessage("Tu pulso aun no se estabiliza para otro desplazamiento.");
+      setMessage(gameCopy.movementRecovering);
       return;
     }
 
     const actionNow = Date.now();
     const currentAbilityModifiers = getAbilityModifiers(abilityStateRef.current, actionNow);
     if (currentAbilityModifiers.movementLocked) {
-      setMessage("No puedes moverte mientras el caparazón está cerrado.");
+      setMessage(gameCopy.shellLocked);
       return;
     }
 
@@ -875,7 +900,7 @@ export function TacticalGame({
     );
 
     if (!movePlan) {
-      setMessage("No hay una ruta caminable hacia esa celda.");
+      setMessage(gameCopy.noPath);
       setPathPreview([]);
       return;
     }
@@ -896,8 +921,8 @@ export function TacticalGame({
     setActiveAction("move");
     setMessage(
       movePlan.distanceTiles === 1
-        ? "Avanzas con cuidado una casilla."
-        : `Te deslizas ${movePlan.distanceTiles} casillas por la cueva.`,
+        ? gameCopy.moveOne
+        : formatMessage(gameCopy.moveMany, { count: movePlan.distanceTiles }),
     );
   }
 
@@ -913,17 +938,17 @@ export function TacticalGame({
     const actionNow = Date.now();
 
     if (isStunned(stunnedUntilRef.current, actionNow)) {
-      setMessage("Estas aturdido y no puedes atacar.");
+      setMessage(gameCopy.stunnedAttack);
       return;
     }
 
     if (moveCooldownEndsAtRef.current > actionNow) {
-      setMessage("Tu pulso aun no se estabiliza para atacar.");
+      setMessage(gameCopy.attackRecovering);
       return;
     }
 
     if (attackCooldownEndsAtRef.current > actionNow) {
-      setMessage("Tu embestida aun no recupera alcance.");
+      setMessage(gameCopy.attackCooldown);
       return;
     }
 
@@ -946,10 +971,11 @@ export function TacticalGame({
     addSignal("attack", playerRef.current, "player");
     const attackNoise = applyCreatureNoise(9, 1.2, selectedCharacter.id);
     addNoise("attack", playerRef.current, attackNoise.radiusTiles, attackNoise.intensity, "player");
+    playSfx("attack");
 
     if (!target) {
-      setMessage("Golpeas la oscuridad, pero no hay enemigos dentro del rango.");
-      showCombatFlash("Sin objetivo");
+      setMessage(gameCopy.attackMiss);
+      showCombatFlash(gameCopy.noTarget);
       return;
     }
 
@@ -997,17 +1023,17 @@ export function TacticalGame({
     }
 
     if (isStunned(stunnedUntilRef.current, Date.now())) {
-      setMessage("Estas aturdido y no puedes hacer parry.");
+      setMessage(gameCopy.stunnedDefend);
       return;
     }
 
     if (moveCooldownEndsAtRef.current > Date.now()) {
-      setMessage("Tu pulso aun no se estabiliza para hacer parry.");
+      setMessage(gameCopy.defendRecovering);
       return;
     }
 
     if (parryCooldownRemaining > 0) {
-      setMessage("Tu parry aun no esta listo.");
+      setMessage(gameCopy.parryRecovering);
       return;
     }
 
@@ -1020,8 +1046,9 @@ export function TacticalGame({
     addSignal("defend", playerRef.current, "player");
     const defendNoise = applyCreatureNoise(6, 0.65, selectedCharacter.id);
     addNoise("defend", playerRef.current, defendNoise.radiusTiles, defendNoise.intensity, "player");
-    setMessage("Parry activo: si no interceptas un golpe, quedarás aturdido.");
+    setMessage(gameCopy.parryActive);
     showCombatFlash("Parry activo");
+    playSfx("defend");
   }
 
   function handleAbility() {
@@ -1039,8 +1066,8 @@ export function TacticalGame({
     if (!result.ok) {
       setMessage(
         result.reason === "cooldown"
-          ? "Tu habilidad especial todavía se recupera."
-          : "No puedes activar la habilidad en este momento.",
+          ? gameCopy.abilityCooldown
+          : gameCopy.abilityUnavailable,
       );
       return;
     }
@@ -1049,6 +1076,7 @@ export function TacticalGame({
     lastAbilityTickAtRef.current = actionNow;
     setAbilityState(result.state);
     setActiveAction("ability");
+    playSfx("ready");
     for (const event of result.events) {
       setTraps((current) => [
         ...current,
@@ -1062,8 +1090,9 @@ export function TacticalGame({
         },
       ]);
     }
-    setMessage(`${result.definition.name}: ${result.definition.description}`);
-    showCombatFlash(result.definition.name);
+    const abilityName = getLocalizedAbilityName(locale, selectedCharacter.id);
+    setMessage(abilityName);
+    showCombatFlash(abilityName);
   }
 
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
@@ -1133,7 +1162,7 @@ export function TacticalGame({
     setParryCooldownEndsAt(0);
     stunnedUntilRef.current = 0;
     setStunnedUntil(0);
-    setMessage("Marca una celda dentro de tu alcance y sobrevive a los ecos de la cueva.");
+    setMessage(gameCopy.initialMessage);
     setZoneMessage("Solo ves 8 bloques alrededor. Todo lo demas es oscuridad.");
     setScore(0);
     setKills(0);
@@ -1196,8 +1225,8 @@ export function TacticalGame({
       : baseTerrainName;
   const threatSummary =
     aliveEnemies.length === 0
-      ? "ninguna amenaza viva"
-      : `${aliveEnemies.length} eco${aliveEnemies.length === 1 ? "" : "s"} hostil${aliveEnemies.length === 1 ? "" : "es"} · ${activeHostiles} en alerta`;
+      ? messages.play.hud.noLivingThreat
+      : `${aliveEnemies.length} ${aliveEnemies.length === 1 ? messages.play.hud.hostileEcho : messages.play.hud.hostileEchoes} · ${activeHostiles} ${messages.play.hud.alerted}`;
 
   return (
     <section className="relative z-10 h-dvh min-h-dvh overflow-hidden overscroll-none">
@@ -1209,16 +1238,16 @@ export function TacticalGame({
           type="button"
           onClick={onExitToMenu}
           className="pointer-events-auto inline-flex min-h-9 items-center gap-1.5 rounded-full border border-white/10 bg-black/55 px-3 py-2 text-[0.72rem] text-zinc-300 backdrop-blur-md transition hover:text-white sm:min-h-11 sm:gap-2 sm:px-4 sm:text-sm"
-          aria-label="Volver al menú"
+          aria-label={gameCopy.backMenu}
         >
           <ArrowLeft className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-          Menu
+          {gameCopy.backMenu}
         </button>
 
         {!isUiHidden && (
           <div className="min-w-0 max-w-[7.5rem] rounded-full border border-white/10 bg-black/45 px-2.5 py-1.5 text-center backdrop-blur-md sm:max-w-none sm:px-5 sm:py-2">
             <p className="truncate text-[0.52rem] tracking-[0.2em] text-zinc-500 sm:text-[0.65rem] sm:tracking-[0.34em]">SPELEUM</p>
-            <h1 className="truncate text-[0.68rem] font-semibold tracking-[0.08em] text-white sm:text-sm sm:tracking-[0.28em]">Supervivencia</h1>
+            <h1 className="truncate text-[0.68rem] font-semibold tracking-[0.08em] text-white sm:text-sm sm:tracking-[0.28em]">{gameCopy.survival}</h1>
           </div>
         )}
 
@@ -1246,7 +1275,7 @@ export function TacticalGame({
               <GameHud
                 selectedCharacter={selectedCharacter}
                 zone={currentZone}
-                objective="Sobrevive, elimina las amenazas y administra la información incompleta."
+                objective={gameCopy.objectiveLocal}
                 message={message}
                 zoneMessage={zoneMessage}
                 health={health}
@@ -1268,7 +1297,7 @@ export function TacticalGame({
                 sanityStage={sanityState.stage}
                 idleDurationMs={sanityState.idleDurationMs}
                 shelterProgress={shelterState.progress}
-                abilityName={creatureAbilities[selectedCharacter.id].name}
+                abilityName={getLocalizedAbilityName(locale, selectedCharacter.id)}
                 abilityCooldownRemaining={abilityCooldownRemaining}
               />
               <div className="hidden min-h-0 md:block">
@@ -1331,7 +1360,7 @@ export function TacticalGame({
               onMove={() => setActiveAction("move")}
               onAttack={handleAttack}
               onDefend={handleDefend}
-              abilityName={creatureAbilities[selectedCharacter.id].name}
+              abilityName={getLocalizedAbilityName(locale, selectedCharacter.id)}
               abilityCooldownRemaining={abilityCooldownRemaining}
               abilityDisabled={isPlayerStunned}
               onAbility={handleAbility}
@@ -1342,7 +1371,7 @@ export function TacticalGame({
 
       {!isUiHidden && combatFlash && (
         <div className="pointer-events-none absolute left-1/2 top-[calc(env(safe-area-inset-top)+12rem)] z-85 w-max max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-full border border-rose-200/15 bg-black/70 px-3 py-1.5 text-center text-[0.68rem] tracking-[0.1em] text-rose-100 shadow-[0_0_28px_rgba(251,113,133,0.18)] sm:top-24 sm:px-5 sm:py-2 sm:text-sm sm:tracking-[0.18em]">
-          {combatFlash}
+          {translateGameplayMessage(locale, combatFlash)}
         </div>
       )}
 
@@ -1357,11 +1386,11 @@ export function TacticalGame({
         status={gameStatus}
         onRestart={restartGame}
         onExitToMenu={onExitToMenu}
-        titleOverride={gameStatus === "won" ? "Dominaste la Cueva" : "Criatura Eliminada"}
+        titleOverride={gameStatus === "won" ? gameCopy.localWinTitle : gameCopy.localLoseTitle}
         messageOverride={
           gameStatus === "won"
-            ? "El mapa quedo limpio y Speleum te reconoce como la ultima presencia dominante."
-            : "Tu HP llego a cero. La cueva se cerro sobre ti."
+            ? messages.play.overlay.winMessage
+            : messages.play.overlay.loseMessage
         }
       />
     </section>

@@ -12,7 +12,7 @@ import {
 import { distanceBetween, getZoneForPosition, planMovementPath } from "../gameLogic";
 import type { MatchResultEntry, MultiplayerStatePayload } from "../types";
 import { getSocket, isSocketMultiplayerAvailable } from "@/lib/socket";
-import { appendLocalRanking } from "@/lib/ranking";
+import { appendLocalMatchSnapshot } from "@/lib/local-match-history";
 import {
   clearMultiplayerSession,
   multiplayerSessionFromState,
@@ -27,8 +27,15 @@ import { GameTopControls } from "./GameTopControls";
 import { RadarPanel } from "./RadarPanel";
 import { buildTileMap, createTileLookup, findReachableTiles, tileToWorld, worldToTile } from "../tileMap";
 import { getCreatureGameplayModifiers } from "@/lib/creature-gameplay";
-import { creatureAbilities } from "@/lib/gameplay/abilities";
 import { terrainNameAt } from "@/lib/gameplay/survival";
+import {
+  saveMatchResultRequest,
+  type MatchResultSaveStatus,
+} from "@/lib/matches/client-result-persistence";
+import { useLanguage } from "@/lib/i18n/LanguageProvider";
+import { formatMessage } from "@/lib/i18n/messages";
+import { getLocalizedAbilityName, translateMultiplayerMessage } from "@/lib/i18n/content";
+import { useAudio } from "@/lib/audio/AudioProvider";
 
 type MultiplayerGameProps = {
   matchId: string;
@@ -38,21 +45,22 @@ type MultiplayerGameProps = {
 };
 
 function ResultsTable({ results }: { results: MatchResultEntry[] }) {
+  const { messages } = useLanguage();
   if (results.length === 0) {
     return null;
   }
 
   return (
-    <div className="overflow-hidden rounded-[1.2rem] border border-white/10 bg-black/35">
-      <div className="grid grid-cols-[4rem_1fr_4rem] gap-3 border-b border-white/10 px-4 py-3 text-left text-[0.65rem] tracking-[0.24em] text-zinc-500">
-        <span>PUESTO</span>
-        <span>CRIATURA</span>
-        <span>KILLS</span>
+    <div className="theme-card overflow-hidden rounded-[1.2rem]">
+      <div className="grid grid-cols-[4rem_1fr_4rem] gap-3 border-b border-(--border-soft) px-4 py-3 text-left text-[0.65rem] tracking-[0.18em] text-(--text-muted)">
+        <span>{messages.ranking.rank}</span>
+        <span>{messages.ranking.player}</span>
+        <span>{messages.play.hud.kills.toUpperCase()}</span>
       </div>
       {results.map((entry) => (
         <div
           key={entry.playerId}
-          className="grid grid-cols-[4rem_1fr_4rem] gap-3 px-4 py-3 text-sm text-zinc-200"
+          className="grid grid-cols-[4rem_1fr_4rem] gap-3 px-4 py-3 text-sm text-(--text-secondary)"
         >
           <span>#{entry.placement}</span>
           <span>{entry.name}</span>
@@ -69,6 +77,10 @@ export function MultiplayerGame({
   selectedCharacter,
   onExitToMenu,
 }: MultiplayerGameProps) {
+  const { locale, messages } = useLanguage();
+  const gameCopy = messages.play.game;
+  const lobby = messages.play.lobby;
+  const { unlock, setAmbientActive, playSfx } = useAudio();
   const [gameState, setGameState] = useState<MultiplayerStatePayload | null>(null);
   const authoritativeCharacter = useMemo(
     () =>
@@ -78,10 +90,10 @@ export function MultiplayerGame({
   );
   const creatureModifiers = getCreatureGameplayModifiers(authoritativeCharacter.id);
   const [, setSocketConnected] = useState(() => getSocket()?.connected ?? false);
-  const [message, setMessage] = useState(() =>
+  const [message, setMessage] = useState<string>(() =>
     isSocketMultiplayerAvailable()
-      ? "Conectando con la sala..."
-      : "El modo multijugador necesita una URL de Socket.IO para habilitar salas en tiempo real.",
+      ? formatMessage(gameCopy.connectingRoom, { room: roomCode })
+      : lobby.unavailable,
   );
   const [activeAction, setActiveAction] = useState<ActionKind>("move");
   const [isUiHidden, setIsUiHidden] = useState(false);
@@ -96,13 +108,45 @@ export function MultiplayerGame({
   const resumeAttemptRef = useRef(0);
   const resumeTimeoutRef = useRef<number | null>(null);
   const rankingStoredRef = useRef(false);
-  const resultSavedRef = useRef(false);
+  const savedResultReceiptRef = useRef<string | null>(null);
+  const [resultSaveState, setResultSaveState] = useState<{
+    status: MatchResultSaveStatus;
+    attempt: number;
+    maxAttempts: number;
+  }>({ status: "idle", attempt: 0, maxAttempts: 3 });
+  const previousHealthRef = useRef<number | null>(null);
+  const announcedResultRef = useRef<"won" | "lost" | null>(null);
+
+  useEffect(() => {
+    unlock();
+    setAmbientActive(true);
+    playSfx("start");
+    return () => setAmbientActive(false);
+  }, [playSfx, setAmbientActive, unlock]);
+
+  useEffect(() => {
+    const health = gameState?.self.combat.health;
+    if (
+      health !== undefined &&
+      previousHealthRef.current !== null &&
+      health < previousHealthRef.current
+    ) {
+      playSfx("damage");
+    }
+    if (health !== undefined) previousHealthRef.current = health;
+
+    const result = gameState?.self.status;
+    if ((result === "won" || result === "lost") && announcedResultRef.current !== result) {
+      announcedResultRef.current = result;
+      playSfx(result === "won" ? "victory" : "defeat");
+    }
+  }, [gameState?.self.combat.health, gameState?.self.status, playSfx]);
 
   const requestResume = useCallback(() => {
     const socket = getSocket();
 
     if (!socket) {
-      const nextMessage = "No hay un servidor multijugador disponible para restaurar la sesion.";
+      const nextMessage = gameCopy.noRestoreServer;
       setSocketConnected(false);
       setResumeFailure({ message: nextMessage, terminal: false });
       setDisconnectedMessage(nextMessage);
@@ -113,8 +157,8 @@ export function MultiplayerGame({
     if (!socket.connected) {
       setSocketConnected(false);
       setResumeFailure(null);
-      setDisconnectedMessage("Reconectando con el servidor...");
-      setMessage("Reconectando con el servidor...");
+      setDisconnectedMessage(lobby.reconnecting);
+      setMessage(lobby.reconnecting);
       if (!socket.active) {
         socket.connect();
       }
@@ -128,14 +172,14 @@ export function MultiplayerGame({
     const attempt = resumeAttemptRef.current + 1;
     resumeAttemptRef.current = attempt;
     setResumeFailure(null);
-    setMessage("Conexion restablecida. Validando tu sesion...");
+    setMessage(gameCopy.connectionRestored);
 
     resumeTimeoutRef.current = window.setTimeout(() => {
       if (resumeAttemptRef.current !== attempt) {
         return;
       }
 
-      const nextMessage = "El servidor no confirmo la restauracion. Puedes intentarlo de nuevo.";
+      const nextMessage = gameCopy.restoreTimeout;
       setResumeFailure({ message: nextMessage, terminal: false });
       setDisconnectedMessage(nextMessage);
       setMessage(nextMessage);
@@ -152,9 +196,10 @@ export function MultiplayerGame({
       }
 
       if (!result.ok) {
-        setResumeFailure({ message: result.message, terminal: result.terminal });
-        setDisconnectedMessage(result.message);
-        setMessage(result.message);
+        const localizedMessage = translateMultiplayerMessage(locale, result.message);
+        setResumeFailure({ message: localizedMessage, terminal: result.terminal });
+        setDisconnectedMessage(localizedMessage);
+        setMessage(localizedMessage);
 
         if (result.terminal) {
           clearMultiplayerSession();
@@ -167,7 +212,7 @@ export function MultiplayerGame({
       }
 
       if (result.roomCode !== roomCode || result.matchId !== matchId) {
-        const nextMessage = "La sesion guardada ya no corresponde a esta partida.";
+        const nextMessage = gameCopy.sessionMismatch;
         clearMultiplayerSession();
         setResumeFailure({ message: nextMessage, terminal: true });
         setDisconnectedMessage(nextMessage);
@@ -179,9 +224,9 @@ export function MultiplayerGame({
       setSocketConnected(true);
       setResumeFailure(null);
       setDisconnectedMessage(null);
-      setMessage("Sesion restaurada. Sincronizando el estado de la cueva...");
+      setMessage(gameCopy.sessionRestored);
     });
-  }, [matchId, roomCode]);
+  }, [gameCopy, lobby.reconnecting, locale, matchId, roomCode]);
 
   useEffect(() => {
     const socket = getSocket();
@@ -193,13 +238,13 @@ export function MultiplayerGame({
 
     const handleConnect = () => {
       setSocketConnected(true);
-      setMessage("Conexion restablecida. Reanudando sincronizacion...");
+      setMessage(gameCopy.resumingSync);
       requestResume();
     };
     const handleDisconnect = () => {
       setSocketConnected(false);
-      setDisconnectedMessage("Reconectando con el servidor...");
-      setMessage("Reconectando con el servidor...");
+      setDisconnectedMessage(lobby.reconnecting);
+      setMessage(lobby.reconnecting);
     };
     const handleGameState = (state: MultiplayerStatePayload) => {
       if (state.roomCode !== roomCode || state.matchId !== matchId) {
@@ -211,7 +256,11 @@ export function MultiplayerGame({
       setGameState(state);
       setResumeFailure(null);
       setDisconnectedMessage(null);
-      setMessage(state.message ?? "La cueva escucha todos tus movimientos.");
+      setMessage(
+        state.message
+          ? translateMultiplayerMessage(locale, state.message)
+          : gameCopy.caveListening,
+      );
       const pendingMoveTarget = pendingMoveTargetRef.current;
       if (pendingMoveTarget && distanceBetween(state.self.position, pendingMoveTarget) <= TILE_SIZE * 0.35) {
         pendingMoveTargetRef.current = null;
@@ -224,27 +273,34 @@ export function MultiplayerGame({
         return;
       }
 
-      setDisconnectedMessage(payload.message ?? "Una criatura desaparecio en la oscuridad.");
-      setMessage(payload.message ?? "Una criatura desaparecio en la oscuridad.");
+      const localizedMessage = payload.message
+        ? translateMultiplayerMessage(locale, payload.message)
+        : gameCopy.creatureGone;
+      setDisconnectedMessage(localizedMessage);
+      setMessage(localizedMessage);
     };
     const handleGameOver = (payload: { message?: string }) => {
-      setMessage(payload.message ?? "La partida termino.");
+      setMessage(
+        payload.message
+          ? translateMultiplayerMessage(locale, payload.message)
+          : gameCopy.matchEnded,
+      );
     };
     const handleError = (nextMessage: string) => {
       pendingMoveTargetRef.current = null;
       setPendingMoveTarget(null);
       setPathPreview([]);
-      setMessage(nextMessage);
+      setMessage(translateMultiplayerMessage(locale, nextMessage));
     };
     const handleConnectError = () => {
       setSocketConnected(false);
-      setDisconnectedMessage("El servidor puede tardar unos segundos en despertar.");
-      setMessage("El servidor puede tardar unos segundos en despertar.");
+      setDisconnectedMessage(lobby.waking);
+      setMessage(lobby.waking);
     };
     const handleReconnectAttempt = () => {
       setSocketConnected(false);
-      setDisconnectedMessage("Reconectando con el servidor...");
-      setMessage("Reconectando con el servidor...");
+      setDisconnectedMessage(lobby.reconnecting);
+      setMessage(lobby.reconnecting);
     };
 
     socket.on("connect", handleConnect);
@@ -280,7 +336,7 @@ export function MultiplayerGame({
       socket.off("game-over", handleGameOver);
       socket.off("error-message", handleError);
     };
-  }, [matchId, requestResume, roomCode]);
+  }, [gameCopy, lobby.reconnecting, lobby.waking, locale, matchId, requestResume, roomCode]);
 
   useEffect(() => {
     if (!gameState || gameState.status !== "finished" || rankingStoredRef.current) {
@@ -293,7 +349,7 @@ export function MultiplayerGame({
       return;
     }
 
-    appendLocalRanking({
+    appendLocalMatchSnapshot({
       id: `${gameState.roomCode}-${Date.now()}`,
       recordedAt: new Date().toISOString(),
       winnerName: winner.name,
@@ -306,31 +362,42 @@ export function MultiplayerGame({
     rankingStoredRef.current = true;
   }, [gameState]);
 
+  const finishedResultReceipt =
+    gameState?.status === "finished" ? gameState.resultReceipt : null;
+
   useEffect(() => {
-    if (!gameState || gameState.status !== "finished" || resultSavedRef.current) {
+    if (!finishedResultReceipt || savedResultReceiptRef.current === finishedResultReceipt) {
       return;
     }
 
-    if (!gameState.resultReceipt) {
-      return;
-    }
+    const controller = new AbortController();
+    setResultSaveState({ status: "saving", attempt: 0, maxAttempts: 3 });
 
-    resultSavedRef.current = true;
-    void fetch("/api/matches/results", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode: "multiplayer", receipt: gameState.resultReceipt }),
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("RESULT_NOT_SAVED");
-        }
+    void saveMatchResultRequest(
+      { mode: "multiplayer", receipt: finishedResultReceipt },
+      {
+        signal: controller.signal,
+        maxAttempts: 3,
+        onAttempt: (attempt, maxAttempts) => {
+          setResultSaveState({ status: "saving", attempt, maxAttempts });
+        },
+      },
+    )
+      .then(() => {
+        savedResultReceiptRef.current = finishedResultReceipt;
+        setResultSaveState((current) => ({ ...current, status: "saved" }));
       })
-      .catch(() => {
-        resultSavedRef.current = false;
-        setMessage("La partida termino, pero el resultado aun no pudo guardarse.");
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.name === "AbortError") {
+          return;
+        }
+
+        setResultSaveState((current) => ({ ...current, status: "failed" }));
+        setMessage(gameCopy.receiptFailed);
       });
-  }, [gameState]);
+
+    return () => controller.abort();
+  }, [finishedResultReceipt, gameCopy.receiptFailed]);
 
   const self = gameState?.self ?? null;
   const player = useMemo(() => self?.position ?? { x: 0, y: 0 }, [self?.position]);
@@ -365,10 +432,10 @@ export function MultiplayerGame({
 
   const objective =
     gameStatus === "won"
-      ? "Eres la ultima criatura viva."
+      ? gameCopy.wonObjective
       : gameStatus === "lost"
-        ? "La cadena de la vida continuo sin ti."
-        : "Sobrevive y conviertete en la ultima criatura viva.";
+        ? gameCopy.lostObjective
+        : gameCopy.objectiveMulti;
 
   const health = self?.combat.health ?? creatureModifiers.maxHealth;
   const moveCooldownRemaining = self?.combat.moveCooldownRemaining ?? 0;
@@ -428,7 +495,7 @@ export function MultiplayerGame({
 
   const queueMovementTo = (target: PlayerPosition) => {
     if (!self || !isMoveReady) {
-      setMessage(isStunned ? "Estas aturdido." : "Tu criatura aun recupera el impulso.");
+      setMessage(isStunned ? gameCopy.stunnedMove : gameCopy.movementRecovering);
       return;
     }
 
@@ -442,7 +509,7 @@ export function MultiplayerGame({
 
     if (!movePlan) {
       setPathPreview([]);
-      setMessage("No hay una ruta caminable hacia esa celda.");
+      setMessage(gameCopy.noPath);
       return;
     }
 
@@ -450,8 +517,8 @@ export function MultiplayerGame({
     emitMoveTarget(tileToWorld(movePlan.targetTile));
     setMessage(
       movePlan.distanceTiles === 1
-        ? "Avanzas con cuidado una casilla."
-        : `Te deslizas ${movePlan.distanceTiles} casillas por la cueva.`,
+        ? gameCopy.moveOne
+        : formatMessage(gameCopy.moveMany, { count: movePlan.distanceTiles }),
     );
   };
 
@@ -509,13 +576,14 @@ export function MultiplayerGame({
     const socket = getSocket();
 
     if (!socket) {
-      setMessage("El modo multijugador necesita una URL de Socket.IO para enviar ataques en tiempo real.");
+      setMessage(lobby.unavailable);
       return;
     }
 
     socket.emit("player-attack", { roomCode });
     setActiveAction("attack");
-    setMessage("Lanzas un ataque tactico dentro del rango valido.");
+    setMessage(gameCopy.attackSent);
+    playSfx("attack");
   }
 
   const handleDefend = () => {
@@ -526,13 +594,14 @@ export function MultiplayerGame({
     const socket = getSocket();
 
     if (!socket) {
-      setMessage("El modo multijugador necesita una URL de Socket.IO para activar defensa en tiempo real.");
+      setMessage(lobby.unavailable);
       return;
     }
 
     socket.emit("player-defend", { roomCode });
     setActiveAction("defend");
-    setMessage("Parry activo: si no interceptas un golpe, quedarás aturdido.");
+    setMessage(gameCopy.parryActive);
+    playSfx("defend");
   };
 
   function handleAbility() {
@@ -541,7 +610,8 @@ export function MultiplayerGame({
     if (!socket) return;
     socket.emit("player-ability", { roomCode, target: self.position });
     setActiveAction("ability");
-    setMessage(`Activas ${creatureAbilities[authoritativeCharacter.id].name}.`);
+    setMessage(`${getLocalizedAbilityName(locale, authoritativeCharacter.id)}.`);
+    playSfx("ready");
   }
 
   const handleExit = () => {
@@ -552,23 +622,34 @@ export function MultiplayerGame({
 
   const overlaySummary = gameState ? (
     <div className="space-y-4">
-      <div className="rounded-[1.1rem] border border-white/10 bg-black/35 px-4 py-3 text-left text-sm text-zinc-300">
+      <div className="theme-card rounded-[1.1rem] px-4 py-3 text-left text-sm text-(--text-secondary)">
         <p>
-          Sala <span className="text-white">{roomCode}</span>
+          {gameCopy.room} <span className="text-(--text-primary)">{roomCode}</span>
         </p>
         <p className="mt-1">
-          Supervivientes finales: <span className="text-white">{gameState.aliveCount}</span>
+          {gameCopy.finalSurvivors}: <span className="text-(--text-primary)">{gameState.aliveCount}</span>
         </p>
       </div>
       <ResultsTable results={gameState.results} />
+      {gameState.status === "finished" && (
+        <p className="text-left text-xs text-zinc-400">
+          {resultSaveState.status === "saving"
+            ? formatMessage(gameCopy.savingReceipt, { attempt: Math.max(1, resultSaveState.attempt), max: resultSaveState.maxAttempts })
+            : resultSaveState.status === "saved"
+              ? gameCopy.receiptSaved
+              : resultSaveState.status === "failed"
+                ? gameCopy.receiptFailed
+                : gameCopy.officialProcessing}
+        </p>
+      )}
     </div>
   ) : null;
 
   if (!gameState || !self) {
     return (
-      <section className="relative z-10 flex min-h-screen items-center justify-center px-5 text-white">
-        <div className="max-w-md rounded-[1.8rem] border border-white/10 bg-black/45 px-6 py-5 text-sm text-zinc-300 backdrop-blur-md">
-          <p>{resumeFailure?.message ?? `Conectando a la sala ${roomCode}...`}</p>
+      <section className="relative z-10 flex min-h-screen items-center justify-center px-5 text-(--text-primary)">
+        <div className="theme-panel max-w-md rounded-[1.8rem] px-6 py-5 text-sm text-(--text-secondary) backdrop-blur-md">
+          <p>{resumeFailure?.message ?? formatMessage(gameCopy.connectingRoom, { room: roomCode })}</p>
           {resumeFailure && (
             <div className="mt-4 flex flex-wrap gap-3">
               {!resumeFailure.terminal && (
@@ -577,7 +658,7 @@ export function MultiplayerGame({
                   onClick={requestResume}
                   className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-cyan-100"
                 >
-                  Reintentar
+                  {gameCopy.retry}
                 </button>
               )}
               <button
@@ -585,7 +666,7 @@ export function MultiplayerGame({
                 onClick={handleExit}
                 className="rounded-full border border-white/15 px-4 py-2 text-zinc-200"
               >
-                Volver al menu
+                {gameCopy.backMenu}
               </button>
             </div>
           )}
@@ -604,15 +685,15 @@ export function MultiplayerGame({
           type="button"
           onClick={handleExit}
           className="pointer-events-auto inline-flex min-h-9 items-center gap-1.5 rounded-full border border-white/10 bg-black/55 px-3 py-2 text-[0.72rem] text-zinc-300 backdrop-blur-md transition hover:text-white sm:min-h-11 sm:gap-2 sm:px-4 sm:text-sm"
-          aria-label="Volver al menú"
+          aria-label={gameCopy.backMenu}
         >
           <ArrowLeft className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-          Menu
+          {gameCopy.backMenu}
         </button>
 
         {!isUiHidden && (
           <div className="min-w-0 max-w-[7.5rem] rounded-full border border-white/10 bg-black/45 px-2.5 py-1.5 text-center backdrop-blur-md sm:max-w-none sm:px-5 sm:py-2">
-            <p className="truncate text-[0.52rem] tracking-[0.2em] text-zinc-500 sm:text-[0.65rem] sm:tracking-[0.34em]">SALA</p>
+            <p className="truncate text-[0.52rem] tracking-[0.2em] text-zinc-500 sm:text-[0.65rem] sm:tracking-[0.34em]">{gameCopy.room.toUpperCase()}</p>
             <h1 className="truncate text-[0.68rem] font-semibold tracking-[0.08em] text-white sm:text-sm sm:tracking-[0.28em]">{roomCode}</h1>
           </div>
         )}
@@ -638,7 +719,7 @@ export function MultiplayerGame({
                 health={health}
                 maxHealth={self.combat.maxHealth}
                 aliveCount={gameState.aliveCount}
-                enemyStateLabel={`rivales ${gameState.otherPlayers.length} / ecos ${gameState.enemies.length}`}
+                enemyStateLabel={`${gameState.otherPlayers.length} ${messages.ranking.player.toLowerCase()} / ${gameState.enemies.length} ${messages.play.hud.echoes}`}
                 isPaused={false}
                 score={self.combat.damageDealt}
                 kills={self.combat.kills}
@@ -648,13 +729,13 @@ export function MultiplayerGame({
                 attackCooldownRemaining={attackCooldownRemaining}
                 parryCooldownRemaining={parryCooldownRemaining}
                 nearestThreatTiles={nearestThreatTiles}
-                nearbyDangerLabel={enemy?.state === "attacking" ? "alto" : enemy?.state === "chasing" || enemy?.state === "investigating" ? "medio" : "bajo"}
+                nearbyDangerLabel={enemy?.state === "attacking" ? "high" : enemy?.state === "chasing" || enemy?.state === "investigating" ? "medium" : "low"}
                 detectedEnemies={gameState.enemies.length}
                 terrainName={currentTerrainName}
                 sanityStage={self.combat.sanityStage}
                 idleDurationMs={self.combat.idleDurationMs}
                 shelterProgress={self.combat.shelterProgress}
-                abilityName={creatureAbilities[authoritativeCharacter.id].name}
+                abilityName={getLocalizedAbilityName(locale, authoritativeCharacter.id)}
                 abilityCooldownRemaining={abilityCooldownRemaining}
                 otherPlayersSummary={otherPlayersSummary}
               />
@@ -705,7 +786,7 @@ export function MultiplayerGame({
               onMove={() => setActiveAction("move")}
               onAttack={handleAttack}
               onDefend={handleDefend}
-              abilityName={creatureAbilities[authoritativeCharacter.id].name}
+              abilityName={getLocalizedAbilityName(locale, authoritativeCharacter.id)}
               abilityCooldownRemaining={abilityCooldownRemaining}
               abilityDisabled={isStunned}
               onAbility={handleAbility}
@@ -718,13 +799,13 @@ export function MultiplayerGame({
         status={gameStatus}
         onRestart={() => window.location.reload()}
         onExitToMenu={handleExit}
-        titleOverride={gameStatus === "won" ? "Ultima Criatura Viva" : "Eliminado"}
+        titleOverride={gameStatus === "won" ? gameCopy.multiWinTitle : gameCopy.multiLoseTitle}
         messageOverride={
           gameStatus === "won"
-            ? "Dominaste la cueva y cerraste la cadena de la vida a tu favor."
-            : "Tu criatura cayo. La oscuridad sigue reclamando al resto."
+            ? messages.play.overlay.winMessage
+            : messages.play.overlay.loseMessage
         }
-        buttonLabelOverride="Volver a jugar"
+        buttonLabelOverride={gameCopy.playAgain}
         summary={overlaySummary}
       />
     </section>

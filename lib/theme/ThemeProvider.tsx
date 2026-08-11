@@ -8,7 +8,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { defaultTheme, isTheme, themeStorageKey, type Theme } from "./theme";
+import { defaultTheme, persistTheme, resolveTheme, themeStorageKey, type Theme } from "./theme";
 
 type ThemeContextValue = {
   theme: Theme;
@@ -24,15 +24,11 @@ function applyTheme(theme: Theme) {
 }
 
 function getClientTheme(): Theme {
-  const applied = document.documentElement.dataset.theme ?? null;
-
-  if (isTheme(applied)) {
-    return applied;
-  }
-
   try {
-    const stored = window.localStorage.getItem(themeStorageKey);
-    return isTheme(stored) ? stored : defaultTheme;
+    return resolveTheme(
+      document.documentElement.dataset.theme ?? null,
+      window.localStorage.getItem(themeStorageKey),
+    );
   } catch {
     return defaultTheme;
   }
@@ -57,11 +53,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const setTheme = useCallback((nextTheme: Theme) => {
     applyTheme(nextTheme);
 
-    try {
-      window.localStorage.setItem(themeStorageKey, nextTheme);
-    } catch {
-      // The visual preference still applies when storage is unavailable.
-    }
+    persistTheme(nextTheme, window.localStorage);
 
     window.dispatchEvent(new Event(themeChangeEvent));
   }, []);

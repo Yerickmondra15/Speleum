@@ -24,9 +24,12 @@ export function registerConnectionHandlers(socket: GameSocket, context: ServerCo
     player.intentionalLeave = false;
     markRoomActivity(room, context, now);
     syncLobbyState(room, context, now);
-    room.message = `${player.name} se desconecto temporalmente. Tiene ${Math.ceil(
+    const reconnectMessage = `${player.name} se desconecto temporalmente. Tiene ${Math.ceil(
       context.timings.reconnectGraceMs / 1_000,
-    )}s para regresar. ${createLobbyMessage(room)}`;
+    )}s para regresar.`;
+    room.message = room.startedAt === null
+      ? `${reconnectMessage} ${createLobbyMessage(room)}`
+      : reconnectMessage;
     context.io.to(room.code).emit("player-left", {
       roomCode: room.code,
       playerId: player.id,

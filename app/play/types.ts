@@ -122,7 +122,7 @@ export type MultiplayerStatePayload = {
   message: string | null;
 };
 
-export type LocalRankingEntry = {
+export type LocalMatchSnapshot = {
   id: string;
   recordedAt: string;
   winnerName: string;

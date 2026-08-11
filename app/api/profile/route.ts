@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { requireCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { isCompetitiveHistoryEntry } from "@/lib/profile-contract";
 
 const profileQuerySchema = z.object({
   historyLimit: z.coerce.number().int().min(1).max(25).default(10),
@@ -32,6 +33,7 @@ export async function GET(request: Request) {
             wins: true,
             losses: true,
             score: true,
+            bestScore: true,
             lastMatchAt: true,
           },
         },
@@ -74,12 +76,17 @@ export async function GET(request: Request) {
       losses: profile.stats?.losses ?? 0,
       winRate: matchesPlayed > 0 ? Number(((wins / matchesPlayed) * 100).toFixed(1)) : 0,
       score: profile.stats?.score ?? 0,
+      bestScore: profile.stats?.bestScore ?? 0,
       lastMatchAt: profile.stats?.lastMatchAt?.toISOString() ?? null,
       history: profile.matchResults.map((entry) => ({
         id: entry.id,
         matchId: entry.match.id,
         mode: entry.match.mode,
         verificationLevel: entry.match.verificationLevel,
+        competitive: isCompetitiveHistoryEntry(
+          entry.match.mode,
+          entry.match.verificationLevel,
+        ),
         creature: entry.creature,
         result: entry.result,
         scoreEarned: entry.scoreEarned,

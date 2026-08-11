@@ -9,41 +9,41 @@ datasource db {
 }
 
 model User {
-  id             String        @id @default(cuid())
-  username       String        @unique
-  email          String        @unique
-  passwordHash   String
-  emailVerified  Boolean       @default(false)
-  emailVerifiedAt DateTime?
-  twoFactorEnabled Boolean     @default(true)
-  lastLoginAt    DateTime?
-  failedLoginAttempts Int      @default(0)
-  lockedUntil    DateTime?
-  activeCreature String        @default("cave-axolotl")
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  stats          UserStats?
-  matchResults   MatchResult[]
-  matchesWon     Match[]       @relation("MatchWinner")
-  authChallenges AuthChallenge[]
+  id                  String          @id @default(cuid())
+  username            String          @unique
+  email               String          @unique
+  passwordHash        String
+  emailVerified       Boolean         @default(false)
+  emailVerifiedAt     DateTime?
+  twoFactorEnabled    Boolean         @default(true)
+  lastLoginAt         DateTime?
+  failedLoginAttempts Int             @default(0)
+  lockedUntil         DateTime?
+  activeCreature      String          @default("cave-axolotl")
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  stats               UserStats?
+  matchResults        MatchResult[]
+  matchesWon          Match[]         @relation("MatchWinner")
+  authChallenges      AuthChallenge[]
 }
 
 model AuthChallenge {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   userId       String?
   email        String
   type         String
   codeHash     String
   expiresAt    DateTime
   consumedAt   DateTime?
-  attemptCount Int      @default(0)
-  maxAttempts  Int      @default(5)
-  resendCount  Int      @default(0)
+  attemptCount Int       @default(0)
+  maxAttempts  Int       @default(5)
+  resendCount  Int       @default(0)
   lastSentAt   DateTime
   ipAddress    String?
   userAgent    String?
-  createdAt    DateTime @default(now())
-  user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime  @default(now())
+  user         User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([email])
   @@index([userId])
@@ -52,26 +52,29 @@ model AuthChallenge {
 }
 
 model UserStats {
-  id            String   @id @default(cuid())
-  userId        String   @unique
-  matchesPlayed Int      @default(0)
-  wins          Int      @default(0)
-  losses        Int      @default(0)
-  score         Int      @default(0)
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  matchesPlayed Int       @default(0)
+  wins          Int       @default(0)
+  losses        Int       @default(0)
+  score         Int       @default(0)
+  bestScore     Int       @default(0)
   lastMatchAt   DateTime?
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Match {
-  id        String        @id
-  mode      String
-  status    String
-  winnerId  String?
-  startedAt DateTime      @default(now())
-  endedAt   DateTime?
-  verificationLevel String     @default("local_unverified")
-  winner    User?         @relation("MatchWinner", fields: [winnerId], references: [id], onDelete: SetNull)
-  results   MatchResult[]
+  id                      String        @id
+  mode                    String
+  status                  String
+  winnerId                String?
+  startedAt               DateTime      @default(now())
+  endedAt                 DateTime?
+  verificationLevel       String        @default("local_unverified")
+  participantCount        Int?
+  competitiveStatsApplied Boolean       @default(false)
+  winner                  User?         @relation("MatchWinner", fields: [winnerId], references: [id], onDelete: SetNull)
+  results                 MatchResult[]
 
   @@index([winnerId])
   @@index([startedAt])

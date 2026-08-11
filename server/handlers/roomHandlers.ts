@@ -10,6 +10,7 @@ import type {
 import type { ServerContext, ServerPlayerState, ServerRoomState, GameSocket } from "../types";
 import { createAbilityState } from "../../lib/gameplay/abilities";
 import { createSanityState } from "../../lib/gameplay/sanity";
+import type { CreatureId } from "../../lib/creatures";
 import {
   createInitialCombatState,
   createLobbyMessage,
@@ -40,7 +41,7 @@ function createPlayer({
   socket: GameSocket;
   room: ServerRoomState;
   name?: string;
-  characterId: string;
+  characterId: CreatureId;
 }): ServerPlayerState {
   const spawns = pickSeparatedSpawns(
     room.cave,
@@ -59,6 +60,7 @@ function createPlayer({
     status: "waiting",
     isReady: false,
     connected: true,
+    eliminationOrder: null,
     lastAction: "move",
     combat: createInitialCombatState(characterId),
     connectedAt: Date.now(),
@@ -118,6 +120,12 @@ export function registerRoomHandlers(socket: GameSocket, context: ServerContext)
       noises: [],
       traps: [],
       exhaustedShelters: new Set(),
+      nextEliminationOrder: 0,
+      resultPersistence: {
+        status: "idle",
+        attempts: 0,
+        lastError: null,
+      },
       winnerId: null,
       message: `Esperando minimo 2 jugadores.`,
       results: [],
@@ -339,9 +347,11 @@ export function registerRoomHandlers(socket: GameSocket, context: ServerContext)
     context.store.unbindSocket(socket.id);
     void socket.leave(room.code);
 
+    const participatedInMatch = room.startedAt !== null;
+
     if (room.status === "playing" && player.status === "playing") {
       eliminatePlayer(room, player, `${player.name} abandono la cueva.`, null, now);
-    } else if (room.status !== "finished") {
+    } else if (!participatedInMatch) {
       player.status = "left";
       room.players.delete(player.id);
     }
@@ -353,7 +363,11 @@ export function registerRoomHandlers(socket: GameSocket, context: ServerContext)
 
     markRoomActivity(room, context, now);
     syncLobbyState(room, context, now);
-    room.message = `${player.name} abandono la sala. ${createLobbyMessage(room)}`;
+    room.message = participatedInMatch
+      ? player.status === "lost"
+        ? `${player.name} abandono la conexion, pero permanece en los resultados de la partida.`
+        : `${player.name} abandono la partida.`
+      : `${player.name} abandono la sala. ${createLobbyMessage(room)}`;
     context.io.to(room.code).emit("player-left", {
       roomCode: room.code,
       playerId: player.id,

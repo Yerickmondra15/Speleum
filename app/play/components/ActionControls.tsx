@@ -54,7 +54,7 @@ export function ActionControls({
             <div className="flex flex-col items-center gap-1 sm:flex-row sm:items-center sm:gap-3">
               <Footprints className="theme-text-secondary h-3.5 w-3.5 sm:h-4 sm:w-4" />
               <div>
-                <p className="theme-text-muted text-[0.58rem] uppercase tracking-[0.18em] sm:text-[0.7rem] sm:tracking-[0.22em]">MOVER</p>
+                <p className="theme-text-muted text-[0.58rem] uppercase tracking-[0.18em] sm:text-[0.7rem] sm:tracking-[0.22em]">{messages.play.hud.move}</p>
                 <p className="theme-text-secondary mt-0.5 text-[0.72rem] sm:mt-1 sm:text-sm">{label(moveCooldownRemaining)}</p>
               </div>
             </div>
@@ -110,7 +110,7 @@ export function ActionControls({
               <div className="flex flex-col items-center gap-1 sm:flex-row sm:items-center sm:gap-3">
                 <Sparkles className="h-3.5 w-3.5 text-cyan-100 sm:h-4 sm:w-4" />
                 <div className="min-w-0">
-                  <p className="theme-text-muted truncate text-[0.52rem] uppercase tracking-[0.12em] sm:text-[0.66rem] sm:tracking-[0.18em]">HABILIDAD</p>
+                  <p className="theme-text-muted truncate text-[0.52rem] uppercase tracking-[0.12em] sm:text-[0.66rem] sm:tracking-[0.18em]">{messages.play.hud.ability}</p>
                   <p className="theme-text-secondary mt-0.5 text-[0.68rem] sm:mt-1 sm:text-sm">
                     <span className="hidden lg:inline">{abilityName} · </span>{label(abilityCooldownRemaining)} / R
                   </p>

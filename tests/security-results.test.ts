@@ -53,9 +53,10 @@ describe("contrato de resultados", () => {
   });
 
   it("marca resultados locales como no competitivos y fuerza score cero", () => {
+    const clientMatchId = randomUUID();
     const request = matchResultRequestSchema.parse({
       mode: "local",
-      matchId: randomUUID(),
+      matchId: clientMatchId,
       status: "finished",
       startedAt: new Date(1_000).toISOString(),
       endedAt: new Date(3_000).toISOString(),
@@ -63,11 +64,35 @@ describe("contrato de resultados", () => {
       result: "win",
     });
     expect(verifyMatchResultRequest({ request, currentUserId: "user-1", resultSecret: secret, nowMs: 4_000 })).toMatchObject({
+      matchId: `local:user-1:${clientMatchId}`,
       scoreEarned: 0,
       competitive: false,
       verificationLevel: "local_unverified",
       winnerId: null,
     });
+  });
+
+  it("separa los IDs locales del namespace autoritativo multijugador", () => {
+    const publicMultiplayerId = randomUUID();
+    const request = matchResultRequestSchema.parse({
+      mode: "local",
+      matchId: publicMultiplayerId,
+      status: "finished",
+      startedAt: new Date(1_000).toISOString(),
+      endedAt: new Date(3_000).toISOString(),
+      creature: "cave-axolotl",
+      result: "loss",
+    });
+
+    const verified = verifyMatchResultRequest({
+      request,
+      currentUserId: "attacker",
+      resultSecret: secret,
+      nowMs: 4_000,
+    });
+
+    expect(verified.matchId).toBe(`local:attacker:${publicMultiplayerId}`);
+    expect(verified.matchId).not.toBe(publicMultiplayerId);
   });
 
   it("rechaza duraciones imposibles", () => {

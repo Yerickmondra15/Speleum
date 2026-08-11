@@ -7,6 +7,7 @@ import type { CharacterOption } from "../gameConfig";
 import { localizeCharacterOption } from "@/lib/i18n/content";
 import { useLanguage } from "@/lib/i18n/LanguageProvider";
 import { useTheme } from "@/lib/theme/ThemeProvider";
+import { AudioSettings } from "@/app/components/AudioSettings";
 
 type PlayMenuProps = {
   selectedCharacter: CharacterOption;
@@ -101,6 +102,10 @@ export function PlayMenu({
             </p>
             <p className="mt-1 text-xs text-[var(--text-muted)]">{localizedCharacter.role}</p>
           </div>
+        </div>
+
+        <div className="mt-8 w-full max-w-md">
+          <AudioSettings compact />
         </div>
       </div>
     </section>

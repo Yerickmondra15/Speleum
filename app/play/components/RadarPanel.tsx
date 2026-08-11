@@ -7,6 +7,7 @@ import type { RadarSignal } from "../types";
 import { approximateRadarPosition, tileDistance, worldToTile } from "../tileMap";
 import { gameplayEventSeed } from "@/lib/gameplay/event-ids";
 import { collapseRadarSignals } from "../signalUtils";
+import { useLanguage } from "@/lib/i18n/LanguageProvider";
 
 type RadarPanelProps = {
   player: PlayerPosition;
@@ -46,6 +47,7 @@ export function RadarPanel({
   rangeTiles = RADAR_SIGNAL_RANGE_TILES,
   precisionMultiplier = 1,
 }: RadarPanelProps) {
+  const { messages } = useLanguage();
   const playerTile = worldToTile(player);
   const nearbySignals = collapseRadarSignals(
     signals.filter(
@@ -62,7 +64,7 @@ export function RadarPanel({
     <div className="theme-panel rounded-[1rem] p-2.5 sm:rounded-[1.2rem] sm:p-3">
       <div className="flex items-center justify-between">
         <p className="theme-text-muted text-[0.58rem] tracking-[0.22em] sm:text-[0.68rem] sm:tracking-[0.25em]">
-          RADAR · {rangeTiles} TILES
+          {messages.play.hud.radar} · {rangeTiles} {messages.play.hud.tiles}
         </p>
         <Radio className="theme-text-muted h-3.5 w-3.5 sm:h-4 sm:w-4" />
       </div>
@@ -103,10 +105,16 @@ export function RadarPanel({
 
       <div className="mt-2 flex items-center justify-between gap-2 text-[0.6rem] uppercase tracking-[0.16em] sm:text-[0.68rem]">
         <span className="theme-text-muted">
-          {nearbySignals.length === 0 ? "Silencio" : `${nearbySignals.length} eco${nearbySignals.length === 1 ? "" : "s"}`}
+          {nearbySignals.length === 0
+            ? messages.play.hud.silence
+            : `${nearbySignals.length} ${nearbySignals.length === 1 ? messages.play.hud.echo : messages.play.hud.echoes}`}
         </span>
         <span className={hostileCount > 0 ? "text-rose-200" : "theme-text-secondary"}>
-          {hostileCount > 1 ? "Peligro alto" : hostileCount === 1 ? "Peligro" : "Sin amenaza"}
+          {hostileCount > 1
+            ? messages.play.hud.highDanger
+            : hostileCount === 1
+              ? messages.play.hud.dangerDetected
+              : messages.play.hud.noThreat}
         </span>
       </div>
     </div>

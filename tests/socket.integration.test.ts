@@ -5,7 +5,12 @@ import type { MultiplayerStatePayload } from "@/app/play/types";
 import { findReachableTiles, tileToWorld, worldToTile } from "@/app/play/tileMap";
 import type { ResumeRoomResult } from "@/lib/multiplayer/events";
 import { createSocketTicket } from "@/lib/multiplayer/tickets";
+import type {
+  MatchResultPersistenceInput,
+  PersistedMatchResult,
+} from "@/lib/matches/result-persistence";
 import { createSocketGameServer } from "@/server/createSocketServer";
+import type { OfficialResultPersister } from "@/server/results/officialResultPersistence";
 import {
   eliminatePlayer,
   evaluateRoom,
@@ -57,6 +62,21 @@ describe("integracion Socket.IO autoritativa", () => {
   let url: string;
   let userSequence = 0;
   const clients = new Set<Socket>();
+  const persistedBatches: MatchResultPersistenceInput[][] = [];
+  let persistenceSequence = 0;
+  const successfulPersistence: OfficialResultPersister = async (input) => {
+    persistedBatches.push(input.map((entry) => ({
+      userId: entry.userId,
+      result: { ...entry.result },
+    })));
+
+    return input.map<PersistedMatchResult>((entry) => ({
+      userId: entry.userId,
+      id: `persisted-${++persistenceSequence}`,
+      created: true,
+    }));
+  };
+  let persistenceImplementation: OfficialResultPersister = successfulPersistence;
 
   beforeAll(async () => {
     server = createSocketGameServer({
@@ -72,17 +92,23 @@ describe("integracion Socket.IO autoritativa", () => {
         lobbyIdleMs: 500,
         finishedRetentionMs: 80,
       },
+      persistOfficialResults: (input) => persistenceImplementation(input),
+      resultPersistenceRetryDelaysMs: [0, 0],
     });
     const address = await server.listen();
     url = `http://127.0.0.1:${address.port}`;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     for (const client of clients) {
       client.disconnect();
     }
     clients.clear();
     server.store.clear();
+    await Promise.allSettled([...server.context.pendingResultPersistences]);
+    persistedBatches.length = 0;
+    persistenceSequence = 0;
+    persistenceImplementation = successfulPersistence;
   });
 
   afterAll(async () => {
@@ -153,6 +179,33 @@ describe("integracion Socket.IO autoritativa", () => {
     lobby.second.client.emit("player-ready", { roomCode: lobby.roomCode });
     const playing = await playingPromise;
     return { ...lobby, playing };
+  }
+
+  async function setupPlayingRoomWithPlayers(playerCount: number) {
+    const host = await connect();
+    const initial = await createRoom(host.client);
+    const participants = [host];
+
+    for (let index = 1; index < playerCount; index += 1) {
+      const participant = await connect();
+      await joinRoom(participant.client, initial.roomCode);
+      participants.push(participant);
+    }
+
+    const playingPromise = waitForEvent<MultiplayerStatePayload>(
+      host.client,
+      "game-state",
+      (state) => state.status === "playing",
+    );
+    for (const participant of participants) {
+      participant.client.emit("player-ready", { roomCode: initial.roomCode });
+    }
+
+    return {
+      participants,
+      roomCode: initial.roomCode,
+      playing: await playingPromise,
+    };
   }
 
   it("1. acepta una conexion autenticada y consume el ticket una sola vez", async () => {
@@ -549,5 +602,384 @@ describe("integracion Socket.IO autoritativa", () => {
     expect(player.parryUntil).toBe(0);
     expect(player.stunnedUntil).toBe(now + 1_400);
     expect(room.message).toMatch(/bloqueó en falso/i);
+  });
+
+  it("24. conserva en standings al eliminado que sale antes del final", async () => {
+    const game = await setupPlayingRoomWithPlayers(3);
+    const room = server.store.get(game.roomCode)!;
+    const [first, second, third] = game.participants.map((participant) =>
+      server.store.findPlayerByUser(room, participant.userId)!,
+    );
+    const now = Date.now();
+
+    eliminatePlayer(room, first, "Primera eliminacion", null, now);
+    const leftPromise = waitForEvent<{ playerId: string }>(
+      game.participants[1].client,
+      "player-left",
+      (payload) => payload.playerId === first.id,
+    );
+    game.participants[0].client.emit("leave-room", { roomCode: game.roomCode });
+    await leftPromise;
+
+    expect(room.players.get(first.id)).toBe(first);
+    expect(first).toMatchObject({ status: "lost", intentionalLeave: true });
+
+    eliminatePlayer(room, second, "Segunda eliminacion", null, now + 1);
+    finishRoom(room, server.context, third.id, "Final ordenado", now + 2);
+
+    expect(room.results.map(({ playerId, placement }) => ({ playerId, placement }))).toEqual([
+      { playerId: third.id, placement: 1 },
+      { playerId: second.id, placement: 2 },
+      { playerId: first.id, placement: 3 },
+    ]);
+  });
+
+  it("25. conserva al eliminado que cierra la conexion antes del final", async () => {
+    const game = await setupPlayingRoomWithPlayers(3);
+    const room = server.store.get(game.roomCode)!;
+    const [first, second, third] = game.participants.map((participant) =>
+      server.store.findPlayerByUser(room, participant.userId)!,
+    );
+
+    eliminatePlayer(room, first, "Eliminado antes de cerrar", null, Date.now());
+    game.participants[0].client.disconnect();
+    await waitUntil(() => !first.connected);
+    first.reconnectDeadline = Date.now() - 1;
+    processRoomLifecycle(server.context, Date.now());
+
+    expect(room.players.get(first.id)).toBe(first);
+    expect(first.status).toBe("lost");
+
+    eliminatePlayer(room, second, "Segundo eliminado", null, Date.now());
+    finishRoom(room, server.context, third.id, "Final con navegador cerrado", Date.now());
+
+    expect(room.results).toHaveLength(3);
+    expect(room.results.find((entry) => entry.playerId === first.id)).toMatchObject({
+      placement: 3,
+      status: "lost",
+    });
+  });
+
+  it("26. convierte el abandono vivo en derrota historica coherente", async () => {
+    const game = await setupPlayingRoomWithPlayers(3);
+    const room = server.store.get(game.roomCode)!;
+    const [abandoning, second, winner] = game.participants.map((participant) =>
+      server.store.findPlayerByUser(room, participant.userId)!,
+    );
+    const leftPromise = waitForEvent<{ playerId: string }>(
+      game.participants[1].client,
+      "player-left",
+      (payload) => payload.playerId === abandoning.id,
+    );
+
+    game.participants[0].client.emit("leave-room", { roomCode: game.roomCode });
+    await leftPromise;
+
+    expect(abandoning).toMatchObject({
+      status: "lost",
+      intentionalLeave: true,
+      connected: false,
+    });
+    expect(room.players.has(abandoning.id)).toBe(true);
+
+    eliminatePlayer(room, second, "Finalista eliminado", null, Date.now());
+    finishRoom(room, server.context, winner.id, "Final tras abandono", Date.now());
+    expect(room.results.find((entry) => entry.playerId === abandoning.id)).toMatchObject({
+      placement: 3,
+      status: "lost",
+    });
+  });
+
+  it("27. el timeout de reconexion elimina del juego pero no del resultado", async () => {
+    const game = await setupPlayingRoomWithPlayers(3);
+    const room = server.store.get(game.roomCode)!;
+    const [timedOut, second, winner] = game.participants.map((participant) =>
+      server.store.findPlayerByUser(room, participant.userId)!,
+    );
+
+    game.participants[0].client.disconnect();
+    await waitUntil(() => !timedOut.connected);
+    timedOut.reconnectDeadline = Date.now() - 1;
+    processRoomLifecycle(server.context, Date.now());
+
+    expect(timedOut).toMatchObject({ status: "lost", reconnectDeadline: null });
+    expect(room.players.has(timedOut.id)).toBe(true);
+
+    eliminatePlayer(room, second, "Segundo eliminado", null, Date.now());
+    finishRoom(room, server.context, winner.id, "Final tras timeout", Date.now());
+    expect(room.results.map((entry) => entry.playerId)).toContain(timedOut.id);
+  });
+
+  it("28. bloquea el inicio por un lobby desconectado y lo inicia playing tras resume y ready", async () => {
+    const host = await connect();
+    const initial = await createRoom(host.client);
+    const second = await connect();
+    await joinRoom(second.client, initial.roomCode);
+    const third = await connect();
+    await joinRoom(third.client, initial.roomCode);
+    const room = server.store.get(initial.roomCode)!;
+    const thirdPlayer = server.store.findPlayerByUser(room, third.userId)!;
+
+    third.client.disconnect();
+    await waitUntil(() => !thirdPlayer.connected);
+    thirdPlayer.reconnectDeadline = Date.now() + 1_000;
+    host.client.emit("player-ready", { roomCode: initial.roomCode });
+    second.client.emit("player-ready", { roomCode: initial.roomCode });
+    await new Promise((resolve) => setTimeout(resolve, 60));
+
+    expect(room.status).toBe("waiting");
+    expect(thirdPlayer.status).toBe("waiting");
+
+    const replacement = await connect(third.userId, "Third resumed");
+    await expect(resumeRoom(replacement.client, initial.roomCode)).resolves.toMatchObject({
+      ok: true,
+      playerId: thirdPlayer.id,
+    });
+    const playingPromise = waitForEvent<MultiplayerStatePayload>(
+      replacement.client,
+      "game-state",
+      (state) => state.status === "playing" && state.self.status === "playing",
+    );
+    replacement.client.emit("player-ready", { roomCode: initial.roomCode });
+    const playing = await playingPromise;
+
+    expect(playing.self.status).toBe("playing");
+    const actionPromise = waitForEvent<MultiplayerStatePayload>(
+      replacement.client,
+      "game-state",
+      (state) => state.self.combat.isParrying,
+    );
+    replacement.client.emit("player-defend", { roomCode: initial.roomCode });
+    expect((await actionPromise).self.combat.isParrying).toBe(true);
+  });
+
+  it("29. reconecta a un eliminado como eliminado y rechaza al que abandono", async () => {
+    const game = await setupPlayingRoomWithPlayers(3);
+    const room = server.store.get(game.roomCode)!;
+    const eliminated = server.store.findPlayerByUser(room, game.participants[0].userId)!;
+    const abandoned = server.store.findPlayerByUser(room, game.participants[1].userId)!;
+
+    eliminatePlayer(room, eliminated, "Eliminado reconectable", null, Date.now());
+    game.participants[0].client.disconnect();
+    await waitUntil(() => !eliminated.connected);
+    eliminated.reconnectDeadline = Date.now() + 1_000;
+    const replacement = await connect(game.participants[0].userId, "Eliminated resumed");
+    const lostStatePromise = waitForEvent<MultiplayerStatePayload>(
+      replacement.client,
+      "game-state",
+      (state) => state.self.id === eliminated.id,
+    );
+    await expect(resumeRoom(replacement.client, game.roomCode)).resolves.toMatchObject({ ok: true });
+    expect((await lostStatePromise).self.status).toBe("lost");
+    const actionError = waitForEvent<string>(replacement.client, "error-message");
+    replacement.client.emit("player-defend", { roomCode: game.roomCode });
+    expect(await actionError).toMatch(/estado actual/i);
+
+    const leftPromise = waitForEvent<{ playerId: string }>(
+      game.participants[2].client,
+      "player-left",
+      (payload) => payload.playerId === abandoned.id,
+    );
+    game.participants[1].client.emit("leave-room", { roomCode: game.roomCode });
+    await leftPromise;
+    const abandonedReplacement = await connect(
+      game.participants[1].userId,
+      "Abandoned resume",
+    );
+    await expect(resumeRoom(abandonedReplacement.client, game.roomCode)).resolves.toMatchObject({
+      ok: false,
+      reason: "session-not-found",
+      terminal: true,
+    });
+  });
+
+  it("30. permite resume repetido y recupera una partida ya terminada", async () => {
+    const game = await setupPlayingRoom();
+    const room = server.store.get(game.roomCode)!;
+    const winner = server.store.findPlayerByUser(room, game.first.userId)!;
+    finishRoom(room, server.context, winner.id, "Final antes de reconectar", Date.now());
+    room.expiresAt = Date.now() + 2_000;
+
+    game.first.client.disconnect();
+    await waitUntil(() => !winner.connected);
+    winner.reconnectDeadline = Date.now() + 1_000;
+    room.expiresAt = Date.now() + 2_000;
+    const replacement = await connect(game.first.userId, "Finished resumed");
+    const statePromise = waitForEvent<MultiplayerStatePayload>(
+      replacement.client,
+      "game-state",
+      (state) => state.status === "finished",
+    );
+
+    await expect(resumeRoom(replacement.client, game.roomCode)).resolves.toMatchObject({
+      ok: true,
+      status: "finished",
+    });
+    const finishedState = await statePromise;
+    expect(finishedState.resultReceipt).toBeTruthy();
+    await expect(resumeRoom(replacement.client, game.roomCode)).resolves.toMatchObject({
+      ok: true,
+      playerId: winner.id,
+    });
+  });
+
+  it("31. finishRoom es idempotente y agenda un unico lote oficial de dos resultados", async () => {
+    const game = await setupPlayingRoom();
+    const room = server.store.get(game.roomCode)!;
+    const winner = server.store.findPlayerByUser(room, game.first.userId)!;
+
+    finishRoom(room, server.context, winner.id, "Primer final", Date.now());
+    const firstResults = room.results.map((entry) => ({ ...entry }));
+    finishRoom(room, server.context, null, "Segundo final invalido", Date.now() + 1);
+    await waitUntil(() => room.resultPersistence.status === "persisted");
+
+    expect(room.results).toEqual(firstResults);
+    expect(room.winnerId).toBe(winner.id);
+    expect(persistedBatches).toHaveLength(1);
+    expect(persistedBatches[0]).toHaveLength(2);
+    expect(persistedBatches[0].filter((entry) => entry.result.result === "win")).toHaveLength(1);
+    expect(persistedBatches[0].filter((entry) => entry.result.result === "loss")).toHaveLength(1);
+    expect(new Set(persistedBatches[0].map((entry) => entry.userId)).size).toBe(2);
+  });
+
+  it("32. reintenta persistencia oficial transitoria sin depender de otro snapshot", async () => {
+    const game = await setupPlayingRoom();
+    const room = server.store.get(game.roomCode)!;
+    const winner = server.store.findPlayerByUser(room, game.first.userId)!;
+    let attempts = 0;
+    persistenceImplementation = async (input) => {
+      attempts += 1;
+      if (attempts < 3) {
+        throw Object.assign(new Error("database temporarily unavailable"), {
+          retryable: true,
+        });
+      }
+      return successfulPersistence(input);
+    };
+
+    finishRoom(room, server.context, winner.id, "Final con retry", Date.now());
+    await waitUntil(() => room.resultPersistence.status === "persisted");
+
+    expect(attempts).toBe(3);
+    expect(room.resultPersistence).toMatchObject({ status: "persisted", attempts: 3 });
+    expect(persistedBatches).toHaveLength(1);
+  });
+
+  it("33. cerrar ambos clientes no cancela la persistencia oficial ya determinada", async () => {
+    const game = await setupPlayingRoom();
+    const room = server.store.get(game.roomCode)!;
+    const winner = server.store.findPlayerByUser(room, game.first.userId)!;
+    let releasePersistence!: () => void;
+    let reportStarted!: () => void;
+    const persistenceStarted = new Promise<void>((resolve) => {
+      reportStarted = resolve;
+    });
+    const persistenceGate = new Promise<void>((resolve) => {
+      releasePersistence = resolve;
+    });
+    persistenceImplementation = async (input) => {
+      persistedBatches.push(input.map((entry) => ({
+        userId: entry.userId,
+        result: { ...entry.result },
+      })));
+      reportStarted();
+      await persistenceGate;
+      return input.map((entry, index) => ({
+        userId: entry.userId,
+        id: `closed-client-result-${index}`,
+        created: true,
+      }));
+    };
+
+    try {
+      finishRoom(room, server.context, winner.id, "Final independiente del cliente", Date.now());
+      await persistenceStarted;
+      game.first.client.disconnect();
+      game.second.client.disconnect();
+      releasePersistence();
+      await waitUntil(() => room.resultPersistence.status === "persisted");
+
+      expect(persistedBatches).toHaveLength(1);
+      expect(persistedBatches[0]).toHaveLength(2);
+      expect(room.resultPersistence.status).toBe("persisted");
+    } finally {
+      releasePersistence();
+    }
+  });
+
+  it("34. dos eliminaciones en el mismo milisegundo conservan placements unicos", async () => {
+    const game = await setupPlayingRoomWithPlayers(3);
+    const room = server.store.get(game.roomCode)!;
+    const [first, second, winner] = game.participants.map((participant) =>
+      server.store.findPlayerByUser(room, participant.userId)!,
+    );
+    const sameTick = Date.now();
+
+    eliminatePlayer(room, first, "Primera del tick", null, sameTick);
+    eliminatePlayer(room, second, "Segunda del tick", null, sameTick);
+    finishRoom(room, server.context, winner.id, "Final del mismo tick", sameTick);
+
+    expect(first.eliminationOrder).not.toBe(second.eliminationOrder);
+    expect(room.results.map((entry) => entry.placement)).toEqual([1, 2, 3]);
+    expect(room.results.find((entry) => entry.playerId === second.id)?.placement).toBe(2);
+    expect(room.results.find((entry) => entry.playerId === first.id)?.placement).toBe(3);
+  });
+
+  it("35. una partida de seis conserva seis participantes y un lote oficial completo", async () => {
+    const game = await setupPlayingRoomWithPlayers(6);
+    const room = server.store.get(game.roomCode)!;
+    const players = game.participants.map((participant) =>
+      server.store.findPlayerByUser(room, participant.userId)!,
+    );
+    const winner = players[5];
+    const sameTick = Date.now();
+
+    for (const player of players.slice(0, -1)) {
+      eliminatePlayer(room, player, `${player.name} eliminado`, null, sameTick);
+    }
+    finishRoom(room, server.context, winner.id, "Final de seis", sameTick);
+    await waitUntil(() => room.resultPersistence.status === "persisted");
+
+    expect(room.players).toHaveLength(6);
+    expect(room.results).toHaveLength(6);
+    expect(new Set(room.results.map((entry) => entry.playerId))).toHaveLength(6);
+    expect(room.results.map((entry) => entry.placement)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(room.results.filter((entry) => entry.status === "won")).toHaveLength(1);
+    expect(persistedBatches).toHaveLength(1);
+    expect(persistedBatches[0]).toHaveLength(6);
+  });
+
+  it("36. limpiar la sala no cancela un lote oficial que ya esta en vuelo", async () => {
+    const game = await setupPlayingRoom();
+    const room = server.store.get(game.roomCode)!;
+    const winner = server.store.findPlayerByUser(room, game.first.userId)!;
+    let releasePersistence!: () => void;
+    let reportStarted!: () => void;
+    const persistenceStarted = new Promise<void>((resolve) => {
+      reportStarted = resolve;
+    });
+    const persistenceGate = new Promise<void>((resolve) => {
+      releasePersistence = resolve;
+    });
+    persistenceImplementation = async (input) => {
+      reportStarted();
+      await persistenceGate;
+      return successfulPersistence(input);
+    };
+
+    try {
+      finishRoom(room, server.context, winner.id, "Final antes del cleanup", Date.now());
+      await persistenceStarted;
+      expect(server.store.delete(room.code)).toBe(true);
+      expect(server.store.get(room.code)).toBeNull();
+
+      releasePersistence();
+      await Promise.allSettled([...server.context.pendingResultPersistences]);
+      expect(room.resultPersistence.status).toBe("persisted");
+      expect(persistedBatches).toHaveLength(1);
+      expect(persistedBatches[0]).toHaveLength(2);
+    } finally {
+      releasePersistence();
+    }
   });
 });

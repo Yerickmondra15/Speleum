@@ -45,7 +45,20 @@ export function buildResults(room: ServerRoomState): MatchResultEntry[] {
       return leftAlive ? -1 : 1;
     }
 
-    return (right.combat.eliminatedAt ?? now) - (left.combat.eliminatedAt ?? now);
+    const eliminationOrderDifference =
+      (right.eliminationOrder ?? -1) - (left.eliminationOrder ?? -1);
+    if (eliminationOrderDifference !== 0) {
+      return eliminationOrderDifference;
+    }
+
+    const eliminatedAtDifference =
+      (right.combat.eliminatedAt ?? Number.NEGATIVE_INFINITY) -
+      (left.combat.eliminatedAt ?? Number.NEGATIVE_INFINITY);
+    if (eliminatedAtDifference !== 0) {
+      return eliminatedAtDifference;
+    }
+
+    return left.id.localeCompare(right.id);
   });
 
   return sorted.map((player, index) => ({

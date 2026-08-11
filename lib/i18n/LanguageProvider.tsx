@@ -3,19 +3,19 @@
 import {
   createContext,
   useContext,
-  useEffect,
+  useCallback,
   useMemo,
-  useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import {
   defaultLocale,
   languageStorageKey,
-  supportedLocales,
   translations,
   type Locale,
   type Messages,
 } from "./messages";
+import { persistLocale, resolveLocale } from "./language";
 
 type LanguageContextValue = {
   locale: Locale;
@@ -25,24 +25,39 @@ type LanguageContextValue = {
 
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 
-function isLocale(value: string | null): value is Locale {
-  return supportedLocales.includes(value as Locale);
+const languageChangeEvent = "speleum-language-change";
+
+function getClientLocale() {
+  try {
+    return resolveLocale(
+      document.documentElement.lang,
+      window.localStorage.getItem(languageStorageKey),
+    );
+  } catch {
+    return resolveLocale(document.documentElement.lang, null);
+  }
+}
+
+function subscribeToLocale(onStoreChange: () => void) {
+  window.addEventListener("storage", onStoreChange);
+  window.addEventListener(languageChangeEvent, onStoreChange);
+  return () => {
+    window.removeEventListener("storage", onStoreChange);
+    window.removeEventListener(languageChangeEvent, onStoreChange);
+  };
 }
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>(() => {
-    if (typeof window === "undefined") {
-      return defaultLocale;
-    }
-
-    const stored = window.localStorage.getItem(languageStorageKey);
-    return isLocale(stored) ? stored : defaultLocale;
-  });
-
-  useEffect(() => {
-    document.documentElement.lang = locale;
-    window.localStorage.setItem(languageStorageKey, locale);
-  }, [locale]);
+  const locale = useSyncExternalStore(
+    subscribeToLocale,
+    getClientLocale,
+    () => defaultLocale,
+  );
+  const setLocaleState = useCallback((nextLocale: Locale) => {
+    document.documentElement.lang = nextLocale;
+    persistLocale(nextLocale, window.localStorage);
+    window.dispatchEvent(new Event(languageChangeEvent));
+  }, []);
 
   const value = useMemo<LanguageContextValue>(
     () => ({
@@ -50,7 +65,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       setLocale: setLocaleState,
       messages: translations[locale],
     }),
-    [locale],
+    [locale, setLocaleState],
   );
 
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;

@@ -22,6 +22,7 @@ import { useLanguage } from "@/lib/i18n/LanguageProvider";
 import { getLocalizedCreature } from "@/lib/i18n/content";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { ThemeSwitcher } from "@/app/components/ThemeSwitcher";
+import { LanguageSwitcher } from "@/app/components/LanguageSwitcher";
 
 const fadeUp: Variants = {
   hidden: { opacity: 0, y: 35, filter: "blur(6px)" },
@@ -168,6 +169,7 @@ export default function Home() {
                 alt="Speleum"
                 width={196}
                 height={32}
+                priority
                 className="h-6 w-auto sm:h-7"
                 style={{ width: "auto" }}
               />
@@ -185,6 +187,7 @@ export default function Home() {
               </button>
 
               <div className="hidden flex-wrap items-center justify-start gap-2 sm:flex sm:justify-end sm:gap-3">
+              <LanguageSwitcher />
               <ThemeSwitcher />
               <Link href="/ranking" className="theme-button-secondary flex h-11 w-11 items-center justify-center rounded-full p-2 transition">
                 <Trophy className="h-5 w-5" />
@@ -230,6 +233,11 @@ export default function Home() {
                   <div className="relative overflow-hidden rounded-3xl border border-(--border-soft) bg-(--surface-1) p-3 backdrop-blur-xl">
                     <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,var(--glow-main),transparent_65%)]" />
                     <motion.div className="relative grid gap-2">
+                      <motion.div variants={mobileMenuItemVariants}>
+                        <div className="rounded-2xl border border-(--border-soft) bg-(--surface-2) p-3">
+                          <LanguageSwitcher />
+                        </div>
+                      </motion.div>
                       <motion.div variants={mobileMenuItemVariants}>
                         <div className="rounded-2xl border border-(--border-soft) bg-(--surface-2) p-3">
                           <ThemeSwitcher />
