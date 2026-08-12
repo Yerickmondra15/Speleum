@@ -2,12 +2,18 @@
   "name": "speleum",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.9.0 <23"
+  },
   "scripts": {
     "dev": "next dev",
     "socket": "tsx server/socketServer.ts",
     "server": "tsx server/socketServer.ts",
     "dev:full": "concurrently \"npm run socket\" \"npm run dev\"",
     "dev:all": "concurrently \"npm run dev\" \"npm run server\"",
+    "demo:check": "tsx scripts/demo-check.ts",
+    "env:check:next": "tsx scripts/validate-environment.ts next",
+    "env:check:socket": "tsx scripts/validate-environment.ts socket",
     "build": "prisma generate && next build",
     "db:migrate:deploy": "prisma migrate deploy",
     "stats:rebuild": "tsx scripts/rebuild-competitive-stats.ts",
@@ -21,6 +27,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@next/env": "^16.3.0",
     "@prisma/client": "^6.19.3",
     "bcryptjs": "^3.0.2",
     "framer-motion": "^12.38.0",

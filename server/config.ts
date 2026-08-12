@@ -28,15 +28,26 @@ export function normalizeOrigin(value: string) {
   return value.trim().replace(/\/$/, "");
 }
 
-export function resolveAllowedOrigins() {
-  const allowed = new Set<string>([
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-  ]);
+type Environment = Readonly<Record<string, string | undefined>>;
+
+export type CorsPolicy = {
+  allowedOrigins: Set<string>;
+  allowVercelPreviews: boolean;
+};
+
+export function resolveCorsPolicy(environment: Environment = process.env): CorsPolicy {
+  const production = environment.NODE_ENV === "production";
+  const allowed = new Set<string>();
+
+  if (!production) {
+    allowed.add("http://localhost:3000");
+    allowed.add("http://127.0.0.1:3000");
+  }
+
   const envCandidates = [
-    process.env.NEXT_PUBLIC_APP_URL,
-    process.env.FRONTEND_URL,
-    process.env.ALLOWED_ORIGINS,
+    environment.NEXT_PUBLIC_APP_URL,
+    environment.FRONTEND_URL,
+    environment.ALLOWED_ORIGINS,
   ];
 
   for (const candidate of envCandidates) {
@@ -49,7 +60,19 @@ export function resolveAllowedOrigins() {
     }
   }
 
-  return allowed;
+  return {
+    allowedOrigins: allowed,
+    allowVercelPreviews: environment.ALLOW_VERCEL_PREVIEWS === "true",
+  };
 }
 
 export const vercelPreviewOrigin = /^https:\/\/[a-z0-9-]+\.vercel\.app$/i;
+
+export function isOriginAllowed(origin: string | undefined, policy: CorsPolicy) {
+  if (!origin) return true;
+  const normalized = normalizeOrigin(origin);
+  return (
+    policy.allowedOrigins.has(normalized) ||
+    (policy.allowVercelPreviews && vercelPreviewOrigin.test(normalized))
+  );
+}

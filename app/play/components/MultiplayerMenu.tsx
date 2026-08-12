@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Copy, Radio, Users } from "lucide-react";
 import {
   MAX_ROOM_PLAYERS,
@@ -15,7 +15,16 @@ import {
   writeMultiplayerSession,
 } from "@/lib/multiplayer/client-session";
 import type { ResumeRoomResult } from "@/lib/multiplayer/events";
-import { ensureSocketConnection, getSocket, isSocketMultiplayerAvailable } from "@/lib/socket";
+import {
+  ensureSocketConnection,
+  getSocket,
+  getSocketServiceUrl,
+  isSocketMultiplayerAvailable,
+} from "@/lib/socket";
+import {
+  warmSocketService,
+  type SocketServiceState,
+} from "@/lib/multiplayer/service-health";
 import { localizeCharacterOption, translateMultiplayerMessage } from "@/lib/i18n/content";
 import { useLanguage } from "@/lib/i18n/LanguageProvider";
 import { formatMessage } from "@/lib/i18n/messages";
@@ -59,12 +68,36 @@ export function MultiplayerMenu({
       : lobby.unavailable,
   );
   const [socketConnected, setSocketConnected] = useState(() => getSocket()?.connected ?? false);
+  const [serviceState, setServiceState] = useState<SocketServiceState>(() =>
+    multiplayerAvailable ? "connecting" : "error",
+  );
   const [copied, setCopied] = useState(false);
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
   const [isJoiningRoom, setIsJoiningRoom] = useState(false);
   const [isSendingReady, setIsSendingReady] = useState(false);
   const roomStateRef = useRef(roomState);
   const previousRoomStatusRef = useRef(roomState?.status);
+
+  const warmService = useCallback(async (signal?: AbortSignal) => {
+    const socketUrl = getSocketServiceUrl();
+    if (!socketUrl) {
+      setServiceState("error");
+      return;
+    }
+
+    const ready = await warmSocketService(socketUrl, {
+      signal,
+      onState: setServiceState,
+    }).catch(() => false);
+    if (ready) setErrorMessage(null);
+    else if (!signal?.aborted) setErrorMessage(lobby.multiplayerUnavailable);
+  }, [lobby.multiplayerUnavailable]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    queueMicrotask(() => void warmService(controller.signal));
+    return () => controller.abort();
+  }, [warmService]);
 
   useEffect(() => {
     const status = roomState?.status;
@@ -94,6 +127,7 @@ export function MultiplayerMenu({
 
     const handleConnect = () => {
       setSocketConnected(true);
+      setServiceState("ready");
       setErrorMessage(null);
       const currentRoom = roomStateRef.current;
 
@@ -118,6 +152,7 @@ export function MultiplayerMenu({
     };
     const handleDisconnect = () => {
       setSocketConnected(false);
+      setServiceState("retrying");
       setErrorMessage(lobby.reconnecting);
     };
     const handleError = (message: string) => {
@@ -152,10 +187,14 @@ export function MultiplayerMenu({
     };
     const handleConnectError = () => {
       setSocketConnected(false);
+      setServiceState("waking");
+      setIsCreatingRoom(false);
+      setIsJoiningRoom(false);
       setErrorMessage(lobby.waking);
     };
     const handleReconnectAttempt = () => {
       setSocketConnected(false);
+      setServiceState("retrying");
       setErrorMessage(lobby.reconnecting);
     };
 
@@ -185,8 +224,13 @@ export function MultiplayerMenu({
   const maxPlayers = roomState?.maxPlayers ?? MAX_ROOM_PLAYERS;
 
   const statusLabel = useMemo(() => {
+    if (serviceState === "connecting") return lobby.connecting;
+    if (serviceState === "waking") return lobby.waking;
+    if (serviceState === "retrying") return lobby.reconnecting;
+    if (serviceState === "error") return lobby.connectionError;
+
     if (!socketConnected) {
-      return lobby.reconnecting;
+      return lobby.connectedServer;
     }
 
     if (!roomState) {
@@ -212,7 +256,7 @@ export function MultiplayerMenu({
     }
 
     return lobby.synchronized;
-  }, [lobby, requiredPlayers, roomState, socketConnected]);
+  }, [lobby, requiredPlayers, roomState, serviceState, socketConnected]);
 
   const readyCountdownSeconds =
     roomState?.readyDeadline && roomState.status === "ready-check"
@@ -381,7 +425,7 @@ export function MultiplayerMenu({
                 <button
                   type="button"
                   onClick={submitCreate}
-                  disabled={!multiplayerAvailable || isCreatingRoom || isJoiningRoom}
+                  disabled={!multiplayerAvailable || serviceState !== "ready" || isCreatingRoom || isJoiningRoom}
                   className="theme-button-primary min-h-32 rounded-3xl px-6 py-4 text-left transition disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <p className="text-xs tracking-[0.24em] opacity-60">{lobby.create}</p>
@@ -403,7 +447,7 @@ export function MultiplayerMenu({
                     <button
                       type="button"
                       onClick={submitJoin}
-                      disabled={!multiplayerAvailable || isCreatingRoom || isJoiningRoom}
+                      disabled={!multiplayerAvailable || serviceState !== "ready" || isCreatingRoom || isJoiningRoom}
                       className="theme-button-secondary min-h-12 rounded-full px-5 py-3 text-sm transition disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {isJoiningRoom ? lobby.joining : lobby.enter}
@@ -495,7 +539,16 @@ export function MultiplayerMenu({
 
             {errorMessage && (
               <div role="alert" className="theme-error mt-6 rounded-[1.4rem] p-4 text-sm">
-                {errorMessage}
+                <p>{errorMessage}</p>
+                {serviceState === "error" && multiplayerAvailable && (
+                  <button
+                    type="button"
+                    onClick={() => void warmService()}
+                    className="theme-button-secondary mt-3 min-h-10 rounded-full px-4 py-2"
+                  >
+                    {lobby.retry}
+                  </button>
+                )}
               </div>
             )}
           </aside>

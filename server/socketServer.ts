@@ -1,4 +1,9 @@
+import { loadEnvConfig } from "@next/env";
 import { createSocketGameServer } from "./createSocketServer";
+import { assertEnvironment } from "../lib/config/environment";
+
+loadEnvConfig(process.cwd());
+assertEnvironment("socket", process.env);
 
 const port = Number.parseInt(process.env.PORT ?? "4001", 10);
 const host = "0.0.0.0";

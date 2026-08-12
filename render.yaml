@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: speleum-socket
+    runtime: node
+    buildCommand: npm ci && npx prisma generate
+    startCommand: npm run socket
+    healthCheckPath: /ready
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: SOCKET_AUTH_SECRET
+        sync: false
+      - key: MULTIPLAYER_RESULT_SECRET
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: ALLOW_VERCEL_PREVIEWS
+        value: "false"

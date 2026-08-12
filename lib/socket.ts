@@ -22,7 +22,7 @@ async function fetchSocketTicket() {
   return payload.ticket;
 }
 
-function resolveSocketUrl() {
+export function getSocketServiceUrl() {
   if (typeof window === "undefined") {
     return process.env.NEXT_PUBLIC_SOCKET_URL ?? null;
   }
@@ -41,7 +41,7 @@ function resolveSocketUrl() {
 }
 
 export function getSocket() {
-  const socketUrl = resolveSocketUrl();
+  const socketUrl = getSocketServiceUrl();
 
   if (!socketUrl) {
     return null;
@@ -84,5 +84,5 @@ export function ensureSocketConnection() {
 }
 
 export function isSocketMultiplayerAvailable() {
-  return Boolean(resolveSocketUrl());
+  return Boolean(getSocketServiceUrl());
 }

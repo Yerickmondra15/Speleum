@@ -143,6 +143,7 @@ export async function sendAuthCodeEmail(input: SendAuthCodeEmailInput) {
         html,
         text,
       }),
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!response.ok) {

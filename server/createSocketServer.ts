@@ -7,9 +7,8 @@ import { getMultiplayerResultSecret, getSocketAuthSecret } from "../lib/security
 import { installSocketAuthentication } from "./auth/socketAuth";
 import {
   defaultServerTimings,
-  normalizeOrigin,
-  resolveAllowedOrigins,
-  vercelPreviewOrigin,
+  isOriginAllowed,
+  resolveCorsPolicy,
   type ServerTimings,
 } from "./config";
 import { registerConnectionHandlers } from "./handlers/connectionHandlers";
@@ -31,13 +30,56 @@ type CreateSocketServerOptions = {
   resultSecret?: string;
   timings?: Partial<ServerTimings>;
   allowedOrigins?: Set<string>;
+  allowVercelPreviews?: boolean;
   persistOfficialResults?: OfficialResultPersister;
   resultPersistenceRetryDelaysMs?: readonly number[];
 };
 
 export function createSocketGameServer(options: CreateSocketServerOptions = {}) {
-  const httpServer: HttpServer = createServer();
-  const allowedOrigins = options.allowedOrigins ?? resolveAllowedOrigins();
+  const configuredPolicy = resolveCorsPolicy();
+  const corsPolicy = {
+    allowedOrigins: options.allowedOrigins ?? configuredPolicy.allowedOrigins,
+    allowVercelPreviews:
+      options.allowVercelPreviews ?? configuredPolicy.allowVercelPreviews,
+  };
+  let ready = false;
+  const httpServer: HttpServer = createServer((request, response) => {
+    const pathname = new URL(request.url ?? "/", "http://socket.local").pathname;
+    const origin = request.headers.origin;
+
+    if (origin && isOriginAllowed(origin, corsPolicy)) {
+      response.setHeader("Access-Control-Allow-Origin", origin);
+      response.setHeader("Vary", "Origin");
+    }
+
+    response.setHeader("Cache-Control", "no-store");
+    response.setHeader("Content-Type", "application/json; charset=utf-8");
+
+    if (request.method === "OPTIONS") {
+      if (!isOriginAllowed(origin, corsPolicy)) {
+        response.writeHead(403).end(JSON.stringify({ status: "forbidden" }));
+        return;
+      }
+      response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      response.setHeader("Access-Control-Allow-Headers", "Content-Type");
+      response.writeHead(204).end();
+      return;
+    }
+
+    if (request.method === "GET" && pathname === "/health") {
+      response.writeHead(200).end(JSON.stringify({ status: "ok", service: "speleum-socket" }));
+      return;
+    }
+
+    if (request.method === "GET" && pathname === "/ready") {
+      response
+        .writeHead(ready ? 200 : 503)
+        .end(JSON.stringify({ status: ready ? "ready" : "starting", service: "speleum-socket" }));
+      return;
+    }
+
+    response.writeHead(404).end(JSON.stringify({ status: "not_found" }));
+  });
   const timings = { ...defaultServerTimings, ...options.timings };
   const io: GameServer = new Server<
     ClientToServerEvents,
@@ -53,15 +95,14 @@ export function createSocketGameServer(options: CreateSocketServerOptions = {}) 
           return;
         }
 
-        const normalized = normalizeOrigin(origin);
-        const isAllowed =
-          allowedOrigins.has(normalized) || vercelPreviewOrigin.test(normalized);
+        const isAllowed = isOriginAllowed(origin, corsPolicy);
         callback(
           isAllowed ? null : new Error(`Origin not allowed by Socket.IO CORS: ${origin}`),
           isAllowed,
         );
       },
       methods: ["GET", "POST"],
+      credentials: true,
     },
   });
   const store = new RoomStore();
@@ -120,6 +161,7 @@ export function createSocketGameServer(options: CreateSocketServerOptions = {}) 
       httpServer.once("error", reject);
       httpServer.listen(port, host, () => {
         httpServer.off("error", reject);
+        ready = true;
         resolve();
       });
     });
@@ -133,6 +175,7 @@ export function createSocketGameServer(options: CreateSocketServerOptions = {}) 
     }
 
     closed = true;
+    ready = false;
     clearInterval(gameInterval);
     clearInterval(lobbyInterval);
     clearInterval(lifecycleInterval);
