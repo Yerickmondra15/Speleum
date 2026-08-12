@@ -22,7 +22,6 @@ import { useLanguage } from "@/lib/i18n/LanguageProvider";
 import { getLocalizedCreature } from "@/lib/i18n/content";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { ThemeSwitcher } from "@/app/components/ThemeSwitcher";
-import { LanguageSwitcher } from "@/app/components/LanguageSwitcher";
 
 const fadeUp: Variants = {
   hidden: { opacity: 0, y: 35, filter: "blur(6px)" },
@@ -187,8 +186,7 @@ export default function Home() {
               </button>
 
               <div className="hidden flex-wrap items-center justify-start gap-2 sm:flex sm:justify-end sm:gap-3">
-              <LanguageSwitcher />
-              <ThemeSwitcher />
+              <ThemeSwitcher compact />
               <Link href="/ranking" className="theme-button-secondary flex h-11 w-11 items-center justify-center rounded-full p-2 transition">
                 <Trophy className="h-5 w-5" />
               </Link>
@@ -235,12 +233,7 @@ export default function Home() {
                     <motion.div className="relative grid gap-2">
                       <motion.div variants={mobileMenuItemVariants}>
                         <div className="rounded-2xl border border-(--border-soft) bg-(--surface-2) p-3">
-                          <LanguageSwitcher />
-                        </div>
-                      </motion.div>
-                      <motion.div variants={mobileMenuItemVariants}>
-                        <div className="rounded-2xl border border-(--border-soft) bg-(--surface-2) p-3">
-                          <ThemeSwitcher />
+                          <ThemeSwitcher compact />
                         </div>
                       </motion.div>
                       <motion.div variants={mobileMenuItemVariants}>
@@ -481,15 +474,7 @@ export default function Home() {
                 <Link href={primaryHref} className="theme-button-primary inline-flex min-h-11 items-center justify-center rounded-full px-6 py-3 text-sm font-semibold transition">
                   {primaryLabel}
                 </Link>
-                {hasSession ? (
-                  <button
-                    type="button"
-                    onClick={() => void handleLogout()}
-                    className="theme-button-secondary inline-flex min-h-11 items-center justify-center rounded-full px-6 py-3 text-sm transition"
-                  >
-                    {messages.common.logout}
-                  </button>
-                ) : (
+                {!hasSession && (
                   <Link href="/login" className="theme-button-secondary inline-flex min-h-11 items-center justify-center rounded-full px-6 py-3 text-sm transition">
                     {messages.home.footerLogin}
                   </Link>

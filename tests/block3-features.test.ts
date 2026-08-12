@@ -404,9 +404,11 @@ describe("Bloque 3: responsive y descubribilidad", () => {
       join(process.cwd(), "app/play/components/PlayMenu.tsx"),
       "utf8",
     );
-    expect(home).toContain("<LanguageSwitcher />");
-    expect(home).toContain("<ThemeSwitcher />");
-    expect(profile).toContain("<AudioSettings />");
+    expect(home).not.toContain("<LanguageSwitcher />");
+    expect(home).toContain("<ThemeSwitcher compact />");
+    expect(profile).toContain("<LanguageSwitcher />");
+    expect(profile).toContain("<ThemeSwitcher />");
+    expect(profile).toContain("<AudioSettings compact />");
     expect(playMenu).toContain("<AudioSettings compact />");
   });
 

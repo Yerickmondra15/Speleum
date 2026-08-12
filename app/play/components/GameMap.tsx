@@ -58,6 +58,35 @@ function tileStyle(x: number, y: number): CSSProperties {
   };
 }
 
+const TILE_ATLAS_COLUMNS = 4;
+const tileAtlasIndex: Record<TileCell["type"], number[]> = {
+  floor: [0, 1, 2],
+  wall: [3, 4],
+  obstacle: [4],
+  hazard: [5, 6],
+  water: [7],
+  shelter: [8],
+  nest: [9],
+  spawn: [10],
+  goal: [11],
+  dark: [0],
+};
+
+function tileVisualStyle(tile: TileCell, visible: boolean): CSSProperties {
+  if (!visible) return {};
+
+  const variants = tileAtlasIndex[tile.type];
+  const stableIndex = Math.abs(tile.col * 31 + tile.row * 17) % variants.length;
+  const atlasIndex = variants[stableIndex];
+
+  return {
+    backgroundImage: "url('/tiles/speleum-tiles.svg')",
+    backgroundPosition: `${-(atlasIndex % TILE_ATLAS_COLUMNS) * TILE_SIZE}px ${-Math.floor(atlasIndex / TILE_ATLAS_COLUMNS) * TILE_SIZE}px`,
+    backgroundRepeat: "no-repeat",
+    backgroundSize: `${TILE_ATLAS_COLUMNS * TILE_SIZE}px ${3 * TILE_SIZE}px`,
+  };
+}
+
 function pointStyle(point: PlayerPosition): CSSProperties {
   return {
     left: point.x,
@@ -267,11 +296,8 @@ export function GameMap({
               <div
                 key={`${tile.col}-${tile.row}`}
                 className={`absolute border ${tileClass(tile.type, visible)}`}
-                style={tileStyle(tile.x, tile.y)}
+                style={{ ...tileStyle(tile.x, tile.y), ...tileVisualStyle(tile, visible) }}
               >
-                {visible && tile.type === "floor" && (
-                  <div className="absolute inset-0 opacity-14 bg-[radial-gradient(rgba(255,255,255,0.09)_1px,transparent_1px)] bg-size-[clamp(12px,2vw,18px)_clamp(12px,2vw,18px)]" />
-                )}
                 {reachable && tile.type !== "wall" && tile.type !== "obstacle" && (
                   <div className="absolute inset-1.5 rounded-[0.9rem] border border-zinc-100/8 shadow-[0_0_12px_rgba(255,255,255,0.06)] transition hover:border-rose-200/18 hover:bg-white/3" />
                 )}

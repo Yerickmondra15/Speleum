@@ -29,6 +29,7 @@ import { localizeCharacterOption, translateMultiplayerMessage } from "@/lib/i18n
 import { useLanguage } from "@/lib/i18n/LanguageProvider";
 import { formatMessage } from "@/lib/i18n/messages";
 import { useAudio } from "@/lib/audio/AudioProvider";
+import { SpeleumBrand } from "@/app/components/SpeleumBrand";
 
 type MultiplayerMenuProps = {
   selectedCharacter: CharacterOption;
@@ -380,7 +381,7 @@ export function MultiplayerMenu({
               </div>
             </div>
 
-            <p className="mt-8 text-xs tracking-[0.35em] text-(--text-muted)">SPELEUM</p>
+            <div className="mt-8"><SpeleumBrand size="compact" /></div>
             <h1 className="mt-3 text-3xl font-semibold tracking-widest text-(--text-primary) sm:text-4xl sm:tracking-[0.12em]">
               {lobby.title}
             </h1>

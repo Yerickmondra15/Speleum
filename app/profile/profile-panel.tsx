@@ -141,6 +141,14 @@ export function ProfilePanel() {
           <p className="mt-5 max-w-xl text-sm leading-7 text-(--text-secondary)">
             {messages.profile.description}
           </p>
+          <div className="mt-6 rounded-3xl border border-(--border-soft) bg-(--surface-2) p-4 sm:p-5">
+            <p className="text-xs tracking-[0.28em] text-(--text-muted)">{messages.profile.preferencesTitle}</p>
+            <div className="mt-4 grid gap-4">
+              <div><p className="mb-2 text-xs text-(--text-muted)">{messages.profile.languagePreference}</p><LanguageSwitcher /></div>
+              <div><p className="mb-2 text-xs text-(--text-muted)">{messages.profile.themePreference}</p><ThemeSwitcher /></div>
+              <div><p className="mb-2 text-xs text-(--text-muted)">{messages.audio.title}</p><AudioSettings compact /></div>
+            </div>
+          </div>
         </div>
 
         <div className="theme-panel rounded-3xl p-6">
@@ -166,23 +174,11 @@ export function ProfilePanel() {
 
           <div className="mt-7 grid gap-3 text-sm">
             <ProfileFieldRow
-              label={messages.profile.username}
-              value={profile.username}
-              valueClassName="wrap-break-word"
-            />
-            <ProfileFieldRow
               label={messages.profile.email}
               value={profile.email}
               valueClassName="break-all"
             />
-            <ProfileFieldRow
-              label={messages.profile.status}
-              value={messages.profile.authenticatedSession}
-            />
-            <ProfileFieldRow
-              label={messages.profile.activeCreature}
-              value={localizedCreature.nombre}
-            />
+            {user?.isAdmin === true && <ProfileFieldRow label={messages.profile.status} value={messages.profile.authenticatedSession} />}
             <ProfileFieldRow
               label={messages.profile.ability}
               value={localizedCreature.habilidad}
@@ -211,15 +207,6 @@ export function ProfilePanel() {
             <ProfileFieldRow
               label={messages.profile.bestScore}
               value={profile.bestScore}
-            />
-            <ProfileFieldRow
-              label={messages.profile.lastMatch}
-              value={
-                profile.lastMatchAt
-                  ? new Date(profile.lastMatchAt).toLocaleString(locale === "es" ? "es-CR" : "en-US")
-                  : messages.profile.noMatches
-              }
-              valueClassName="wrap-break-word sm:max-w-56"
             />
           </div>
 
@@ -266,47 +253,6 @@ export function ProfilePanel() {
                 })}
               </div>
             )}
-          </div>
-
-          <div className="mt-7 rounded-3xl border border-(--border-soft) bg-(--surface-2) p-5">
-            <p className="text-xs tracking-[0.28em] text-(--text-muted)">
-              {messages.profile.preferencesTitle}
-            </p>
-            <p className="mt-3 text-sm leading-6 text-(--text-secondary)">
-              {messages.profile.preferencesDescription}
-            </p>
-
-            <div className="mt-6 grid gap-5">
-              <div>
-                <p className="text-xs tracking-[0.2em] text-(--text-muted)">
-                  {messages.profile.languagePreference}
-                </p>
-                <div className="mt-4">
-                  <LanguageSwitcher />
-                </div>
-              </div>
-
-              <div>
-                <p className="text-xs tracking-[0.2em] text-(--text-muted)">
-                  {messages.profile.themePreference}
-                </p>
-                <div className="mt-4">
-                  <ThemeSwitcher />
-                </div>
-              </div>
-
-              <div>
-                <p className="text-xs tracking-[0.2em] text-(--text-muted)">
-                  {messages.audio.title}
-                </p>
-                <p className="mt-2 text-sm text-(--text-secondary)">
-                  {messages.audio.description}
-                </p>
-                <div className="mt-4">
-                  <AudioSettings />
-                </div>
-              </div>
-            </div>
           </div>
 
           <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:flex-wrap">

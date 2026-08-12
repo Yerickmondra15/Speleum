@@ -8,11 +8,12 @@ import {
   type ReactNode,
 } from "react";
 
-type AuthUser = {
+export type AuthUser = {
   id: string;
   username: string;
   email: string;
   emailVerified: boolean;
+  isAdmin: boolean;
   activeCreature: string;
   createdAt: string;
 };

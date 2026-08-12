@@ -13,7 +13,7 @@ import {
   Swords,
   Timer,
 } from "lucide-react";
-import { ThemeSwitcher } from "@/app/components/ThemeSwitcher";
+import { SpeleumBrand } from "@/app/components/SpeleumBrand";
 import { creatures } from "@/lib/creatures";
 import { getLocalizedCreature } from "@/lib/i18n/content";
 import { useLanguage } from "@/lib/i18n/LanguageProvider";
@@ -120,10 +120,7 @@ export default function ComoJugarPage() {
             {messages.howToPlay.back}
           </Link>
 
-          <div className="flex flex-wrap items-center justify-end gap-3">
-            <p className="text-xs tracking-[0.24em] text-(--text-muted) sm:text-sm sm:tracking-[0.3em]">{messages.howToPlay.header}</p>
-            <ThemeSwitcher />
-          </div>
+          <SpeleumBrand size="compact" />
         </div>
       </header>
 

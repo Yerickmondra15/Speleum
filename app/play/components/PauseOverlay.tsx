@@ -1,6 +1,7 @@
 "use client";
 
 import { useLanguage } from "@/lib/i18n/LanguageProvider";
+import { SpeleumBrand } from "@/app/components/SpeleumBrand";
 
 type PauseOverlayProps = {
   onContinue: () => void;
@@ -16,7 +17,7 @@ export function PauseOverlay({
   return (
     <div className="theme-overlay absolute inset-0 z-90 flex items-center justify-center px-4 backdrop-blur-sm">
       <div className="theme-panel w-full max-w-md rounded-[2rem] bg-[linear-gradient(180deg,var(--surface-1),var(--app-bg-soft))] p-6 text-center shadow-[0_24px_70px_rgba(0,0,0,0.3)] sm:p-8">
-        <p className="theme-text-muted text-xs tracking-[0.36em]">SPELEUM</p>
+        <SpeleumBrand size="compact" />
         <h2 className="theme-text-primary mt-4 text-3xl font-semibold tracking-[0.08em] sm:text-4xl">
           {messages.play.pause.title}
         </h2>

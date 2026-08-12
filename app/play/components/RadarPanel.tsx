@@ -15,6 +15,7 @@ type RadarPanelProps = {
   ownerId?: string;
   rangeTiles?: number;
   precisionMultiplier?: number;
+  compact?: boolean;
 };
 
 function signalClass(type: RadarSignal["type"]) {
@@ -46,6 +47,7 @@ export function RadarPanel({
   ownerId,
   rangeTiles = RADAR_SIGNAL_RANGE_TILES,
   precisionMultiplier = 1,
+  compact = false,
 }: RadarPanelProps) {
   const { messages } = useLanguage();
   const playerTile = worldToTile(player);
@@ -61,12 +63,12 @@ export function RadarPanel({
   ).length;
 
   return (
-    <div className="theme-panel rounded-[1rem] p-2.5 sm:rounded-[1.2rem] sm:p-3">
+    <div className={`theme-panel rounded-[1rem] ${compact ? "p-1.5" : "p-2.5 sm:rounded-[1.2rem] sm:p-3"}`}>
       <div className="flex items-center justify-between">
-        <p className="theme-text-muted text-[0.58rem] tracking-[0.22em] sm:text-[0.68rem] sm:tracking-[0.25em]">
+        <p className={`theme-text-muted uppercase ${compact ? "text-[0.46rem] tracking-[0.1em]" : "text-[0.58rem] tracking-[0.22em] sm:text-[0.68rem] sm:tracking-[0.25em]"}`}>
           {messages.play.hud.radar} · {rangeTiles} {messages.play.hud.tiles}
         </p>
-        <Radio className="theme-text-muted h-3.5 w-3.5 sm:h-4 sm:w-4" />
+        <Radio className={`theme-text-muted ${compact ? "h-3 w-3" : "h-3.5 w-3.5 sm:h-4 sm:w-4"}`} />
       </div>
 
       <div className="theme-border relative mt-2 aspect-square overflow-hidden rounded-full border bg-[radial-gradient(circle,var(--glow-main),transparent_28%),var(--app-bg)] sm:mt-4">
@@ -103,7 +105,7 @@ export function RadarPanel({
         </div>
       </div>
 
-      <div className="mt-2 flex items-center justify-between gap-2 text-[0.6rem] uppercase tracking-[0.16em] sm:text-[0.68rem]">
+      <div className={`${compact ? "hidden" : "mt-2 flex"} items-center justify-between gap-2 text-[0.6rem] uppercase tracking-[0.16em] sm:text-[0.68rem]`}>
         <span className="theme-text-muted">
           {nearbySignals.length === 0
             ? messages.play.hud.silence

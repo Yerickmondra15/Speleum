@@ -6,8 +6,8 @@ import { ArrowLeft, Play, UserRound } from "lucide-react";
 import type { CharacterOption } from "../gameConfig";
 import { localizeCharacterOption } from "@/lib/i18n/content";
 import { useLanguage } from "@/lib/i18n/LanguageProvider";
-import { useTheme } from "@/lib/theme/ThemeProvider";
 import { AudioSettings } from "@/app/components/AudioSettings";
+import { SpeleumBrand } from "@/app/components/SpeleumBrand";
 
 type PlayMenuProps = {
   selectedCharacter: CharacterOption;
@@ -23,9 +23,7 @@ export function PlayMenu({
   onStartMultiplayer,
 }: PlayMenuProps) {
   const { locale, messages } = useLanguage();
-  const { theme } = useTheme();
   const localizedCharacter = localizeCharacterOption(locale, selectedCharacter);
-  const wordmarkSrc = theme === "light" ? "/Grafico/Nombre.svg" : "/Grafico/Nombre-white.svg";
 
   return (
     <section className="relative z-10 min-h-screen overflow-x-hidden px-4 py-6 sm:px-5 sm:py-8">
@@ -37,17 +35,7 @@ export function PlayMenu({
       </div>
 
       <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center py-12 text-center">
-        <Image
-          src={wordmarkSrc}
-          alt="Speleum"
-          width={180}
-          height={40}
-          className="h-8 w-auto opacity-90"
-        />
-        <p className="mt-4 text-xs tracking-[0.42em] text-[var(--text-muted)]">SPELEUM</p>
-        <h1 className="mt-6 text-4xl font-semibold tracking-[0.2em] text-[var(--text-primary)] sm:text-8xl sm:tracking-[0.32em]">
-          {messages.common.play.toUpperCase()}
-        </h1>
+        <SpeleumBrand size="large" />
         <p className="mt-7 max-w-2xl text-sm leading-7 text-[var(--text-secondary)] sm:text-base">
           {messages.play.menuDescription}
         </p>

@@ -10,6 +10,7 @@ import {
   translateGameplayMessage,
 } from "@/lib/i18n/content";
 import { useLanguage } from "@/lib/i18n/LanguageProvider";
+import { useAuth } from "@/app/auth/AuthProvider";
 
 type GameHudProps = {
   selectedCharacter: CharacterOption;
@@ -71,6 +72,8 @@ export function GameHud({
   shelterProgress = 0,
 }: GameHudProps) {
   const { locale, messages } = useLanguage();
+  const { user } = useAuth();
+  const isAdmin = user?.isAdmin === true;
   const creature = localizeCharacterOption(locale, selectedCharacter);
   const localizedZone = localizeZone(locale, zone);
   const hpPercent = Math.max(0, Math.min(100, (health / maxHealth) * 100));
@@ -92,15 +95,15 @@ export function GameHud({
           : messages.play.hud.low;
 
   return (
-    <div className="theme-panel min-w-0 rounded-[1.15rem] p-3 text-(--text-secondary)">
-      <div className="flex items-center gap-3">
-        <div className="theme-icon-shell flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full">
-          <Image src={selectedCharacter.imageGame} alt={creature.name} width={38} height={38} className="h-9 w-9 object-contain" />
+    <div className="theme-panel min-w-0 rounded-[1rem] p-2 text-(--text-secondary) sm:rounded-[1.15rem] sm:p-3">
+      <div className="flex items-center gap-2 sm:gap-3">
+        <div className="theme-icon-shell flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full sm:h-11 sm:w-11">
+          <Image src={selectedCharacter.imageGame} alt={creature.name} width={38} height={38} className="h-8 w-8 object-contain sm:h-9 sm:w-9" />
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-[0.62rem] uppercase tracking-[0.18em] text-(--text-muted)">{creature.name}</p>
-          <p className="truncate text-sm font-semibold text-(--text-primary)">{localizedZone.name}</p>
-          <p className="truncate text-[0.65rem] text-(--text-muted)">{localizeTerrainName(locale, terrainName)}</p>
+          <p className="truncate text-xs font-semibold text-(--text-primary) sm:text-sm">{localizedZone.name}</p>
+          <p className="hidden truncate text-[0.65rem] text-(--text-muted) sm:block">{localizeTerrainName(locale, terrainName)}</p>
         </div>
         <div className="text-right text-[0.65rem] text-(--text-secondary)">
           <p>{Math.ceil(health)}/{maxHealth} HP</p>
@@ -125,13 +128,13 @@ export function GameHud({
         </div>
       )}
 
-      <div className="mt-2 text-[0.67rem] leading-4 text-(--text-secondary)">
-        <p className="text-(--text-primary)">{translateGameplayMessage(locale, message)}</p>
-        {zoneMessage && <p className="mt-1 text-(--text-muted)">{translateGameplayMessage(locale, zoneMessage)}</p>}
-        <p className="mt-1 truncate">
+      <div className="mt-1.5 text-[0.62rem] leading-3.5 text-(--text-secondary) sm:mt-2 sm:text-[0.67rem] sm:leading-4">
+        <p className="line-clamp-1 text-(--text-primary) sm:line-clamp-2">{translateGameplayMessage(locale, message)}</p>
+        {isAdmin && zoneMessage && <p className="mt-1 hidden text-(--text-muted) sm:block">{translateGameplayMessage(locale, zoneMessage)}</p>}
+        {isAdmin && <p className="mt-1 hidden truncate sm:block">
           {enemyStateLabel} · {messages.play.hud.danger} {dangerLabel}
           {aliveCount !== undefined ? ` · ${aliveCount} ${messages.play.hud.alive}` : ""}
-        </p>
+        </p>}
         {isPaused && <p className="mt-1 text-rose-200">{messages.play.hud.paused}</p>}
         <p className="sr-only">{objective}</p>
       </div>

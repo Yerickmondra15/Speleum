@@ -30,7 +30,7 @@ export function GameTopControls({
 
   return (
     <div className="pointer-events-auto flex items-center justify-end gap-1.5 sm:gap-2">
-      <button
+      {!isUiHidden && <button
         type="button"
         onClick={() => {
           unlock();
@@ -47,7 +47,7 @@ export function GameTopControls({
           <Volume2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
         )}
         <span className="sr-only">{preferences.muted ? messages.audio.muted : messages.audio.soundOn}</span>
-      </button>
+      </button>}
       {!isUiHidden && showPause && onTogglePause && (
         <button
           type="button"

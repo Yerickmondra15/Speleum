@@ -11,6 +11,7 @@ import {
   rankingFiltersSchema,
   type RankingFilters,
 } from "@/lib/ranking-query";
+import { SpeleumBrand } from "@/app/components/SpeleumBrand";
 
 type ActiveFilters = Omit<RankingFilters, "page" | "limit">;
 
@@ -126,7 +127,7 @@ export default function RankingView() {
       <div className="mx-auto max-w-5xl">
         <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
           <div>
-            <p className="text-xs tracking-[0.35em] text-(--text-muted)">SPELEUM</p>
+            <SpeleumBrand size="compact" />
             <h1 className="mt-3 text-3xl font-semibold tracking-[0.12em] text-(--text-primary) sm:text-4xl">
               {messages.common.ranking}
             </h1>

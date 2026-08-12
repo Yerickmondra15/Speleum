@@ -36,6 +36,7 @@ import { useLanguage } from "@/lib/i18n/LanguageProvider";
 import { formatMessage } from "@/lib/i18n/messages";
 import { getLocalizedAbilityName, translateMultiplayerMessage } from "@/lib/i18n/content";
 import { useAudio } from "@/lib/audio/AudioProvider";
+import { SpeleumBrand } from "@/app/components/SpeleumBrand";
 
 type MultiplayerGameProps = {
   matchId: string;
@@ -681,7 +682,7 @@ export function MultiplayerGame({
         className="pointer-events-none absolute inset-x-0 top-0 z-70 flex items-start justify-between gap-1.5 px-2 pb-2 sm:gap-2 sm:px-4 sm:py-4"
         style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.4rem)" }}
       >
-        <button
+        {!isUiHidden && <button
           type="button"
           onClick={handleExit}
           className="pointer-events-auto inline-flex min-h-9 items-center gap-1.5 rounded-full border border-white/10 bg-black/55 px-3 py-2 text-[0.72rem] text-zinc-300 backdrop-blur-md transition hover:text-white sm:min-h-11 sm:gap-2 sm:px-4 sm:text-sm"
@@ -689,12 +690,28 @@ export function MultiplayerGame({
         >
           <ArrowLeft className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           {gameCopy.backMenu}
-        </button>
+        </button>}
 
         {!isUiHidden && (
-          <div className="min-w-0 max-w-[7.5rem] rounded-full border border-white/10 bg-black/45 px-2.5 py-1.5 text-center backdrop-blur-md sm:max-w-none sm:px-5 sm:py-2">
-            <p className="truncate text-[0.52rem] tracking-[0.2em] text-zinc-500 sm:text-[0.65rem] sm:tracking-[0.34em]">{gameCopy.room.toUpperCase()}</p>
-            <h1 className="truncate text-[0.68rem] font-semibold tracking-[0.08em] text-white sm:text-sm sm:tracking-[0.28em]">{roomCode}</h1>
+          <div className="rounded-full border border-white/10 bg-black/45 px-3 py-2 backdrop-blur-md"><SpeleumBrand size="compact" /><span className="sr-only">{gameCopy.room}: {roomCode}</span></div>
+        )}
+        {isUiHidden && (
+          <div className="fixed inset-x-2 bottom-[calc(env(safe-area-inset-bottom)+.5rem)] z-70 md:hidden">
+            <ActionControls
+              activeAction={activeAction}
+              cooldownRemaining={attackCooldownRemaining}
+              moveCooldownRemaining={moveCooldownRemaining}
+              parryCooldownRemaining={parryCooldownRemaining}
+              isRecovering={attackCooldownRemaining > 0 || isStunned}
+              isParrying={isParrying}
+              onMove={() => setActiveAction("move")}
+              onAttack={handleAttack}
+              onDefend={handleDefend}
+              abilityName={getLocalizedAbilityName(locale, authoritativeCharacter.id)}
+              abilityCooldownRemaining={abilityCooldownRemaining}
+              abilityDisabled={isStunned}
+              onAbility={handleAbility}
+            />
           </div>
         )}
 
@@ -706,9 +723,9 @@ export function MultiplayerGame({
         </div>
       </header>
 
-      <div className={isUiHidden ? "h-full min-h-0 min-w-0" : "grid h-full min-h-0 min-w-0 gap-2 p-2 pt-[calc(env(safe-area-inset-top)+3.8rem)] pb-[calc(env(safe-area-inset-bottom)+.5rem)] md:grid-cols-[minmax(15rem,18rem)_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)_auto]"}>
+      <div className={isUiHidden ? "h-full min-h-0 min-w-0" : "grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-1.5 p-2 pt-[calc(env(safe-area-inset-top)+3.8rem)] pb-[calc(env(safe-area-inset-bottom)+.5rem)] md:grid-cols-[minmax(15rem,18rem)_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)_auto] md:gap-2"}>
         {!isUiHidden && (
-          <aside className="absolute left-2 top-[calc(env(safe-area-inset-top)+3.8rem)] z-60 max-h-[42dvh] w-[min(17rem,calc(100vw-1rem))] overflow-auto md:static md:row-span-2 md:max-h-none md:w-auto md:min-h-0">
+          <aside className="relative z-60 min-w-0 md:static md:row-span-2 md:max-h-none md:w-auto md:min-h-0">
             <div className="grid gap-2">
               <GameHud
                 selectedCharacter={authoritativeCharacter}
@@ -739,17 +756,17 @@ export function MultiplayerGame({
                 abilityCooldownRemaining={abilityCooldownRemaining}
                 otherPlayersSummary={otherPlayersSummary}
               />
-              <div className="hidden md:block">
+              <div className="hidden md:block [@media(max-height:600px)]:hidden">
                 <RadarPanel player={player} signals={gameState.signals} ownerId={self.id} rangeTiles={creatureModifiers.radarRangeTiles + radarRangeBonus} precisionMultiplier={radarPrecision} />
               </div>
-              <div className="w-28 md:hidden">
-                <RadarPanel player={player} signals={gameState.signals} ownerId={self.id} rangeTiles={creatureModifiers.radarRangeTiles + radarRangeBonus} precisionMultiplier={radarPrecision} />
+              <div className="absolute right-2 top-[calc(100%+0.5rem)] z-50 w-20 md:hidden">
+                <RadarPanel player={player} signals={gameState.signals} ownerId={self.id} rangeTiles={creatureModifiers.radarRangeTiles + radarRangeBonus} precisionMultiplier={radarPrecision} compact />
               </div>
             </div>
           </aside>
         )}
 
-        <main className="min-h-0 min-w-0 overflow-hidden rounded-[1.15rem] border border-white/5 md:col-start-2">
+        <main className={`${isUiHidden ? "absolute inset-0" : "min-h-0 min-w-0 md:col-start-2"} overflow-hidden rounded-[1.15rem] border border-white/5`}>
           <GameMap
             player={player}
             playerCharacterId={authoritativeCharacter.id}

@@ -8,6 +8,7 @@ export type SessionUser = {
   username: string;
   email: string;
   emailVerified: boolean;
+  isAdmin: boolean;
   activeCreature: string;
   createdAt: string;
 };
@@ -17,6 +18,7 @@ export function toSessionUser(user: {
   username: string;
   email: string;
   emailVerified: boolean;
+  isAdmin: boolean;
   activeCreature: string;
   createdAt: Date;
 }): SessionUser {
@@ -25,6 +27,7 @@ export function toSessionUser(user: {
     username: user.username,
     email: user.email,
     emailVerified: user.emailVerified,
+    isAdmin: user.isAdmin,
     activeCreature: user.activeCreature,
     createdAt: user.createdAt.toISOString(),
   };
