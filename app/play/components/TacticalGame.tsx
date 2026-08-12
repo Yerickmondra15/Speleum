@@ -95,6 +95,7 @@ import {
 } from "@/lib/i18n/content";
 import { useAudio } from "@/lib/audio/AudioProvider";
 import { formatMessage } from "@/lib/i18n/messages";
+import { useAuth } from "@/app/auth/AuthProvider";
 
 type TacticalGameProps = {
   selectedCharacter: CharacterOption;
@@ -158,6 +159,8 @@ export function TacticalGame({
   onExitToMenu,
 }: TacticalGameProps) {
   const { locale, messages } = useLanguage();
+  const { user } = useAuth();
+  const isAdmin = user?.isAdmin === true;
   const gameCopy = messages.play.game;
   const { unlock, setAmbientActive, playSfx } = useAudio();
   const creatureModifiers = getCreatureGameplayModifiers(selectedCharacter.id);
@@ -170,6 +173,9 @@ export function TacticalGame({
   const [gameStatus, setGameStatus] = useState<GameStatus>("playing");
   const [isPaused, setIsPaused] = useState(false);
   const [isUiHidden, setIsUiHidden] = useState(false);
+  const [isAdminDemoEnabled, setIsAdminDemoEnabled] = useState(false);
+  const [demoZoom, setDemoZoom] = useState(1);
+  const adminDemoEnabled = isAdmin && isAdminDemoEnabled;
   const [health, setHealth] = useState(creatureModifiers.maxHealth);
   const [moveCooldownEndsAt, setMoveCooldownEndsAt] = useState(0);
   const [attackCooldownEndsAt, setAttackCooldownEndsAt] = useState(0);
@@ -880,7 +886,7 @@ export function TacticalGame({
       return;
     }
 
-    if (moveCooldownEndsAtRef.current > Date.now() || isTraversing) {
+    if ((!adminDemoEnabled && moveCooldownEndsAtRef.current > Date.now()) || isTraversing) {
       setMessage(gameCopy.movementRecovering);
       return;
     }
@@ -916,7 +922,7 @@ export function TacticalGame({
     setAbilityState(abilityStateRef.current);
     setMovementPath(movePlan.worldPath);
     setPathPreview(movePlan.worldPath);
-    const nextMoveCooldownEndsAt = Date.now() + movePlan.cooldownMs;
+    const nextMoveCooldownEndsAt = adminDemoEnabled ? 0 : Date.now() + movePlan.cooldownMs;
     moveCooldownEndsAtRef.current = nextMoveCooldownEndsAt;
     setMoveCooldownEndsAt(nextMoveCooldownEndsAt);
     setActiveAction("move");
@@ -1152,6 +1158,8 @@ export function TacticalGame({
     setGameStatus("playing");
     setIsPaused(false);
     setIsUiHidden(false);
+    setIsAdminDemoEnabled(false);
+    setDemoZoom(1);
     healthRef.current = creatureModifiers.maxHealth;
     setHealth(creatureModifiers.maxHealth);
     moveCooldownEndsAtRef.current = 0;
@@ -1269,6 +1277,31 @@ export function TacticalGame({
         )}
 
         <div className="flex items-start gap-2">
+          {isAdmin && !isUiHidden && (
+            <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-cyan-200/15 bg-black/60 p-1 text-[0.6rem] text-cyan-100 backdrop-blur-md">
+              <button
+                type="button"
+                aria-pressed={adminDemoEnabled}
+                onClick={() => {
+                  const next = !adminDemoEnabled;
+                  setIsAdminDemoEnabled(next);
+                  setDemoZoom(1);
+                  if (next) {
+                    moveCooldownEndsAtRef.current = 0;
+                    setMoveCooldownEndsAt(0);
+                  }
+                }}
+                className="rounded-full px-2 py-1.5"
+              >
+                ADMIN · DEMO {adminDemoEnabled ? "ON" : "OFF"}
+              </button>
+              {adminDemoEnabled && (
+                <button type="button" onClick={() => setDemoZoom(1)} className="rounded-full border border-white/10 px-2 py-1.5" aria-label="Restablecer zoom">
+                  {Math.round(demoZoom * 100)}%
+                </button>
+              )}
+            </div>
+          )}
           <GameTopControls
             isUiHidden={isUiHidden}
             showPause
@@ -1354,6 +1387,9 @@ export function TacticalGame({
             visionRadius={
               VISION_RADIUS + abilityModifiers.visionRangeBonusTiles * TILE_SIZE
             }
+            revealAll={adminDemoEnabled}
+            zoom={adminDemoEnabled ? demoZoom : 1}
+            onZoomChange={adminDemoEnabled ? setDemoZoom : undefined}
             tiles={caveSession.tiles}
             traps={traps}
             sanityStage={sanityState.stage}
@@ -1361,7 +1397,7 @@ export function TacticalGame({
             reachableTiles={reachableTiles}
             attackableTiles={attackableTiles}
             selectedPath={pathPreview}
-            isMoveReady={!isTraversing && moveCooldownRemaining <= 0}
+            isMoveReady={!isTraversing && (adminDemoEnabled || moveCooldownRemaining <= 0)}
             onChooseDestination={handleMoveIntent}
           />
         </main>

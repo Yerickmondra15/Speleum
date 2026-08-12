@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, MouseEvent } from "react";
+import type { CSSProperties, MouseEvent, WheelEvent } from "react";
 import { getCreatureById } from "@/lib/creatures";
 import type {
   ActionKind,
@@ -46,6 +46,9 @@ type GameMapProps = {
   traps?: SilkTrap[];
   sanityStage?: SanityStage;
   exhaustedShelters?: string[];
+  revealAll?: boolean;
+  zoom?: number;
+  onZoomChange?: (zoom: number) => void;
   onChooseDestination: (position: PlayerPosition) => void;
 };
 
@@ -169,6 +172,9 @@ export function GameMap({
   traps = [],
   sanityStage = "stable",
   exhaustedShelters = [],
+  revealAll = false,
+  zoom = 1,
+  onZoomChange,
   onChooseDestination,
 }: GameMapProps) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -176,6 +182,10 @@ export function GameMap({
   const playerCreature = getCreatureById(playerCharacterId);
   const playerTile = useMemo(() => worldToTile(player), [player]);
   const visionRadiusTiles = visionRadius / TILE_SIZE;
+  const worldViewport = {
+    width: viewportSize.width / zoom,
+    height: viewportSize.height / zoom,
+  };
 
   useEffect(() => {
     const node = viewportRef.current;
@@ -201,15 +211,15 @@ export function GameMap({
   const camera = useMemo(
     () => ({
       x: Math.min(
-        Math.max(player.x - viewportSize.width / 2, 0),
-        Math.max(CAVE_WIDTH - viewportSize.width, 0),
+        Math.max(player.x - worldViewport.width / 2, 0),
+        Math.max(CAVE_WIDTH - worldViewport.width, 0),
       ),
       y: Math.min(
-        Math.max(player.y - viewportSize.height / 2, 0),
-        Math.max(CAVE_HEIGHT - viewportSize.height, 0),
+        Math.max(player.y - worldViewport.height / 2, 0),
+        Math.max(CAVE_HEIGHT - worldViewport.height, 0),
       ),
     }),
-    [player, viewportSize],
+    [player, worldViewport.height, worldViewport.width],
   );
 
   const handleMapClick = (event: MouseEvent<HTMLDivElement>) => {
@@ -218,15 +228,22 @@ export function GameMap({
     }
 
     const rect = event.currentTarget.getBoundingClientRect();
-    const x = event.clientX - rect.left + camera.x;
-    const y = event.clientY - rect.top + camera.y;
+    const x = (event.clientX - rect.left) / zoom + camera.x;
+    const y = (event.clientY - rect.top) / zoom + camera.y;
 
     onChooseDestination({ x, y });
   };
 
+  const handleMapWheel = (event: WheelEvent<HTMLDivElement>) => {
+    if (!onZoomChange) return;
+    event.preventDefault();
+    const step = event.deltaY < 0 ? 0.1 : -0.1;
+    onZoomChange(Math.min(1.5, Math.max(0.5, Number((zoom + step).toFixed(1)))));
+  };
+
   const playerViewportPosition = {
-    x: player.x - camera.x,
-    y: player.y - camera.y,
+    x: (player.x - camera.x) * zoom,
+    y: (player.y - camera.y) * zoom,
   };
   const lightPosition = {
     left: `${playerViewportPosition.x}px`,
@@ -237,18 +254,18 @@ export function GameMap({
     () =>
       tiles.filter((tile) =>
         tile.x + TILE_SIZE >= camera.x &&
-        tile.x <= camera.x + viewportSize.width &&
+        tile.x <= camera.x + worldViewport.width &&
         tile.y + TILE_SIZE >= camera.y &&
-        tile.y <= camera.y + viewportSize.height,
+        tile.y <= camera.y + worldViewport.height,
       ),
-    [camera, tiles, viewportSize],
+    [camera, tiles, worldViewport.height, worldViewport.width],
   );
 
   const threatEntries = enemies.length > 0 ? enemies : enemy ? [enemy] : [];
   const visibleEnemies = threatEntries.filter(
     (entry) =>
       entry.alive !== false &&
-      isTileVisible(playerTile, worldToTile(entry), visionRadiusTiles),
+      (revealAll || isTileVisible(playerTile, worldToTile(entry), visionRadiusTiles)),
   );
   const selectedPathKeys = new Set(
     selectedPath.map((step) => {
@@ -263,6 +280,7 @@ export function GameMap({
         ref={viewportRef}
         role="presentation"
         onClick={handleMapClick}
+        onWheel={handleMapWheel}
         className={`absolute inset-0 overflow-hidden ${
           activeAction === "move" && gameStatus === "playing"
             ? "cursor-crosshair"
@@ -275,11 +293,12 @@ export function GameMap({
           style={{
             width: CAVE_WIDTH,
             height: CAVE_HEIGHT,
-            transform: `translate3d(${-camera.x}px, ${-camera.y}px, 0)`,
+            transform: `translate3d(${-camera.x * zoom}px, ${-camera.y * zoom}px, 0) scale(${zoom})`,
+            transformOrigin: "top left",
           }}
         >
           {visibleTiles.map((tile) => {
-            const visible = isTileVisible(
+            const visible = revealAll || isTileVisible(
               playerTile,
               { col: tile.col, row: tile.row },
               visionRadiusTiles,
@@ -316,7 +335,7 @@ export function GameMap({
 
           {signals
             .filter((signal) =>
-              isTileVisible(playerTile, worldToTile(signal), visionRadiusTiles),
+              revealAll || isTileVisible(playerTile, worldToTile(signal), visionRadiusTiles),
             )
             .map((signal) => (
               <div
@@ -388,7 +407,7 @@ export function GameMap({
 
           {otherPlayers
             .filter((otherPlayer) =>
-              isTileVisible(playerTile, worldToTile(otherPlayer.position), visionRadiusTiles),
+              revealAll || isTileVisible(playerTile, worldToTile(otherPlayer.position), visionRadiusTiles),
             )
             .map((otherPlayer) => (
               <div
@@ -421,7 +440,7 @@ export function GameMap({
 
           {traps
             .filter((trap) =>
-              isTileVisible(playerTile, worldToTile(trap.position), visionRadiusTiles),
+              revealAll || isTileVisible(playerTile, worldToTile(trap.position), visionRadiusTiles),
             )
             .map((trap) => (
               <div
@@ -457,7 +476,7 @@ export function GameMap({
           </div>
         </div>
 
-        <div
+        {!revealAll && <div
           className="pointer-events-none absolute inset-0 z-40"
           style={{
             background: `radial-gradient(circle at ${lightPosition.left} ${lightPosition.top}, rgba(255,255,255,0.02) 0 ${Math.round(
@@ -470,9 +489,9 @@ export function GameMap({
               visionRadius * 0.82,
             )}px, rgba(0,0,0,0.995) ${visionRadius}px)`,
           }}
-        />
-        <div className="pointer-events-none absolute inset-0 z-50 shadow-[inset_0_0_140px_rgba(0,0,0,0.96)]" />
-        {sanityStage !== "stable" && (() => {
+        />}
+        {!revealAll && <div className="pointer-events-none absolute inset-0 z-50 shadow-[inset_0_0_140px_rgba(0,0,0,0.96)]" />}
+        {!revealAll && sanityStage !== "stable" && (() => {
           const effects = getSanityEffects(sanityStage);
           return (
             <div
